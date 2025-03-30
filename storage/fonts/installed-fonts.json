@@ -1,0 +1,15 @@
+{
+    "dejavu sans": {
+        "bold": "dejavu_sans_bold_fa7dea0ed8f8cf8cdda1384b0af79922",
+        "bold_italic": "C:\\xampp\\htdocs\\juice-shop\\vendor\\dompdf\\dompdf\/lib\/fonts\/DejaVuSans-BoldOblique",
+        "italic": "C:\\xampp\\htdocs\\juice-shop\\vendor\\dompdf\\dompdf\/lib\/fonts\/DejaVuSans-Oblique",
+        "normal": "C:\\xampp\\htdocs\\juice-shop\\storage\\fonts\/dejavu_sans_normal_8046bcbd56d23fcefdcc4b978bd34ed6"
+    },
+    "dejavusans": {
+        "normal": "dejavusans_normal_8046bcbd56d23fcefdcc4b978bd34ed6"
+    },
+    "arial": {
+        "normal": "C:\\xampp\\htdocs\\juice-shop\\storage\\fonts\/arial_normal_26606fb1681518e9c4337f592ed25393",
+        "bold": "arial_bold_26606fb1681518e9c4337f592ed25393"
+    }
+}
