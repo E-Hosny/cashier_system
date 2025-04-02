@@ -23,6 +23,7 @@ class CashierController extends Controller
 
     public function checkout(Request $request)
     {
+        //comment
         $request->validate([
             'items' => 'required|array',
             'total' => 'required|numeric|min:0',
