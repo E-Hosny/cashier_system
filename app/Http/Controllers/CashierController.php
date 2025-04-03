@@ -60,7 +60,9 @@ class CashierController extends Controller
             'mode' => 'utf-8',
         ]);
     
-        $html = view('invoice', compact('order'))->render();
+        // $html = view('invoice', compact('order'))->render();
+        $html = view('Invoice', compact('order'))->render();
+
         $mpdf->WriteHTML($html);
         
         return $mpdf->Output("invoice_{$order->id}.pdf", 'I');
