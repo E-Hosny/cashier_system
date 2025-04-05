@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 
 class CashierController extends Controller
 {
+    //comment
     public function index()
     {
         $products = Product::all();
