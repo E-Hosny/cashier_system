@@ -3,7 +3,6 @@
     <h1 class="text-3xl font-extrabold mb-6 text-end text-gray-800">🍹 واجهة الكاشير</h1>
 
     <div class="flex justify-between gap-6">
-      
       <!-- السلة -->
       <div class="w-full sm:w-1/3 lg:w-1/4 bg-gray-100 p-4 rounded-lg shadow-md">
         <h2 class="text-xl font-semibold text-end mb-4">🛒 السلة</h2>
@@ -51,16 +50,18 @@
           </div>
         </div>
       </div>
-
     </div>
 
-    <!-- نافذة عرض الفاتورة -->
-    <div v-if="showInvoice" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-      <div class="bg-white w-3/4 h-5/6 p-6 rounded-lg shadow-lg flex flex-col">
+    <!-- نافذة عرض الفاتورة داخل الصفحة -->
+    <div v-if="showInvoice" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" @click="closeInvoice">
+      <div class="bg-white w-3/4 h-5/6 p-6 rounded-lg shadow-lg flex flex-col" @click.stop>
         <h2 class="text-2xl font-bold text-center mb-4">📜 عرض الفاتورة</h2>
-        <iframe :src="`/invoice/${orderId}`" class="w-full flex-1 border-none"></iframe>
-        <div class="flex justify-between mt-4">
-          <button @click="printInvoice" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition">🖨️ طباعة الفاتورة</button>
+        <iframe
+          id="invoice-frame"
+          :src="`/invoice/${orderId}`"
+          class="w-full flex-1 border-none">
+        </iframe>
+        <div class="flex justify-end mt-4">
           <button @click="showInvoice = false" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition">إغلاق</button>
         </div>
       </div>
@@ -89,7 +90,7 @@ export default {
   },
   methods: {
     searchProduct() {
-      this.filteredProducts = this.products.filter(product => 
+      this.filteredProducts = this.products.filter(product =>
         product.name.toLowerCase().includes(this.searchQuery.toLowerCase())
       );
     },
@@ -115,21 +116,38 @@ export default {
     checkout() {
       axios.post('/checkout', { items: this.cart, total: this.totalAmount })
         .then(response => {
-          alert('تم تسجيل الطلب بنجاح! رقم الطلب: ' + response.data.order_id);
           this.orderId = response.data.order_id;
           this.showInvoice = true;
           this.cart = [];
+
+          // تأخير بسيط للطباعة بعد تحميل iframe
+          this.$nextTick(() => {
+            setTimeout(() => {
+              this.printInvoice();
+            }, 500);
+          });
         })
         .catch(error => {
-          alert('حدث خطأ أثناء الدفع');
+          console.error('خطأ أثناء إصدار الفاتورة:', error);
         });
     },
     printInvoice() {
-      const invoiceWindow = window.open(`/invoice/${this.orderId}`, '_blank');
-      invoiceWindow.print();
+      const iframe = document.querySelector('#invoice-frame');
+      if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+
+        // إضافة حدث onafterprint لإغلاق نافذة عرض الفاتورة بعد الطباعة
+        iframe.contentWindow.onafterprint = () => {
+          this.showInvoice = false;  // إغلاق نافذة عرض الفاتورة بعد الطباعة
+        };
+      }
     },
     clearCart() {
       this.cart = [];
+    },
+    closeInvoice() {
+      this.showInvoice = false;
     }
   }
 };
