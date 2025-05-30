@@ -2,25 +2,32 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Category;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use Barryvdh\DomPDF\Facade\Pdf;
-use Illuminate\Support\Facades\Storage;
 use Dompdf\Options;
-use Mpdf\Mpdf;
-
-
 use Illuminate\Http\Request;
+
+
+use Illuminate\Support\Facades\Storage;
+use Mpdf\Mpdf;
 
 class CashierController extends Controller
 {
     //comment
-    public function index()
-    {
-        $products = Product::all();
-        return inertia('Cashier', ['products' => $products]);
-    }
+  public function index()
+{
+    $products = Product::with('category')->get(); // جلب المنتجات مع الفئة
+    $categories =Category::latest()->get(); // جلب الفئات
+
+    return inertia('Cashier', [
+        'products' => $products,
+        'categories' => $categories,
+    ]);
+}
+
 
     public function checkout(Request $request)
     {

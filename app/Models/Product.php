@@ -13,7 +13,7 @@ class Product extends Model
     //
     use HasFactory;
 
-    protected $fillable = ['name', 'price', 'quantity', 'image','tenant_id'];
+    protected $fillable = ['name', 'price', 'quantity', 'image','tenant_id','category_id'];
 
     public function tenant()
 {
@@ -34,6 +34,12 @@ protected static function booted()
         }
     });
 }
+
+public function category()
+{
+    return $this->belongsTo(Category::class);
+}
+
 
 
 }
