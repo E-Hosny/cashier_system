@@ -3,19 +3,23 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-
+use App\Models\Category;
 use App\Models\Product;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
 class ProductController extends Controller
 {
-  
     public function index()
     {
-        $products = Product::latest()->get();
-        return Inertia::render('Admin/Products/Index', ['products' => $products]);
+        $products = Product::with('category')->latest()->get();
+        $categories = Category::latest()->get();
+
+        return Inertia::render('Admin/Products/Index', [
+            'products' => $products,
+            'categories' => $categories,
+        ]);
     }
 
     public function store(Request $request)
@@ -24,6 +28,7 @@ class ProductController extends Controller
             'name' => 'required|string|max:255',
             'price' => 'required|numeric',
             'quantity' => 'nullable|integer',
+            'category_id' => 'required|exists:categories,id',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
         ]);
 
@@ -36,31 +41,33 @@ class ProductController extends Controller
             'name' => $request->name,
             'price' => $request->price,
             'quantity' => $request->quantity,
+            'category_id' => $request->category_id,
             'image' => $imagePath,
         ]);
 
-        return redirect()->route('admin.products.index')->with('success', 'Product added successfully!');
+        return redirect()->route('admin.products.index')->with('success', 'تمت إضافة المنتج بنجاح!');
     }
+
     public function update(Request $request, $id)
-{
-    $product = Product::findOrFail($id);
-    
-    $data = $request->validate([
-        'name' => 'required|string|max:255',
-        'price' => 'required|numeric',
-        'quantity' => 'nullable|integer',
-        'image' => 'nullable|image|max:2048',
-    ]);
+    {
+        $product = Product::findOrFail($id);
 
-    if ($request->hasFile('image')) {
-        $data['image'] = $request->file('image')->store('products', 'public');
+        $data = $request->validate([
+            'name' => 'required|string|max:255',
+            'price' => 'required|numeric',
+            'quantity' => 'nullable|integer',
+            'category_id' => 'required|exists:categories,id',
+            'image' => 'nullable|image|max:2048',
+        ]);
+
+        if ($request->hasFile('image')) {
+            $data['image'] = $request->file('image')->store('products', 'public');
+        }
+
+        $product->update($data);
+
+        return redirect()->back()->with('success', 'تم تحديث المنتج بنجاح!');
     }
-
-    $product->update($data);
-
-    return redirect()->back()->with('success', 'تم تحديث المنتج بنجاح!');
-}
-
 
     public function destroy(Product $product)
     {
@@ -68,6 +75,6 @@ class ProductController extends Controller
             Storage::disk('public')->delete($product->image);
         }
         $product->delete();
-        return redirect()->route('admin.products.index')->with('success', 'Product deleted successfully!');
+        return redirect()->route('admin.products.index')->with('success', 'تم حذف المنتج بنجاح!');
     }
 }
