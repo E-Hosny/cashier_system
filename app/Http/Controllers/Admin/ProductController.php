@@ -50,6 +50,8 @@ class ProductController extends Controller
 
     public function update(Request $request, $id)
     {
+        \Log::info('✅ دخلنا دالة التحديث', ['id' => $id, 'data' => $request->all()]);
+
         $product = Product::findOrFail($id);
 
         $data = $request->validate([
