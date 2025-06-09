@@ -64,11 +64,29 @@ class ProductController extends Controller
             'image' => 'nullable|image|max:2048',
         ]);
 
-        if ($request->hasFile('image')) {
+            if ($request->hasFile('image')) {
+            // حذف الصورة القديمة
+            if ($product->image) {
+                Storage::disk('public')->delete($product->image);
+            }
+
             $data['image'] = $request->file('image')->store('products', 'public');
+        } else {
+            // احتفظ بالصورة الحالية
+            $data['image'] = $product->image;
         }
 
-        $product->update($data);
+
+        $product->name = $data['name'];
+        $product->price = $data['price'];
+        $product->quantity = $data['quantity'] !== 'null' ? $data['quantity'] : null;
+        $product->category_id = $data['category_id'];
+        $product->image = $data['image'] ?? $product->image;
+        $product->save();
+
+
+
+        \Log::info('📝 بعد الحفظ، بيانات المنتج:', $product->toArray());
 
         return redirect()->back()->with('success', 'تم تحديث المنتج بنجاح!');
     }
