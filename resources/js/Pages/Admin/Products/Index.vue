@@ -131,14 +131,16 @@ submitProduct() {
   const formData = new FormData();
   formData.append("name", this.form.name);
   formData.append("price", this.form.price);
-  formData.append("quantity", this.form.quantity);
-  formData.append("category_id", this.form.category_id);
+
+  formData.append("quantity", this.form.quantity !== null && this.form.quantity !== '' ? this.form.quantity : '');
+  formData.append("category_id", this.form.category_id !== null && this.form.category_id !== '' ? this.form.category_id : '');
+
   if (this.form.image) {
     formData.append("image", this.form.image);
   }
 
   if (this.isEditing) {
-    // formData.append("_method", "PUT"); // ⬅️ ده مهم جدًا علشان Laravel يعامله كـ update
+    // formData.append("_method", "PUT");
     Inertia.post(route("admin.products.update", this.form.id), formData, {
       onSuccess: () => this.resetForm(),
     });
@@ -148,7 +150,6 @@ submitProduct() {
     });
   }
 },
-
 
 
 
