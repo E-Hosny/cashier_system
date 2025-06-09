@@ -32,7 +32,7 @@ Route::middleware([
     // Products
     Route::get('products', [ProductController::class, 'index'])->name('admin.products.index');
     Route::post('products', [ProductController::class, 'store'])->name('admin.products.store');
-    Route::put('/admin/products/update/{id}', [ProductController::class, 'update'])->name('admin.products.update');
+    Route::post('/admin/products/update/{id}', [ProductController::class, 'update'])->name('admin.products.update');
     Route::delete('products/{product}', [ProductController::class, 'destroy'])->name('admin.products.destroy');
 
     // Categories
