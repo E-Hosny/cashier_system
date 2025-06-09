@@ -138,6 +138,7 @@ submitProduct() {
   }
 
   if (this.isEditing) {
+    formData.append("_method", "PUT"); // ⬅️ ده مهم جدًا علشان Laravel يعامله كـ update
     Inertia.post(route("admin.products.update", this.form.id), formData, {
       onSuccess: () => this.resetForm(),
     });
