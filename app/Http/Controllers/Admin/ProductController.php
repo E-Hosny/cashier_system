@@ -48,48 +48,42 @@ class ProductController extends Controller
         return redirect()->route('admin.products.index')->with('success', 'تمت إضافة المنتج بنجاح!');
     }
 
-    public function update(Request $request, $id)
-    {
-        \Log::info('✅ دخلنا دالة التحديث', ['id' => $id, 'data' => $request->all()]);
-        \Log::info('📷 هل تم رفع صورة؟', ['hasFile' => $request->hasFile('image')]);
+public function update(Request $request, $id)
+{
+    \Log::info('✅ دخلنا دالة التحديث', ['id' => $id, 'data' => $request->all()]);
+    \Log::info('📷 هل تم رفع صورة؟', ['hasFile' => $request->hasFile('image')]);
 
+    $product = Product::findOrFail($id);
 
-        $product = Product::findOrFail($id);
+    $data = $request->validate([
+        'name' => 'required|string|max:255',
+        'price' => 'required|numeric',
+        'quantity' => 'nullable|integer',
+        'category_id' => 'required|exists:categories,id',
+        'image' => 'nullable|image|max:2048',
+    ]);
 
-        $data = $request->validate([
-            'name' => 'required|string|max:255',
-            'price' => 'required|numeric',
-            'quantity' => 'nullable|integer',
-            'category_id' => 'required|exists:categories,id',
-            'image' => 'nullable|image|max:2048',
-        ]);
-
-            if ($request->hasFile('image')) {
-            // حذف الصورة القديمة
-            if ($product->image) {
-                Storage::disk('public')->delete($product->image);
-            }
-
-            $data['image'] = $request->file('image')->store('products', 'public');
-        } else {
-            // احتفظ بالصورة الحالية
-            $data['image'] = $product->image;
+    // معالجة الصورة الجديدة لو تم رفعها
+    if ($request->hasFile('image')) {
+        if ($product->image) {
+            Storage::disk('public')->delete($product->image);
         }
-
-
-        $product->name = $data['name'];
-        $product->price = $data['price'];
-        $product->quantity = $data['quantity'] !== 'null' ? $data['quantity'] : null;
-        $product->category_id = $data['category_id'];
-        $product->image = $data['image'] ?? $product->image;
-        $product->save();
-
-
-
-        \Log::info('📝 بعد الحفظ، بيانات المنتج:', $product->toArray());
-
-        return redirect()->back()->with('success', 'تم تحديث المنتج بنجاح!');
+        $data['image'] = $request->file('image')->store('products', 'public');
+    } else {
+        $data['image'] = $product->image; // الاحتفاظ بالصورة القديمة
     }
+
+    // معالجة الكمية: لو جاية كـ "null" نص → نحولها فعليًا لـ null
+    $data['quantity'] = $data['quantity'] !== 'null' ? $data['quantity'] : null;
+
+    // تنفيذ التحديث
+    $product->forceFill($data)->save();
+
+    \Log::info('📝 بعد الحفظ، بيانات المنتج:', $product->toArray());
+
+    return redirect()->back()->with('success', 'تم تحديث المنتج بنجاح!');
+}
+
 
     public function destroy(Product $product)
     {
