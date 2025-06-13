@@ -58,7 +58,7 @@
         <tbody>
           <tr v-for="product in products" :key="product.id" class="border-t">
             <td class="p-3">{{ product.name }}</td>
-            <td class="p-3 text-green-600 font-bold">${{ product.price }}</td>
+            <td class="p-3 text-green-600 font-bold">{{ product.price }}</td>
             <td class="p-3">{{ product.quantity }}</td>
             <td class="p-3 text-center">
               <img v-if="product.image" :src="`/storage/${product.image}`" class="h-14 w-14 object-cover rounded shadow inline-block">

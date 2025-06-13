@@ -45,6 +45,8 @@ Route::middleware([
     Route::get('/cashier', [CashierController::class, 'index'])->name('cashier.index');
     Route::post('/checkout', [CashierController::class, 'checkout'])->name('cashier.checkout');
     Route::get('/invoice/{orderId}', [CashierController::class, 'invoice'])->name('invoice.show');
+    Route::get('/invoice-html/{orderId}', [CashierController::class, 'invoiceHtml']);
+
 
     // Sales Report
     Route::get('/sales-report', [SalesReportController::class, 'index'])->name('admin.sales.report');

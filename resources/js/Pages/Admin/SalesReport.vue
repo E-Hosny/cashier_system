@@ -22,15 +22,15 @@
         <tr v-for="sale in sales" :key="sale.product_id" class="border-t text-end">
           <td class="p-4 font-semibold">{{ sale.product.name }}</td>
           <td class="p-4 text-blue-600 font-bold">{{ sale.total_quantity }}</td>
-          <td class="p-4 text-green-600 font-bold">${{ formatPrice(sale.unit_price) }}</td>
-          <td class="p-4 text-red-600 font-bold">${{ formatPrice(sale.total_price) }}</td>
+          <td class="p-4 text-green-600 font-bold">{{ formatPrice(sale.unit_price) }}</td>
+          <td class="p-4 text-red-600 font-bold">{{ formatPrice(sale.total_price) }}</td>
         </tr>
       </tbody>
     </table>
 
     <!-- إجمالي المبيعات -->
     <div class="mt-6 text-xl font-bold text-center bg-gray-200 p-4 rounded-lg">
-      💵 إجمالي المبيعات: ${{ formatPrice(totalSales) }}
+      💵 إجمالي المبيعات: {{ formatPrice(totalSales) }}
     </div>
   </div>
 </template>
