@@ -109,7 +109,7 @@ export default {
     },
     totalAmount() {
       return this.cart.reduce((total, item) => total + item.price * item.quantity, 0).toFixed(2);
-    }
+    },
   },
   methods: {
     selectCategory(id) {
@@ -140,6 +140,7 @@ export default {
         .then(response => {
           this.orderId = response.data.order_id;
           this.cart = [];
+
           this.$nextTick(() => {
             this.printInvoice();
           });
@@ -148,6 +149,7 @@ export default {
     },
     printInvoice() {
       this.iframeVisible = true;
+
       this.$nextTick(() => {
         const iframe = document.getElementById('invoice-frame');
         if (iframe) {
@@ -156,19 +158,20 @@ export default {
             iframeWindow.focus();
             iframeWindow.print();
 
+            // بعد الطباعة، iframe يرسل رسالة لـ parent
             iframeWindow.onafterprint = () => {
               setTimeout(() => {
                 this.iframeVisible = false;
               }, 500);
             };
 
-            // احتياط: إغلاق بعد 5 ثواني
+            // fallback: لو onafterprint ما اشتغلش
             setTimeout(() => {
               this.iframeVisible = false;
             }, 5000);
           };
 
-          iframe.src = `/invoice/${this.orderId}`;
+          iframe.src = `/invoice-html/${this.orderId}`;
         }
       });
     },
@@ -180,12 +183,20 @@ export default {
         this.closeIframe();
       }
     },
+    handleIframeMessage(e) {
+      if (e.data === 'close-iframe') {
+        this.closeIframe();
+      }
+    }
   },
   mounted() {
     document.addEventListener('keydown', this.handleEscape);
+    window.addEventListener('message', this.handleIframeMessage);
   },
   beforeDestroy() {
     document.removeEventListener('keydown', this.handleEscape);
-  },
+    window.removeEventListener('message', this.handleIframeMessage);
+  }
 };
 </script>
+

@@ -48,6 +48,7 @@ Route::middleware([
     Route::get('/invoice-html/{orderId}', [CashierController::class, 'invoiceHtml']);
 
 
+
     // Sales Report
     Route::get('/sales-report', [SalesReportController::class, 'index'])->name('admin.sales.report');
 

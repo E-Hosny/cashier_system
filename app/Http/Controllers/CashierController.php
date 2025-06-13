@@ -76,13 +76,12 @@ class CashierController extends Controller
         return $mpdf->Output("invoice_{$order->id}.pdf", 'I');
     }
 
-    public function invoiceHtml($orderId)
+public function invoiceHtml($orderId)
 {
     $order = Order::with('items.product')->findOrFail($orderId);
-    $html = view('Invoice', compact('order'))->render();
-
-    return response($html);
+    return view('invoice-html', compact('order'));
 }
+
 
             
 }
