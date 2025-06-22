@@ -1,6 +1,9 @@
 <template>
   <div class="max-w-[1600px] mx-auto p-6" dir="rtl">
-    <h1 class="text-3xl font-extrabold mb-6 text-end text-gray-800">🍹 واجهة الكاشير</h1>
+    <div class="flex justify-between items-center mb-8">
+      <h1 class="text-3xl font-extrabold text-gray-800">🍹 واجهة الكاشير</h1>
+      <img src="/images/mylogo.png" alt="Logo" class="w-32" />
+    </div>
 
     <div class="flex flex-col lg:flex-row gap-6">
       <!-- ✅ الفئات -->

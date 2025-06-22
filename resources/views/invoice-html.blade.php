@@ -12,6 +12,9 @@
     </style>
 </head>
 <body onload="window.print(); window.onafterprint = () => window.parent.postMessage('close-iframe', '*')">
+    <div style="text-align: center; margin-bottom: 20px;">
+        <img src="{{ url('/images/mylogo.png') }}" alt="logo" style="width: 200px;">
+    </div>
     <h2>فاتورة رقم #{{ $order->id }}</h2>
     <p>التاريخ: {{ $order->created_at->format('Y-m-d H:i') }}</p>
 

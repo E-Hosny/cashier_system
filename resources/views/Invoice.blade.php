@@ -47,6 +47,9 @@
     </style>
 </head>
 <body>
+    <div style="text-align: center; margin-bottom: 20px;">
+        <img src="{{ public_path('images/mylogo.png') }}" alt="logo" style="width: 200px;">
+    </div>
     <h1>فاتورة رقم #{{ $order->id }}</h1>
     <p>التاريخ: {{ $order->created_at->format('Y-m-d H:i') }}</p>
 
