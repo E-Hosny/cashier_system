@@ -1,0 +1,124 @@
+<template>
+  <div class="container mx-auto p-6" dir="rtl">
+    <div class="flex justify-between items-center mb-8">
+      <h1 class="text-3xl font-bold text-gray-800">📁 إدارة الفئات</h1>
+      <a :href="route('admin.products.index')" class="btn-gray">➡️ العودة إلى المنتجات</a>
+    </div>
+
+    <div class="bg-white shadow-md rounded-xl p-6 border">
+      <h2 class="text-xl font-semibold text-gray-700 mb-4">
+        {{ editingCategory ? '🔄 تعديل الفئة' : '➕ إضافة فئة جديدة' }}
+      </h2>
+      <form @submit.prevent="submitCategory" class="flex flex-col sm:flex-row gap-4 mb-6">
+        <input v-model="form.name" type="text" class="input-style flex-1" placeholder="اسم الفئة الجديدة" required />
+        <button type="submit" class="btn-green">
+          {{ editingCategory ? '💾 حفظ التعديل' : '➕ إضافة' }}
+        </button>
+        <button v-if="editingCategory" @click="cancelEdit" type="button" class="btn-gray">
+          إلغاء
+        </button>
+      </form>
+
+      <hr class="my-6">
+
+      <h2 class="text-xl font-semibold text-gray-700 mb-4">قائمة الفئات</h2>
+      <ul class="divide-y divide-gray-200">
+        <li v-for="cat in categoriesList" :key="cat.id" class="flex justify-between items-center py-3 px-2 hover:bg-gray-50">
+          <span class="text-gray-800">{{ cat.name }}</span>
+          <div class="flex gap-2">
+            <button @click="editCategory(cat)" class="text-yellow-600 hover:text-yellow-800 font-bold transition">تعديل</button>
+            <button @click="deleteCategory(cat.id)" class="text-red-600 hover:text-red-800 font-bold transition">حذف</button>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </div>
+</template>
+
+<script>
+import AppLayout from '@/Layouts/AppLayout.vue';
+import { Inertia } from '@inertiajs/inertia';
+
+export default {
+  layout: AppLayout,
+  props: {
+    categories: Array,
+  },
+  data() {
+    return {
+      categoriesList: [...this.categories],
+      form: {
+        name: "",
+      },
+      editingCategory: null,
+    };
+  },
+  methods: {
+    async fetchCategories() {
+        try {
+            const response = await fetch(route('admin.categories.index'));
+            const data = await response.json();
+            this.categoriesList = data.categories;
+        } catch (error) {
+            console.error("Error fetching categories:", error);
+        }
+    },
+    submitCategory() {
+      const url = this.editingCategory
+        ? route("admin.categories.update", this.editingCategory.id)
+        : route("admin.categories.store");
+      
+      const method = this.editingCategory ? "put" : "post";
+
+      Inertia.visit(url, {
+          method: method,
+          data: this.form,
+          onSuccess: () => {
+              this.resetForm();
+              Inertia.reload({ only: ['categories'] });
+          },
+          onError: (errors) => {
+              console.error("Error:", errors);
+          }
+      });
+    },
+    editCategory(cat) {
+      this.form.name = cat.name;
+      this.editingCategory = cat;
+    },
+    cancelEdit() {
+        this.resetForm();
+    },
+    resetForm() {
+        this.form.name = "";
+        this.editingCategory = null;
+    },
+    deleteCategory(id) {
+      if (confirm("هل أنت متأكد من حذف هذه الفئة؟ سيتم حذف جميع المنتجات المتعلقة بها.")) {
+        Inertia.delete(route('admin.categories.destroy', id), {
+            onSuccess: () => {
+                Inertia.reload({ only: ['categories'] });
+            }
+        });
+      }
+    },
+  },
+  watch: {
+      categories(newCategories) {
+          this.categoriesList = [...newCategories];
+      }
+  }
+};
+</script>
+
+<style scoped>
+.input-style {
+  @apply w-full p-3 border border-gray-300 rounded-lg focus:ring focus:ring-blue-300 transition;
+}
+.btn-green {
+  @apply bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition;
+}
+.btn-gray {
+  @apply bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition;
+}
+</style> 

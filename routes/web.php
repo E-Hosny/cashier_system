@@ -30,24 +30,19 @@ Route::middleware([
     })->name('dashboard');
 
     // Products
-    Route::get('products', [ProductController::class, 'index'])->name('admin.products.index');
-    Route::post('products', [ProductController::class, 'store'])->name('admin.products.store');
-    Route::post('/admin/products/update/{id}', [ProductController::class, 'update'])->name('admin.products.update');
-    Route::delete('products/{product}', [ProductController::class, 'destroy'])->name('admin.products.destroy');
+    Route::resource('products', ProductController::class, ['names' => 'admin.products'])->except(['show']);
 
     // Categories
-    Route::get('/categories', [CategoryController::class, 'index']);
-    Route::post('/categories', [CategoryController::class, 'store']);
-    Route::put('/categories/{id}', [CategoryController::class, 'update']);
-    Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
+    Route::get('/categories', [CategoryController::class, 'index'])->name('admin.categories.index');
+    Route::post('/categories', [CategoryController::class, 'store'])->name('admin.categories.store');
+    Route::put('/categories/{id}', [CategoryController::class, 'update'])->name('admin.categories.update');
+    Route::delete('/categories/{id}', [CategoryController::class, 'destroy'])->name('admin.categories.destroy');
 
     // Cashier & Invoices
     Route::get('/cashier', [CashierController::class, 'index'])->name('cashier.index');
     Route::post('/checkout', [CashierController::class, 'checkout'])->name('cashier.checkout');
     Route::get('/invoice/{orderId}', [CashierController::class, 'invoice'])->name('invoice.show');
     Route::get('/invoice-html/{orderId}', [CashierController::class, 'invoiceHtml']);
-
-
 
     // Sales Report
     Route::get('/sales-report', [SalesReportController::class, 'index'])->name('admin.sales.report');

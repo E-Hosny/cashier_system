@@ -19,7 +19,14 @@ class CashierController extends Controller
     //comment
   public function index()
 {
-    $products = Product::with('category')->get(); // جلب المنتجات مع الفئة
+    $products = Product::with('category')
+        ->where(function ($query) {
+            $query->whereNotNull('size_variants')
+                  ->whereJsonLength('size_variants', '>', 0);
+        })
+        ->latest()
+        ->get();
+
     $categories =Category::latest()->get(); // جلب الفئات
 
     return inertia('Cashier', [
