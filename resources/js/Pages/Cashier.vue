@@ -33,7 +33,7 @@
 
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-4 gap-4 mb-6">
           <div
-            v-for="product in filteredProducts"
+            v-for="(product, p_idx) in filteredProducts"
             :key="product.id"
             class="bg-white rounded-lg shadow-lg overflow-hidden transform transition-all hover:scale-105 flex flex-col border border-gray-200 text-sm"
           >
@@ -42,10 +42,26 @@
             </div>
             <div class="p-3 flex-1 flex flex-col justify-between">
               <h3 class="text-base font-semibold text-gray-800 text-center">{{ product.name }}</h3>
-              <p class="text-center text-green-600 text-sm font-bold">{{ product.price }}</p>
-              <div class="mt-3 text-center">
+              
+              <!-- Size Selection -->
+              <div class="my-2 flex justify-center gap-2">
+                  <button 
+                    v-for="(variant, v_idx) in product.size_variants" 
+                    :key="variant.size"
+                    @click="selectVariant(p_idx, v_idx)"
+                    :class="['px-3 py-1 rounded-full text-xs font-semibold', product.selectedVariantIndex === v_idx ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700']"
+                  >
+                    {{ translateSize(variant.size) }}
+                  </button>
+              </div>
+
+              <p class="text-center text-green-700 text-lg font-bold mb-2">
+                {{ product.size_variants[product.selectedVariantIndex].price }}
+              </p>
+
+              <div class="mt-auto text-center">
                 <input v-model.number="product.quantityToAdd" type="number" min="1" placeholder="العدد" class="p-2 border border-gray-300 rounded-lg text-center w-full" />
-                <button @click="addToCart(product, product.quantityToAdd || 1)" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg transition mt-2 w-full">إضافة للسلة</button>
+                <button @click="addToCart(product)" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg transition mt-2 w-full">إضافة للسلة</button>
               </div>
             </div>
           </div>
@@ -55,23 +71,24 @@
       <!-- ✅ السلة -->
       <div class="w-full lg:w-1/5 bg-gray-100 p-4 rounded-lg shadow-md order-2 lg:order-3">
         <h2 class="text-xl font-semibold text-end mb-4">🛒 السلة</h2>
-        <div v-for="(item, index) in cart" :key="item.id" class="flex justify-between items-center mb-2">
+        <div v-for="(item, index) in cart" :key="item.cartItemId" class="flex justify-between items-center mb-2 text-sm">
           <div>
-            <span class="font-medium">{{ item.name }}</span> - <span class="text-green-600">{{ item.price }}</span>
+            <span class="font-medium">{{ item.name }} ({{ translateSize(item.size) }})</span> 
+            - <span class="text-green-600 font-bold">{{ item.price }}</span>
           </div>
-          <div class="flex items-center">
-            <span class="text-gray-500 mx-1">الكمية: {{ item.quantity }}</span>
-            <button @click="updateQuantity(index, 1)" class="bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded-lg transition ml-2">+</button>
-            <button @click="updateQuantity(index, -1)" :disabled="item.quantity <= 1" class="mx-1 bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded-lg transition mr-2">-</button>
+          <div class="flex items-center gap-1">
+            <button @click="updateQuantity(index, -1)" :disabled="item.quantity <= 1" class="bg-yellow-500 text-white w-6 h-6 rounded-full transition">-</button>
+            <span class="text-gray-700 font-bold">{{ item.quantity }}</span>
+            <button @click="updateQuantity(index, 1)" class="bg-yellow-500 text-white w-6 h-6 rounded-full transition">+</button>
+            <button @click="removeFromCart(index)" class="bg-red-500 text-white w-6 h-6 rounded-full transition mr-2">x</button>
           </div>
-          <button @click="removeFromCart(index)" class="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-lg transition">حذف</button>
         </div>
 
         <div class="mt-4">
           <p class="font-bold text-xl text-end">الإجمالي: {{ totalAmount }}</p>
         </div>
 
-        <button @click="checkout" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg mt-4 transition">إصدار الفاتورة</button>
+        <button @click="checkout" :disabled="cart.length === 0" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg mt-4 transition disabled:bg-gray-400">إصدار الفاتورة</button>
         <button @click="clearCart" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-lg mt-2 transition">تصفير السلة 🗑️</button>
       </div>
     </div>
@@ -102,11 +119,17 @@ export default {
       cart: [],
       orderId: null,
       iframeVisible: false,
+      liveProducts: [],
+      sizeTranslations: {
+        small: 'صغير',
+        medium: 'وسط',
+        large: 'كبير',
+      },
     };
   },
   computed: {
     filteredProducts() {
-      return this.products
+      return this.liveProducts
         .filter(p => this.selectedCategoryId === null || p.category_id === this.selectedCategoryId)
         .filter(p => p.name.toLowerCase().includes(this.searchQuery.toLowerCase()));
     },
@@ -115,17 +138,42 @@ export default {
     },
   },
   methods: {
+    initializeProducts() {
+        this.liveProducts = this.products.map(p => ({
+            ...p,
+            selectedVariantIndex: 0, // Default to first size
+            quantityToAdd: 1,
+        }));
+    },
+    translateSize(size) {
+        return this.sizeTranslations[size] || size;
+    },
     selectCategory(id) {
       this.selectedCategoryId = id;
     },
-    addToCart(product, quantity) {
-      const found = this.cart.find(item => item.id === product.id);
-      if (found) {
-        found.quantity += quantity;
-      } else {
-        this.cart.push({ ...product, quantity });
+    selectVariant(productIndex, variantIndex) {
+        this.liveProducts[productIndex].selectedVariantIndex = variantIndex;
+    },
+    addToCart(product) {
+        const variant = product.size_variants[product.selectedVariantIndex];
+        const quantity = product.quantityToAdd || 1;
+        const cartItemId = `${product.id}-${variant.size}`;
+
+        const found = this.cart.find(item => item.cartItemId === cartItemId);
+
+        if (found) {
+            found.quantity += quantity;
+        } else {
+            this.cart.push({
+                cartItemId: cartItemId,
+                productId: product.id,
+                name: product.name,
+                size: variant.size,
+                price: variant.price,
+                quantity: quantity
+            });
       }
-      product.quantityToAdd = 1;
+      product.quantityToAdd = 1; // Reset quantity input
     },
     removeFromCart(index) {
       this.cart.splice(index, 1);
@@ -142,11 +190,8 @@ export default {
       axios.post('/checkout', { items: this.cart, total: this.totalAmount })
         .then(response => {
           this.orderId = response.data.order_id;
-          this.cart = [];
-
-          this.$nextTick(() => {
-            this.printInvoice();
-          });
+          this.clearCart();
+          this.$nextTick(() => this.printInvoice());
         })
         .catch(error => console.error('خطأ أثناء إصدار الفاتورة:', error));
     },
@@ -193,12 +238,18 @@ export default {
     }
   },
   mounted() {
+    this.initializeProducts();
     document.addEventListener('keydown', this.handleEscape);
     window.addEventListener('message', this.handleIframeMessage);
   },
   beforeDestroy() {
     document.removeEventListener('keydown', this.handleEscape);
     window.removeEventListener('message', this.handleIframeMessage);
+  },
+  watch: {
+      products() {
+          this.initializeProducts();
+      }
   }
 };
 </script>

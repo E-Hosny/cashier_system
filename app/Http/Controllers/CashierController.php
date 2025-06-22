@@ -53,9 +53,11 @@ class CashierController extends Controller
         foreach ($request->items as $item) {
             OrderItem::create([
                 'order_id' => $order->id,
-                'product_id' => $item['id'],
+                'product_id' => $item['productId'],
+                'product_name' => $item['name'],
                 'quantity' => $item['quantity'],
                 'price' => $item['price'],
+                'size' => $item['size'],
             ]);
         }
 
