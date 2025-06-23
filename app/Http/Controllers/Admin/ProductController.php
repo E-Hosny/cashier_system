@@ -13,7 +13,9 @@ class ProductController extends Controller
 {
     public function index()
     {
-        $products = Product::with('category')->latest()->get()->append(['sizes_in_arabic', 'available_sizes']);
+        $products = Product::with(['category', 'ingredients'])
+            ->where('type', 'finished')
+            ->latest()->get()->append(['sizes_in_arabic', 'available_sizes']);
 
         return Inertia::render('Admin/Products/Index', [
             'products' => $products,
@@ -23,6 +25,7 @@ class ProductController extends Controller
     public function create()
     {
         $categories = Category::latest()->get();
+        $rawMaterials = Product::where('type', 'raw')->get(['id', 'name', 'unit']);
         $sizes = [
             ['value' => 'small', 'label' => 'صغير'],
             ['value' => 'medium', 'label' => 'وسط'],
@@ -32,81 +35,122 @@ class ProductController extends Controller
         return Inertia::render('Admin/Products/Create', [
             'categories' => $categories,
             'sizes' => $sizes,
+            'rawMaterials' => $rawMaterials,
         ]);
     }
 
     public function edit(Product $product)
     {
         $categories = Category::latest()->get();
+        $rawMaterials = Product::where('type', 'raw')->get(['id', 'name', 'unit']);
         $sizes = [
             ['value' => 'small', 'label' => 'صغير'],
             ['value' => 'medium', 'label' => 'وسط'],
             ['value' => 'large', 'label' => 'كبير'],
         ];
 
+        // Group ingredients by size for the form
+        $ingredients_by_size = $product->ingredients->groupBy('pivot.size');
+
         return Inertia::render('Admin/Products/Edit', [
             'product' => $product->append(['available_sizes']),
             'categories' => $categories,
             'sizes' => $sizes,
+            'rawMaterials' => $rawMaterials,
+            'ingredients_by_size' => $ingredients_by_size,
         ]);
     }
 
     public function store(Request $request)
     {
+        // Validation logic needs to be updated to handle nested ingredients per size
         $data = $request->validate([
             'name' => 'required|string|max:255',
-            'quantity' => 'nullable|integer',
             'category_id' => 'nullable|exists:categories,id',
             'image' => 'nullable|image|max:2048',
             'size_variants' => 'required|array|min:1',
             'size_variants.*.size' => 'required|string',
             'size_variants.*.price' => 'required|numeric|min:0',
+            'size_variants.*.ingredients' => 'nullable|array',
+            'size_variants.*.ingredients.*.raw_material_id' => 'required|exists:products,id',
+            'size_variants.*.ingredients.*.quantity_consumed' => 'required|numeric|min:0.001',
         ]);
-
+        
         if ($request->hasFile('image')) {
             $data['image'] = $request->file('image')->store('products', 'public');
         }
-        
-        $data['category_id'] = $data['category_id'] === 'null' ? null : $data['category_id'];
+        $data['type'] = 'finished';
+        $product = Product::create($data);
 
-        Product::create($data);
+        // Save ingredients for each size variant
+        foreach ($request->size_variants as $variant) {
+            if (!empty($variant['ingredients'])) {
+                $syncData = collect($variant['ingredients'])->mapWithKeys(function ($ingredient) use ($variant) {
+                    return [
+                        $ingredient['raw_material_id'] => [
+                            'quantity_consumed' => $ingredient['quantity_consumed'],
+                            'size' => $variant['size']
+                        ]
+                    ];
+                });
+                // Use attach instead of sync to add ingredients for each size without overriding others
+                $product->ingredients()->attach($syncData);
+            }
+        }
 
         return redirect()->route('admin.products.index')->with('success', 'تمت إضافة المنتج بنجاح!');
     }
 
-    public function update(Request $request, $id)
+    public function update(Request $request, Product $product)
     {
-        \Log::info('✅ دخلنا دالة التحديث', ['id' => $id, 'data' => $request->all()]);
-        \Log::info('📷 هل تم رفع صورة؟', ['hasFile' => $request->hasFile('image')]);
-
-        $product = Product::findOrFail($id);
-
         $data = $request->validate([
             'name' => 'required|string|max:255',
-            'quantity' => 'nullable|integer',
             'category_id' => 'nullable|exists:categories,id',
+            'image' => 'nullable|image|max:2048',
             'size_variants' => 'required|array|min:1',
             'size_variants.*.size' => 'required|string',
             'size_variants.*.price' => 'required|numeric|min:0',
+            'size_variants.*.ingredients' => 'nullable|array',
+            'size_variants.*.ingredients.*.id' => 'required|exists:products,id',
+            'size_variants.*.ingredients.*.quantity' => 'required|numeric|min:0.001',
         ]);
-
+        
         if ($request->hasFile('image')) {
             if ($product->image) {
                 Storage::disk('public')->delete($product->image);
             }
             $data['image'] = $request->file('image')->store('products', 'public');
-        } else {
-            $data['image'] = $product->image;
         }
 
-        $data['quantity'] = $request->input('quantity') === 'null' ? null : $request->input('quantity');
-        $data['category_id'] = $request->input('category_id') === 'null' ? null : $request->input('category_id');
-        
-        $product->forceFill($data)->save();
+        $product->update($data);
 
-        \Log::info('📝 بعد الحفظ، بيانات المنتج:', $product->toArray());
+        // Detach all old ingredients first
+        $product->ingredients()->detach();
+
+        // Re-attach new ingredients for each size variant
+        foreach ($request->size_variants as $variant) {
+            if (!empty($variant['ingredients'])) {
+                $syncData = collect($variant['ingredients'])->mapWithKeys(function ($ingredient) use ($variant) {
+                    $ingredientId = $ingredient['id'] ?? $ingredient['raw_material_id'];
+                    $quantity = $ingredient['quantity'] ?? $ingredient['quantity_consumed'];
+                    return [
+                        $ingredientId => [
+                            'quantity_consumed' => $quantity,
+                            'size' => $variant['size']
+                        ]
+                    ];
+                });
+                $product->ingredients()->attach($syncData);
+            }
+        }
 
         return redirect()->route('admin.products.index')->with('success', 'تم تحديث المنتج بنجاح!');
+    }
+
+    private function mapIngredients($ingredients)
+    {
+       // This function is no longer needed in this new structure
+       // and can be removed or left unused.
     }
 
     public function destroy(Product $product)

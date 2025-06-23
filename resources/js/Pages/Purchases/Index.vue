@@ -5,9 +5,10 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 
 const page = usePage();
 const purchases = computed(() => page.props.purchases);
+const rawMaterials = computed(() => page.props.rawMaterials || []);
 const selectedDate = ref(page.props.selectedDate);
 const newPurchase = ref({
-    product_name: '',
+    description: '',
     quantity: '',
     total_amount: '',
     purchase_date: selectedDate.value
@@ -25,10 +26,14 @@ const filterByDate = () => {
 
 // إرسال بيانات المشتريات إلى الخادم
 const submitPurchase = () => {
+    if (!newPurchase.value.description || newPurchase.value.description.trim() === '') {
+        alert('يرجى اختيار المادة الخام.');
+        return;
+    }
     router.post('/purchases', newPurchase.value, {
         onSuccess: () => {
             newPurchase.value = {
-                product_name: '',
+                description: '',
                 quantity: '',
                 total_amount: '',
                 purchase_date: selectedDate.value
@@ -62,8 +67,12 @@ const submitPurchase = () => {
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-gray-700 font-semibold">اسم المنتج:</label>
-                                    <input v-model="newPurchase.product_name" type="text" required
-                                        class="w-full border-gray-300 rounded-md shadow-sm">
+                                    <select v-model="newPurchase.description" required class="w-full border-gray-300 rounded-md shadow-sm">
+                                        <option value="" disabled>اختر المادة الخام</option>
+                                        <option v-for="material in rawMaterials" :key="material.id" :value="material.name">
+                                            {{ material.name }} <span v-if="material.unit">({{ material.unit }})</span>
+                                        </option>
+                                    </select>
                                 </div>
                                 <div>
                                     <label class="block text-gray-700 font-semibold">الكمية:</label>

@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\SalesReportController;
 use App\Http\Controllers\CashierController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\Admin\CategoryController;
+use App\Http\Controllers\Admin\RawMaterialController;
 
 Route::get('/', function () {
     return Inertia::render('Welcome', [
@@ -38,9 +39,12 @@ Route::middleware([
     Route::put('/categories/{id}', [CategoryController::class, 'update'])->name('admin.categories.update');
     Route::delete('/categories/{id}', [CategoryController::class, 'destroy'])->name('admin.categories.destroy');
 
+    // Raw Materials
+    Route::resource('raw-materials', RawMaterialController::class, ['as' => 'admin'])->except(['show']);
+
     // Cashier & Invoices
     Route::get('/cashier', [CashierController::class, 'index'])->name('cashier.index');
-    Route::post('/checkout', [CashierController::class, 'checkout'])->name('cashier.checkout');
+    Route::post('/store-order', [CashierController::class, 'store'])->name('cashier.store');
     Route::get('/invoice/{orderId}', [CashierController::class, 'invoice'])->name('invoice.show');
     Route::get('/invoice-html/{orderId}', [CashierController::class, 'invoiceHtml']);
 

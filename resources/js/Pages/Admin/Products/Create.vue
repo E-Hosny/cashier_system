@@ -1,151 +1,178 @@
 <template>
   <div class="container mx-auto p-6" dir="rtl">
     <div class="flex justify-between items-center mb-8">
-        <h1 class="text-3xl font-bold text-gray-800">➕ منتج جديد</h1>
+        <h1 class="text-3xl font-bold text-gray-800">✨ إضافة منتج جديد</h1>
         <a :href="route('admin.products.index')" class="btn-gray">➡️ العودة إلى المنتجات</a>
     </div>
 
-    <div class="bg-white shadow-md rounded-xl p-6 mb-10 border">
-      <form @submit.prevent="submitProduct" class="space-y-4">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-gray-700 mb-1">اسم المنتج</label>
-            <input v-model="form.name" type="text" class="input-style" required />
-          </div>
-
-          <div>
-            <label class="block text-gray-700 mb-1">الكمية</label>
-            <input v-model="form.quantity" type="number" class="input-style" />
-          </div>
-
-          <div>
-            <label class="block text-gray-700 mb-1">الفئة</label>
-            <select v-model="form.category_id" class="input-style">
-              <option disabled value="">اختر فئة</option>
-              <option v-for="cat in categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
-            </select>
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="block text-gray-700 mb-2">الأحجام والأسعار</label>
-            <div class="space-y-4">
-              <div v-for="size in sizes" :key="size.value" class="flex flex-wrap items-center gap-4 p-4 border rounded-lg">
-                <label class="flex items-center min-w-[120px]">
-                  <input 
-                    type="checkbox" 
-                    :value="size.value"
-                    v-model="selectedSizes"
-                    class="form-checkbox h-5 w-5 text-blue-600"
-                    @change="handleSizeChange(size.value)"
-                  />
-                  <span class="mr-2">{{ size.label }}</span>
-                </label>
-                <div v-if="isSizeSelected(size.value)" class="flex-1">
-                  <div class="flex items-center gap-2">
-                    <input 
-                      type="number" 
-                      v-model="getSizeVariant(size.value).price" 
-                      class="input-style" 
-                      placeholder="السعر" 
-                      step="0.01"
-                      required
-                    />
-                  </div>
+    <form @submit.prevent="submit" class="space-y-8">
+        <!-- Product Details -->
+        <div class="bg-white shadow-md rounded-xl p-6 border">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">تفاصيل المنتج</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-gray-700 mb-1">اسم المنتج</label>
+                    <input v-model="form.name" type="text" class="input-style" required />
                 </div>
-              </div>
+                <div>
+                    <label class="block text-gray-700 mb-1">الفئة</label>
+                    <select v-model="form.category_id" class="input-style">
+                        <option disabled value="">اختر فئة</option>
+                        <option v-for="cat in categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="block text-gray-700 mb-1">صورة المنتج</label>
+                    <input type="file" @change="handleFileUpload" class="input-style" />
+                </div>
             </div>
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="block text-gray-700 mb-1">صورة المنتج</label>
-            <input type="file" @change="handleFileUpload" class="input-style" />
-          </div>
         </div>
 
-        <button type="submit" class="btn-primary w-full">
-          ➕ إضافة المنتج
+        <!-- Size Variants & Their Ingredients -->
+        <div class="bg-white shadow-md rounded-xl p-6 border">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">الأحجام والأسعار والمكونات</h2>
+            <div class="space-y-4">
+                <div v-for="(variant, v_index) in form.size_variants" :key="v_index" class="p-4 border rounded-lg bg-gray-50">
+                    <div class="flex flex-wrap items-center gap-4 mb-4">
+                         <label class="flex items-center min-w-[120px] font-bold">
+                            <input type="checkbox" v-model="variant.is_active" class="form-checkbox h-5 w-5 text-blue-600 mr-2" />
+                            {{ variant.label }}
+                        </label>
+                        <div v-if="variant.is_active" class="flex-1">
+                            <label class="block text-sm font-medium text-gray-600 mb-1">السعر</label>
+                            <input type="number" v-model="variant.price" class="input-style" placeholder="السعر" step="0.01" required />
+                        </div>
+                    </div>
+                    
+                    <!-- Ingredients for this variant -->
+                    <div v-if="variant.is_active" class="mt-4 pt-4 border-t">
+                        <h3 class="font-semibold text-gray-600 mb-2">مكونات حجم ({{ variant.label }})</h3>
+                        <div v-for="(ingredient, i_index) in variant.ingredients" :key="i_index" class="flex gap-4 items-end mb-4">
+                            <div class="flex-1">
+                                <label class="block text-gray-700 mb-1 text-sm">المادة الخام</label>
+                                <select v-model="ingredient.raw_material_id" class="input-style">
+                                    <option disabled value="">اختر المادة الخام</option>
+                                    <option v-for="material in rawMaterials" :key="material.id" :value="material.id">{{ material.name }} ({{ material.unit }})</option>
+                                </select>
+                            </div>
+                            <div class="w-1/4">
+                                <label class="block text-gray-700 mb-1 text-sm">الكمية المستهلكة</label>
+                                <input v-model="ingredient.quantity_consumed" type="number" step="0.001" class="input-style" placeholder="الكمية" />
+                            </div>
+                            <div>
+                                <button @click="removeIngredient(variant, i_index)" type="button" class="btn-red h-12">🗑️</button>
+                            </div>
+                        </div>
+                        <button @click="addIngredient(variant)" type="button" class="btn-green">➕ إضافة مكون لـ ({{ variant.label }})</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <button type="submit" class="btn-primary w-full !mt-8">
+            💾 حفظ المنتج
         </button>
-      </form>
-    </div>
+    </form>
   </div>
 </template>
 
 <script>
-import { Inertia } from "@inertiajs/inertia";
+import { Inertia } from '@inertiajs/inertia';
 import AppLayout from '@/Layouts/AppLayout.vue';
-
 
 export default {
     layout: AppLayout,
     props: {
         categories: Array,
         sizes: Array,
+        rawMaterials: Array,
     },
     data() {
         return {
             form: {
-                name: "",
-                quantity: "",
+                name: '',
+                category_id: '',
                 image: null,
-                category_id: "",
-                size_variants: []
+                size_variants: this.sizes.map(s => ({
+                    size: s.value,
+                    label: s.label,
+                    price: '',
+                    is_active: false,
+                    ingredients: [],
+                })),
             },
-            selectedSizes: [],
         };
     },
     methods: {
         handleFileUpload(event) {
             this.form.image = event.target.files[0];
         },
-        isSizeSelected(size) {
-            return this.selectedSizes.includes(size);
+        addIngredient(variant) {
+            variant.ingredients.push({ raw_material_id: '', quantity_consumed: '' });
         },
-        getSizeVariant(size) {
-            let variant = this.form.size_variants.find(v => v.size === size);
-            if (!variant) {
-                variant = { size, price: '' };
-                this.form.size_variants.push(variant);
+        removeIngredient(variant, index) {
+            variant.ingredients.splice(index, 1);
+        },
+        submit() {
+            const activeVariants = this.form.size_variants.filter(v => v.is_active);
+
+            // Client-side validation
+            if (!this.form.name || this.form.name.trim() === '') {
+                alert('يرجى إدخال اسم المنتج.');
+                return;
             }
-            return variant;
-        },
-        handleSizeChange(size) {
-            if (this.selectedSizes.includes(size)) {
-                if (!this.form.size_variants.some(v => v.size === size)) {
-                    this.form.size_variants.push({ size, price: '' });
+            if (activeVariants.length === 0) {
+                alert('يرجى تفعيل حجم واحد على الأقل وإدخال سعره.');
+                return;
+            }
+            for (const variant of activeVariants) {
+                if (!variant.price || isNaN(variant.price)) {
+                    alert('يرجى إدخال سعر لكل حجم مفعّل.');
+                    return;
                 }
-            } else {
-                this.form.size_variants = this.form.size_variants.filter(v => v.size !== size);
             }
-        },
-        submitProduct() {
+
             const formData = new FormData();
-            formData.append("name", this.form.name);
-            formData.append("quantity", this.form.quantity !== null && this.form.quantity !== '' ? this.form.quantity : '');
-            formData.append("category_id", this.form.category_id !== null && this.form.category_id !== '' ? this.form.category_id : '');
-            
-            this.form.size_variants.forEach((variant, index) => {
-                formData.append(`size_variants[${index}][size]`, variant.size);
-                formData.append(`size_variants[${index}][price]`, variant.price);
+            formData.append('name', this.form.name);
+            formData.append('category_id', this.form.category_id || '');
+            if (this.form.image) {
+                formData.append('image', this.form.image);
+            }
+
+            activeVariants.forEach((variant, v_index) => {
+                formData.append(`size_variants[${v_index}][size]`, variant.size);
+                formData.append(`size_variants[${v_index}][price]`, variant.price);
+                variant.ingredients.forEach((ing, i_index) => {
+                    formData.append(`size_variants[${v_index}][ingredients][${i_index}][raw_material_id]`, ing.raw_material_id);
+                    formData.append(`size_variants[${v_index}][ingredients][${i_index}][quantity_consumed]`, ing.quantity_consumed);
+                });
             });
 
-            if (this.form.image) {
-                formData.append("image", this.form.image);
-            }
-
-            Inertia.post(route("admin.products.store"), formData);
-        }
-    }
-}
+            Inertia.post(route('admin.products.store'), formData);
+        },
+    },
+};
 </script>
 
 <style scoped>
 .input-style {
-  @apply w-full p-3 border border-gray-300 rounded-lg focus:ring focus:ring-blue-300;
+    @apply w-full p-3 border border-gray-300 rounded-lg focus:ring focus:ring-blue-300;
 }
+
 .btn-primary {
-  @apply bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition;
+    @apply bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition shadow-md;
 }
+
 .btn-gray {
-  @apply bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded transition;
+    @apply bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition;
+}
+
+.btn-green {
+    @apply bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg transition;
+}
+
+.btn-red {
+    @apply bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition;
 }
 </style> 

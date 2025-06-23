@@ -33,7 +33,7 @@
 
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-4 gap-4 mb-6">
           <div
-            v-for="(product, p_idx) in filteredProducts"
+            v-for="product in filteredProducts"
             :key="product.id"
             class="bg-white rounded-lg shadow-lg overflow-hidden transform transition-all hover:scale-105 flex flex-col border border-gray-200 text-sm"
           >
@@ -44,11 +44,11 @@
               <h3 class="text-base font-semibold text-gray-800 text-center">{{ product.name }}</h3>
               
               <!-- Size Selection -->
-              <div class="my-2 flex justify-center gap-2">
+              <div v-if="hasVariants(product)" class="my-2 flex justify-center gap-2">
                   <button 
                     v-for="(variant, v_idx) in product.size_variants" 
                     :key="variant.size"
-                    @click="selectVariant(p_idx, v_idx)"
+                    @click="selectVariant(product, v_idx)"
                     :class="['px-3 py-1 rounded-full text-xs font-semibold', product.selectedVariantIndex === v_idx ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700']"
                   >
                     {{ translateSize(variant.size) }}
@@ -56,7 +56,7 @@
               </div>
 
               <p class="text-center text-green-700 text-lg font-bold mb-2">
-                {{ product.size_variants[product.selectedVariantIndex].price }}
+                {{ getProductPrice(product) }}
               </p>
 
               <div class="mt-auto text-center">
@@ -141,9 +141,21 @@ export default {
     initializeProducts() {
         this.liveProducts = this.products.map(p => ({
             ...p,
-            selectedVariantIndex: 0, // Default to first size
+            selectedVariantIndex: (p.size_variants && p.size_variants.length > 0) ? 0 : -1, 
             quantityToAdd: 1,
         }));
+    },
+    hasVariants(product) {
+        return product.size_variants && product.size_variants.length > 0;
+    },
+    getProductPrice(product) {
+        if (this.hasVariants(product) && product.selectedVariantIndex !== -1) {
+            return `${product.size_variants[product.selectedVariantIndex].price} ريال`;
+        }
+        if (product.price) {
+            return `${product.price} ريال`;
+        }
+        return 'غير مسعر';
     },
     translateSize(size) {
         return this.sizeTranslations[size] || size;
@@ -151,29 +163,49 @@ export default {
     selectCategory(id) {
       this.selectedCategoryId = id;
     },
-    selectVariant(productIndex, variantIndex) {
-        this.liveProducts[productIndex].selectedVariantIndex = variantIndex;
+    selectVariant(product, variantIndex) {
+        product.selectedVariantIndex = variantIndex;
     },
     addToCart(product) {
-        const variant = product.size_variants[product.selectedVariantIndex];
         const quantity = product.quantityToAdd || 1;
-        const cartItemId = `${product.id}-${variant.size}`;
 
-        const found = this.cart.find(item => item.cartItemId === cartItemId);
+        if (this.hasVariants(product)) {
+            const variant = product.size_variants[product.selectedVariantIndex];
+            if (!variant) return;
+            
+            const cartItemId = `${product.id}-${variant.size}`;
+            const found = this.cart.find(item => item.cartItemId === cartItemId);
 
-        if (found) {
-            found.quantity += quantity;
+            if (found) {
+                found.quantity += quantity;
+            } else {
+                this.cart.push({
+                    cartItemId: cartItemId,
+                    product_id: product.id,
+                    name: product.name,
+                    size: variant.size,
+                    price: variant.price,
+                    quantity: quantity
+                });
+            }
         } else {
-            this.cart.push({
-                cartItemId: cartItemId,
-                productId: product.id,
-                name: product.name,
-                size: variant.size,
-                price: variant.price,
-                quantity: quantity
-            });
-      }
-      product.quantityToAdd = 1; // Reset quantity input
+            const cartItemId = `${product.id}`;
+            const found = this.cart.find(item => item.cartItemId === cartItemId);
+
+            if (found) {
+                found.quantity += quantity;
+            } else {
+                this.cart.push({
+                    cartItemId: cartItemId,
+                    product_id: product.id,
+                    name: product.name,
+                    size: null,
+                    price: product.price || 0,
+                    quantity: quantity
+                });
+            }
+        }
+      product.quantityToAdd = 1;
     },
     removeFromCart(index) {
       this.cart.splice(index, 1);
@@ -187,13 +219,28 @@ export default {
       this.cart = [];
     },
     checkout() {
-      axios.post('/checkout', { items: this.cart, total: this.totalAmount })
+      const checkoutData = {
+        items: this.cart.map(item => ({
+          product_id: item.product_id,
+          product_name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          size: item.size
+        })),
+        total_price: this.totalAmount,
+        payment_method: 'cash'
+      };
+
+      axios.post('/store-order', checkoutData)
         .then(response => {
           this.orderId = response.data.order_id;
           this.clearCart();
           this.$nextTick(() => this.printInvoice());
         })
-        .catch(error => console.error('خطأ أثناء إصدار الفاتورة:', error));
+        .catch(error => {
+          console.error('خطأ أثناء إصدار الفاتورة:', error.response.data);
+          alert('حدث خطأ: ' + (error.response.data.message || 'يرجى مراجعة البيانات'));
+        });
     },
     printInvoice() {
       this.iframeVisible = true;
@@ -206,14 +253,12 @@ export default {
             iframeWindow.focus();
             iframeWindow.print();
 
-            // بعد الطباعة، iframe يرسل رسالة لـ parent
             iframeWindow.onafterprint = () => {
               setTimeout(() => {
                 this.iframeVisible = false;
               }, 500);
             };
 
-            // fallback: لو onafterprint ما اشتغلش
             setTimeout(() => {
               this.iframeVisible = false;
             }, 5000);
