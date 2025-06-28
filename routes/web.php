@@ -9,6 +9,7 @@ use App\Http\Controllers\CashierController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\RawMaterialController;
+use App\Http\Controllers\Admin\UserController;
 
 Route::get('/', function () {
     return Inertia::render('Welcome', [
@@ -41,6 +42,12 @@ Route::middleware([
 
     // Raw Materials
     Route::resource('raw-materials', RawMaterialController::class, ['as' => 'admin'])->except(['show']);
+
+    // Users Management (admin only)
+    Route::middleware(['admin'])->group(function () {
+        Route::resource('users', UserController::class, ['as' => 'admin'])->except(['show']);
+        Route::post('/users/{user}/reset-password', [UserController::class, 'resetPassword'])->name('admin.users.reset-password');
+    });
 
     // Cashier & Invoices
     Route::get('/cashier', [CashierController::class, 'index'])->name('cashier.index');

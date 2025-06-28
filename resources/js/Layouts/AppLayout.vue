@@ -57,6 +57,19 @@ const logout = () => {
                                 <NavLink :href="route('admin.raw-materials.index')" :active="route().current('admin.raw-materials.index')">
                                     المواد الخام
                                 </NavLink>
+                                <NavLink 
+                                    v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('admin')"
+                                    :href="route('admin.users.index')" 
+                                    :active="route().current('admin.users.*')"
+                                >
+                                    إدارة المستخدمين
+                                </NavLink>
+                                <NavLink :href="route('cashier.index')" :active="route().current('cashier.index')">
+                                    الكاشير
+                                </NavLink>
+                                <NavLink :href="route('purchases.index')" :active="route().current('purchases.index')">
+                                    المشتريات
+                                </NavLink>
                             </div>
                         </div>
 
@@ -205,6 +218,19 @@ const logout = () => {
                         </ResponsiveNavLink>
                         <ResponsiveNavLink :href="route('admin.raw-materials.index')" :active="route().current('admin.raw-materials.index')">
                             المواد الخام
+                        </ResponsiveNavLink>
+                        <ResponsiveNavLink 
+                            v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('admin')"
+                            :href="route('admin.users.index')" 
+                            :active="route().current('admin.users.*')"
+                        >
+                            إدارة المستخدمين
+                        </ResponsiveNavLink>
+                        <ResponsiveNavLink :href="route('cashier.index')" :active="route().current('cashier.index')">
+                            الكاشير
+                        </ResponsiveNavLink>
+                        <ResponsiveNavLink :href="route('purchases.index')" :active="route().current('purchases.index')">
+                            المشتريات
                         </ResponsiveNavLink>
                     </div>
 
