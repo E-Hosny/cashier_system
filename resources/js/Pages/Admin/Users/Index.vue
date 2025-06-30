@@ -66,10 +66,50 @@ const getRoleBadgeClass = (role) => {
 };
 </script>
 
+<style>
+/* Styles for responsive table */
+@media (max-width: 768px) {
+    .responsive-table thead {
+        display: none;
+    }
+    .responsive-table tbody,
+    .responsive-table tr,
+    .responsive-table td {
+        display: block;
+        width: 100%;
+    }
+    .responsive-table tr {
+        margin-bottom: 1rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        overflow: hidden;
+    }
+    .responsive-table td {
+        padding: 1rem 1.5rem;
+        position: relative;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    .responsive-table td:last-child {
+        border-bottom: none;
+    }
+    .responsive-table td[data-label]::before {
+        content: attr(data-label);
+        font-weight: bold;
+        position: absolute;
+        right: 1.5rem;
+    }
+
+    .responsive-table .action-buttons {
+        justify-content: flex-start;
+        padding-top: 0.5rem;
+    }
+}
+</style>
+
 <template>
     <AppLayout title="إدارة المستخدمين">
         <template #header>
-            <div class="flex justify-between items-center">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <h2 class="font-semibold text-xl text-gray-800 leading-tight">
                     إدارة المستخدمين
                 </h2>
@@ -82,9 +122,9 @@ const getRoleBadgeClass = (role) => {
         <div class="py-12">
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
                 <div class="bg-white overflow-hidden shadow-xl sm:rounded-lg">
-                    <div class="p-6">
+                    <div class="p-4 sm:p-6">
                         <div class="overflow-x-auto">
-                            <table class="min-w-full divide-y divide-gray-200">
+                            <table class="min-w-full divide-y divide-gray-200 responsive-table">
                                 <thead class="bg-gray-50">
                                     <tr>
                                         <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -106,17 +146,17 @@ const getRoleBadgeClass = (role) => {
                                 </thead>
                                 <tbody class="bg-white divide-y divide-gray-200">
                                     <tr v-for="user in users" :key="user.id">
-                                        <td class="px-6 py-4 whitespace-nowrap">
+                                        <td class="px-6 py-4 whitespace-nowrap" data-label="الاسم">
                                             <div class="text-sm font-medium text-gray-900">
                                                 {{ user.name }}
                                             </div>
                                         </td>
-                                        <td class="px-6 py-4 whitespace-nowrap">
+                                        <td class="px-6 py-4 whitespace-nowrap" data-label="البريد الإلكتروني">
                                             <div class="text-sm text-gray-900">
                                                 {{ user.email }}
                                             </div>
                                         </td>
-                                        <td class="px-6 py-4 whitespace-nowrap">
+                                        <td class="px-6 py-4 whitespace-nowrap" data-label="الأدوار">
                                             <div class="flex flex-wrap gap-1">
                                                 <span
                                                     v-for="role in user.roles"
@@ -130,26 +170,26 @@ const getRoleBadgeClass = (role) => {
                                                 </span>
                                             </div>
                                         </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900" data-label="تاريخ الإنشاء">
                                             {{ user.created_at }}
                                         </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                            <div class="flex space-x-2 space-x-reverse">
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium" data-label="الإجراءات">
+                                            <div class="flex flex-col sm:flex-row gap-2 action-buttons">
                                                 <SecondaryButton
                                                     @click="router.visit(route('admin.users.edit', user.id))"
-                                                    class="text-sm"
+                                                    class="text-sm justify-center"
                                                 >
                                                     تعديل
                                                 </SecondaryButton>
                                                 <SecondaryButton
                                                     @click="resetPassword(user)"
-                                                    class="text-sm"
+                                                    class="text-sm justify-center"
                                                 >
                                                     إعادة تعيين كلمة المرور
                                                 </SecondaryButton>
                                                 <DangerButton
                                                     @click="deleteUser(user)"
-                                                    class="text-sm"
+                                                    class="text-sm justify-center"
                                                 >
                                                     حذف
                                                 </DangerButton>

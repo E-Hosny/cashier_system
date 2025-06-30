@@ -43,6 +43,44 @@ const submitPurchase = () => {
 };
 </script>
 
+<style>
+/* Styles for responsive table */
+@media (max-width: 640px) {
+    .responsive-table thead {
+        display: none;
+    }
+    .responsive-table tbody,
+    .responsive-table tr,
+    .responsive-table td {
+        display: block;
+        width: 100%;
+    }
+    .responsive-table tr {
+        margin-bottom: 1rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        overflow: hidden;
+    }
+    .responsive-table td {
+        padding: 0.75rem 1rem;
+        position: relative;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .responsive-table td:last-child {
+        border-bottom: none;
+    }
+    .responsive-table td[data-label]::before {
+        content: attr(data-label) ":";
+        font-weight: bold;
+        text-align: right;
+        margin-left: 0.5rem;
+    }
+}
+</style>
+
 <template>
     <AppLayout title="المشتريات">
         <template #header>
@@ -99,25 +137,31 @@ const submitPurchase = () => {
 
                     <!-- عرض المشتريات -->
                     <h3 class="text-lg font-semibold text-gray-700 mb-4">قائمة المشتريات لليوم</h3>
-                    <table class="w-full border-collapse border border-gray-200">
-                        <thead>
-                            <tr class="bg-gray-100">
-                                <th class="border border-gray-200 p-2">المبلغ الإجمالي</th>
-                                <th class="border border-gray-200 p-2">الكمية</th>
-                                 <th class="border border-gray-200 p-2">المنتج</th>
-                                <th class="border border-gray-200 p-2">التاريخ</th>
-
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="purchase in purchases" :key="purchase.id">
-                                <td class="border border-gray-200 p-2 text-center">{{ purchase.total_amount }}</td>
-                                <td class="border border-gray-200 p-2 text-center">{{ purchase.quantity ?? 'غير محدد' }}</td>
-                                <td class="border border-gray-200 p-2 text-center">{{ purchase.product_name }}</td>
-                                <td class="border border-gray-200 p-2 text-center">{{ purchase.purchase_date }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                    <div class="overflow-x-auto">
+                      <table class="w-full border-collapse border border-gray-200 responsive-table">
+                          <thead class="bg-gray-100">
+                              <tr class="bg-gray-100">
+                                  <th class="border border-gray-200 p-2">المبلغ الإجمالي</th>
+                                  <th class="border border-gray-200 p-2">الكمية</th>
+                                  <th class="border border-gray-200 p-2">المنتج</th>
+                                  <th class="border border-gray-200 p-2">التاريخ</th>
+                              </tr>
+                          </thead>
+                          <tbody>
+                              <tr v-if="purchases.length === 0">
+                                  <td colspan="4" class="text-center p-6 text-gray-500">
+                                      لا توجد مشتريات لهذا اليوم.
+                                  </td>
+                              </tr>
+                              <tr v-for="purchase in purchases" :key="purchase.id">
+                                  <td class="border border-gray-200 p-2 text-center" data-label="المبلغ الإجمالي">{{ purchase.total_amount }}</td>
+                                  <td class="border border-gray-200 p-2 text-center" data-label="الكمية">{{ purchase.quantity ?? 'غير محدد' }}</td>
+                                  <td class="border border-gray-200 p-2 text-center" data-label="المنتج">{{ purchase.product_name }}</td>
+                                  <td class="border border-gray-200 p-2 text-center" data-label="التاريخ">{{ purchase.purchase_date }}</td>
+                              </tr>
+                          </tbody>
+                      </table>
+                    </div>
 
                     <!-- ✅ تصميم بارز لإجمالي المشتريات -->
                     <div class="mt-6 p-4 bg-green-300 text-gray-900 rounded-lg shadow-md text-center">

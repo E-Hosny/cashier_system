@@ -1,6 +1,6 @@
 <template>
-  <div class="container mx-auto p-6" dir="rtl">
-    <div class="flex justify-between items-center mb-8">
+  <div class="container mx-auto p-4 sm:p-6" dir="rtl">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
       <h1 class="text-3xl font-bold text-gray-800">📦 إدارة المنتجات</h1>
       <div class="flex gap-4">
         <a :href="route('admin.products.create')" class="btn-primary">➕ إضافة منتج جديد</a>
@@ -9,9 +9,9 @@
     </div>
 
     <!-- ✅ جدول عرض المنتجات -->
-    <div class="overflow-x-auto">
-      <table class="w-full bg-white border rounded-xl shadow-lg text-end">
-        <thead class="bg-gray-200">
+    <div class="overflow-x-auto bg-white rounded-xl shadow-lg">
+      <table class="w-full text-end">
+        <thead class="bg-gray-200 hidden sm:table-header-group">
           <tr>
             <th class="p-4"></th>
             <th class="p-4">الاسم</th>
@@ -24,17 +24,17 @@
         </thead>
         <tbody>
           <template v-for="product in products" :key="product.id">
-            <tr class="border-t hover:bg-gray-50">
-              <td class="p-4">
+            <tr class="block sm:table-row border-t sm:border-t-0 border-gray-200 hover:bg-gray-50">
+              <td class="p-4 sm:table-cell">
                 <button v-if="product.ingredients && product.ingredients.length > 0" @click="toggleIngredients(product.id)" class="text-blue-500 hover:text-blue-700">
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 transition-transform" :class="{'rotate-90': isExpanded(product.id)}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
                   </svg>
                 </button>
               </td>
-              <td class="p-4">{{ product.name }}</td>
-              <td class="p-4">{{ product.quantity || 'غير محدد' }}</td>
-              <td class="p-4">
+              <td class="p-4 block sm:table-cell" data-label="الاسم">{{ product.name }}</td>
+              <td class="p-4 block sm:table-cell" data-label="الكمية">{{ product.quantity || 'غير محدد' }}</td>
+              <td class="p-4 block sm:table-cell" data-label="الأحجام والأسعار">
                 <ul class="space-y-1">
                   <li v-for="variant in product.size_variants" :key="variant.size" class="text-sm">
                     <span class="font-semibold">{{ translateSize(variant.size) }}:</span>
@@ -42,19 +42,19 @@
                   </li>
                 </ul>
               </td>
-              <td class="p-4 text-center">
-                <img v-if="product.image" :src="`/storage/${product.image}`" class="h-16 w-16 object-cover rounded-md shadow-md inline-block">
+              <td class="p-4 block sm:table-cell text-center" data-label="الصورة">
+                <img v-if="product.image" :src="`/storage/${product.image}`" class="h-16 w-16 object-cover rounded-md shadow-md mx-auto sm:mx-0">
               </td>
-              <td class="p-4">{{ product.category?.name || "بدون فئة" }}</td>
-              <td class="p-4 text-center">
+              <td class="p-4 block sm:table-cell" data-label="الفئة">{{ product.category?.name || "بدون فئة" }}</td>
+              <td class="p-4 block sm:table-cell" data-label="الإجراءات">
                 <div class="flex justify-center items-center gap-2">
                   <a :href="route('admin.products.edit', product.id)" class="btn-yellow">✏️ تعديل</a>
                   <button @click="deleteProduct(product.id)" class="btn-red">🗑️ حذف</button>
                 </div>
               </td>
             </tr>
-            <tr v-if="isExpanded(product.id)">
-              <td colspan="8" class="p-4 bg-gray-50">
+            <tr v-if="isExpanded(product.id)" class="block sm:table-row">
+              <td colspan="8" class="p-4 bg-gray-50 block sm:table-cell">
                 <div class="p-4 border-l-4 border-blue-400">
                   <h4 class="font-bold text-lg mb-2 text-gray-700">مكونات {{ product.name }}:</h4>
                   <div v-if="product.ingredients && product.ingredients.length">
@@ -143,5 +143,43 @@ export default {
 }
 .btn-red {
   @apply bg-red-500 hover:bg-red-600 text-white font-bold px-4 py-2 rounded-lg transition;
+}
+
+/* Styles for responsive table */
+@media (max-width: 640px) {
+  td[data-label]::before {
+    content: attr(data-label) " :";
+    font-weight: bold;
+    display: inline-block;
+    margin-right: 0.5rem; /* Equivalent to mr-2 in Tailwind */
+    min-width: 100px; /* Adjust as needed */
+    text-align: right;
+  }
+
+  td.p-4 {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #e5e7eb; /* gray-200 */
+  }
+  
+  td > * {
+    flex-grow: 1;
+    text-align: left;
+  }
+
+  td > img {
+    flex-grow: 0;
+  }
+  
+  td > .flex {
+      justify-content: flex-end;
+  }
+
+  tr.block:last-child td:last-child {
+    border-bottom: none;
+  }
 }
 </style>

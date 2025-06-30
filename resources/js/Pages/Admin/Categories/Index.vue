@@ -1,6 +1,6 @@
 <template>
-  <div class="container mx-auto p-6" dir="rtl">
-    <div class="flex justify-between items-center mb-8">
+  <div class="container mx-auto p-4 sm:p-6" dir="rtl">
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
       <h1 class="text-3xl font-bold text-gray-800">📁 إدارة الفئات</h1>
       <a :href="route('admin.products.index')" class="btn-gray">➡️ العودة إلى المنتجات</a>
     </div>
@@ -23,11 +23,11 @@
 
       <h2 class="text-xl font-semibold text-gray-700 mb-4">قائمة الفئات</h2>
       <ul class="divide-y divide-gray-200">
-        <li v-for="cat in categoriesList" :key="cat.id" class="flex justify-between items-center py-3 px-2 hover:bg-gray-50">
-          <span class="text-gray-800">{{ cat.name }}</span>
-          <div class="flex gap-2">
-            <button @click="editCategory(cat)" class="text-yellow-600 hover:text-yellow-800 font-bold transition">تعديل</button>
-            <button @click="deleteCategory(cat.id)" class="text-red-600 hover:text-red-800 font-bold transition">حذف</button>
+        <li v-for="cat in categoriesList" :key="cat.id" class="flex flex-col sm:flex-row justify-between items-start sm:items-center py-3 px-2 hover:bg-gray-50 gap-2">
+          <span class="text-gray-800 font-medium">{{ cat.name }}</span>
+          <div class="flex gap-2 self-end sm:self-center">
+            <button @click="editCategory(cat)" class="btn-yellow text-sm">تعديل</button>
+            <button @click="deleteCategory(cat.id)" class="btn-red text-sm">حذف</button>
           </div>
         </li>
       </ul>
@@ -120,5 +120,11 @@ export default {
 }
 .btn-gray {
   @apply bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition;
+}
+.btn-yellow {
+  @apply bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-1 px-3 rounded-lg transition;
+}
+.btn-red {
+  @apply bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-3 rounded-lg transition;
 }
 </style> 

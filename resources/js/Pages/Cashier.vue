@@ -1,7 +1,7 @@
 <template>
-  <div class="max-w-[1600px] mx-auto p-6" dir="rtl">
-    <div class="flex justify-between items-center mb-8">
-      <h1 class="text-3xl font-extrabold text-gray-800">🍹 واجهة الكاشير</h1>
+  <div class="max-w-[1600px] mx-auto p-4 sm:p-6" dir="rtl">
+    <div class="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4">
+      <h1 class="text-3xl font-extrabold text-gray-800 text-center sm:text-right">🍹 واجهة الكاشير</h1>
       <img src="/images/mylogo.png" alt="Logo" class="w-32" />
     </div>
 
@@ -71,21 +71,26 @@
       <!-- ✅ السلة -->
       <div class="w-full lg:w-1/5 bg-gray-100 p-4 rounded-lg shadow-md order-2 lg:order-3">
         <h2 class="text-xl font-semibold text-end mb-4">🛒 السلة</h2>
-        <div v-for="(item, index) in cart" :key="item.cartItemId" class="flex justify-between items-center mb-2 text-sm">
-          <div>
-            <span class="font-medium">{{ item.name }} ({{ translateSize(item.size) }})</span> 
-            - <span class="text-green-600 font-bold">{{ item.price }}</span>
+        <div v-if="cart.length === 0" class="text-center text-gray-500 py-8">
+            السلة فارغة حالياً.
+        </div>
+        <div v-for="(item, index) in cart" :key="item.cartItemId" class="flex flex-col sm:flex-row justify-between items-center mb-3 pb-3 border-b border-gray-200 gap-2">
+          <div class="text-right w-full sm:w-auto">
+            <span class="font-medium">{{ item.name }}</span>
+            <span class="text-xs text-gray-600">({{ translateSize(item.size) }})</span> 
+            <br>
+            <span class="text-green-600 font-bold">{{ item.price }} ريال</span>
           </div>
-          <div class="flex items-center gap-1">
-            <button @click="updateQuantity(index, -1)" :disabled="item.quantity <= 1" class="bg-yellow-500 text-white w-6 h-6 rounded-full transition">-</button>
-            <span class="text-gray-700 font-bold">{{ item.quantity }}</span>
-            <button @click="updateQuantity(index, 1)" class="bg-yellow-500 text-white w-6 h-6 rounded-full transition">+</button>
-            <button @click="removeFromCart(index)" class="bg-red-500 text-white w-6 h-6 rounded-full transition mr-2">x</button>
+          <div class="flex items-center gap-2 self-end sm:self-center">
+            <button @click="updateQuantity(index, -1)" :disabled="item.quantity <= 1" class="bg-yellow-500 text-white w-8 h-8 rounded-full transition disabled:opacity-50">-</button>
+            <span class="text-gray-700 font-bold w-8 text-center">{{ item.quantity }}</span>
+            <button @click="updateQuantity(index, 1)" class="bg-yellow-500 text-white w-8 h-8 rounded-full transition">+</button>
+            <button @click="removeFromCart(index)" class="bg-red-500 text-white w-8 h-8 rounded-full transition mr-2">x</button>
           </div>
         </div>
 
         <div class="mt-4">
-          <p class="font-bold text-xl text-end">الإجمالي: {{ totalAmount }}</p>
+          <p class="font-bold text-xl text-end">الإجمالي: {{ totalAmount }} ريال</p>
         </div>
 
         <button @click="checkout" :disabled="cart.length === 0" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg mt-4 transition disabled:bg-gray-400">إصدار الفاتورة</button>

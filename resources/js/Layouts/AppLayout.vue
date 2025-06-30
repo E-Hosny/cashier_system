@@ -12,7 +12,7 @@ defineProps({
     title: String,
 });
 
-const showingNavigationDropdown = ref(false);
+const showingSidebar = ref(false);
 
 const switchToTeam = (team) => {
     router.put(route('current-team.update'), {
@@ -26,6 +26,26 @@ const logout = () => {
     router.post(route('logout'));
 };
 </script>
+
+<style>
+.fade-enter-active,
+.fade-leave-active {
+    transition: opacity 0.3s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
+}
+
+.slide-in-right-enter-active,
+.slide-in-right-leave-active {
+    transition: transform 0.3s ease;
+}
+.slide-in-right-enter-from,
+.slide-in-right-leave-to {
+    transform: translateX(100%);
+}
+</style>
 
 <template>
     <div>
@@ -180,7 +200,7 @@ const logout = () => {
 
                         <!-- Hamburger -->
                         <div class="-me-2 flex items-center sm:hidden">
-                            <button class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 focus:text-gray-500 transition duration-150 ease-in-out" @click="showingNavigationDropdown = ! showingNavigationDropdown">
+                            <button class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 focus:text-gray-500 transition duration-150 ease-in-out" @click="showingSidebar = true">
                                 <svg
                                     class="size-6"
                                     stroke="currentColor"
@@ -188,14 +208,14 @@ const logout = () => {
                                     viewBox="0 0 24 24"
                                 >
                                     <path
-                                        :class="{'hidden': showingNavigationDropdown, 'inline-flex': ! showingNavigationDropdown }"
+                                        :class="{'hidden': showingSidebar, 'inline-flex': !showingSidebar }"
                                         stroke-linecap="round"
                                         stroke-linejoin="round"
                                         stroke-width="2"
                                         d="M4 6h16M4 12h16M4 18h16"
                                     />
                                     <path
-                                        :class="{'hidden': ! showingNavigationDropdown, 'inline-flex': showingNavigationDropdown }"
+                                        :class="{'hidden': !showingSidebar, 'inline-flex': showingSidebar }"
                                         stroke-linecap="round"
                                         stroke-linejoin="round"
                                         stroke-width="2"
@@ -203,109 +223,6 @@ const logout = () => {
                                     />
                                 </svg>
                             </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Responsive Navigation Menu -->
-                <div :class="{'block': showingNavigationDropdown, 'hidden': ! showingNavigationDropdown}" class="sm:hidden">
-                    <div class="pt-2 pb-3 space-y-1">
-                        <ResponsiveNavLink :href="route('dashboard')" :active="route().current('dashboard')">
-                            لوحة التحكم
-                        </ResponsiveNavLink>
-                        <ResponsiveNavLink :href="route('admin.products.index')" :active="route().current('admin.products.index')">
-                            المنتجات النهائية
-                        </ResponsiveNavLink>
-                        <ResponsiveNavLink :href="route('admin.raw-materials.index')" :active="route().current('admin.raw-materials.index')">
-                            المواد الخام
-                        </ResponsiveNavLink>
-                        <ResponsiveNavLink 
-                            v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('admin')"
-                            :href="route('admin.users.index')" 
-                            :active="route().current('admin.users.*')"
-                        >
-                            إدارة المستخدمين
-                        </ResponsiveNavLink>
-                        <ResponsiveNavLink :href="route('cashier.index')" :active="route().current('cashier.index')">
-                            الكاشير
-                        </ResponsiveNavLink>
-                        <ResponsiveNavLink :href="route('purchases.index')" :active="route().current('purchases.index')">
-                            المشتريات
-                        </ResponsiveNavLink>
-                    </div>
-
-                    <!-- Responsive Settings Options -->
-                    <div class="pt-4 pb-1 border-t border-gray-200">
-                        <div class="flex items-center px-4">
-                            <div v-if="$page.props.jetstream.managesProfilePhotos" class="shrink-0 me-3">
-                                <img class="size-10 rounded-full object-cover" :src="$page.props.auth.user.profile_photo_url" :alt="$page.props.auth.user.name">
-                            </div>
-
-                            <div>
-                                <div class="font-medium text-base text-gray-800">
-                                    {{ $page.props.auth.user.name }}
-                                </div>
-                                <div class="font-medium text-sm text-gray-500">
-                                    {{ $page.props.auth.user.email }}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="mt-3 space-y-1">
-                            <ResponsiveNavLink :href="route('profile.show')" :active="route().current('profile.show')">
-                                Profile
-                            </ResponsiveNavLink>
-
-                            <ResponsiveNavLink v-if="$page.props.jetstream.hasApiFeatures" :href="route('api-tokens.index')" :active="route().current('api-tokens.index')">
-                                API Tokens
-                            </ResponsiveNavLink>
-
-                            <!-- Authentication -->
-                            <form method="POST" @submit.prevent="logout">
-                                <ResponsiveNavLink as="button">
-                                    Log Out
-                                </ResponsiveNavLink>
-                            </form>
-
-                            <!-- Team Management -->
-                            <template v-if="$page.props.jetstream.hasTeamFeatures">
-                                <div class="border-t border-gray-200" />
-
-                                <div class="block px-4 py-2 text-xs text-gray-400">
-                                    Manage Team
-                                </div>
-
-                                <!-- Team Settings -->
-                                <ResponsiveNavLink :href="route('teams.show', $page.props.auth.user.current_team)" :active="route().current('teams.show')">
-                                    Team Settings
-                                </ResponsiveNavLink>
-
-                                <ResponsiveNavLink v-if="$page.props.jetstream.canCreateTeams" :href="route('teams.create')" :active="route().current('teams.create')">
-                                    Create New Team
-                                </ResponsiveNavLink>
-
-                                <!-- Team Switcher -->
-                                <template v-if="$page.props.auth.user.all_teams.length > 1">
-                                    <div class="border-t border-gray-200" />
-
-                                    <div class="block px-4 py-2 text-xs text-gray-400">
-                                        Switch Teams
-                                    </div>
-
-                                    <template v-for="team in $page.props.auth.user.all_teams" :key="team.id">
-                                        <form @submit.prevent="switchToTeam(team)">
-                                            <ResponsiveNavLink as="button">
-                                                <div class="flex items-center">
-                                                    <svg v-if="team.id == $page.props.auth.user.current_team_id" class="me-2 size-5 text-green-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                    </svg>
-                                                    <div>{{ team.name }}</div>
-                                                </div>
-                                            </ResponsiveNavLink>
-                                        </form>
-                                    </template>
-                                </template>
-                            </template>
                         </div>
                     </div>
                 </div>
@@ -323,5 +240,135 @@ const logout = () => {
                 <slot />
             </main>
         </div>
+
+        <!-- Mobile Sidebar -->
+        <teleport to="body">
+            <!-- Overlay -->
+            <transition name="fade">
+                <div v-if="showingSidebar" class="fixed inset-0 bg-black bg-opacity-50 z-30 sm:hidden" @click="showingSidebar = false" />
+            </transition>
+            
+            <!-- Sidebar -->
+            <transition name="slide-in-right">
+                <div v-if="showingSidebar" class="fixed inset-y-0 right-0 w-72 bg-white z-40 sm:hidden flex flex-col" dir="rtl">
+                    <!-- Sidebar Header -->
+                    <div class="p-4 border-b flex justify-between items-center">
+                        <div class="shrink-0 flex items-center">
+                            <Link :href="route('dashboard')">
+                                <ApplicationMark class="block h-9 w-auto" />
+                            </Link>
+                        </div>
+                        <button @click="showingSidebar = false" class="text-gray-500 hover:text-gray-700">
+                             <svg class="size-6" stroke="currentColor" fill="none" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    <!-- Sidebar Content -->
+                    <div class="flex-1 overflow-y-auto">
+                        <!-- Responsive Navigation Links -->
+                        <div class="pt-2 pb-3 space-y-1">
+                            <ResponsiveNavLink :href="route('dashboard')" :active="route().current('dashboard')" @click="showingSidebar = false">
+                                لوحة التحكم
+                            </ResponsiveNavLink>
+                            <ResponsiveNavLink :href="route('admin.products.index')" :active="route().current('admin.products.index')" @click="showingSidebar = false">
+                                المنتجات النهائية
+                            </ResponsiveNavLink>
+                            <ResponsiveNavLink :href="route('admin.raw-materials.index')" :active="route().current('admin.raw-materials.index')" @click="showingSidebar = false">
+                                المواد الخام
+                            </ResponsiveNavLink>
+                            <ResponsiveNavLink 
+                                v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('admin')"
+                                :href="route('admin.users.index')" 
+                                :active="route().current('admin.users.*')"
+                                @click="showingSidebar = false"
+                            >
+                                إدارة المستخدمين
+                            </ResponsiveNavLink>
+                            <ResponsiveNavLink :href="route('cashier.index')" :active="route().current('cashier.index')" @click="showingSidebar = false">
+                                الكاشير
+                            </ResponsiveNavLink>
+                            <ResponsiveNavLink :href="route('purchases.index')" :active="route().current('purchases.index')" @click="showingSidebar = false">
+                                المشتريات
+                            </ResponsiveNavLink>
+                        </div>
+
+                        <!-- Responsive Settings Options -->
+                        <div class="pt-4 pb-1 border-t border-gray-200">
+                            <div class="flex items-center px-4">
+                                <div v-if="$page.props.jetstream.managesProfilePhotos" class="shrink-0 me-3">
+                                    <img class="size-10 rounded-full object-cover" :src="$page.props.auth.user.profile_photo_url" :alt="$page.props.auth.user.name">
+                                </div>
+
+                                <div>
+                                    <div class="font-medium text-base text-gray-800">
+                                        {{ $page.props.auth.user.name }}
+                                    </div>
+                                    <div class="font-medium text-sm text-gray-500">
+                                        {{ $page.props.auth.user.email }}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mt-3 space-y-1">
+                                <ResponsiveNavLink :href="route('profile.show')" :active="route().current('profile.show')" @click="showingSidebar = false">
+                                    الملف الشخصي
+                                </ResponsiveNavLink>
+
+                                <ResponsiveNavLink v-if="$page.props.jetstream.hasApiFeatures" :href="route('api-tokens.index')" :active="route().current('api-tokens.index')" @click="showingSidebar = false">
+                                    API Tokens
+                                </ResponsiveNavLink>
+
+                                <!-- Authentication -->
+                                <form method="POST" @submit.prevent="logout">
+                                    <ResponsiveNavLink as="button">
+                                        تسجيل الخروج
+                                    </ResponsiveNavLink>
+                                </form>
+
+                                <!-- Team Management -->
+                                <template v-if="$page.props.jetstream.hasTeamFeatures">
+                                    <div class="border-t border-gray-200" />
+
+                                    <div class="block px-4 py-2 text-xs text-gray-400">
+                                        إدارة الفريق
+                                    </div>
+
+                                    <!-- Team Settings -->
+                                    <ResponsiveNavLink :href="route('teams.show', $page.props.auth.user.current_team)" :active="route().current('teams.show')" @click="showingSidebar = false">
+                                        إعدادات الفريق
+                                    </ResponsiveNavLink>
+
+                                    <ResponsiveNavLink v-if="$page.props.jetstream.canCreateTeams" :href="route('teams.create')" :active="route().current('teams.create')" @click="showingSidebar = false">
+                                        إنشاء فريق جديد
+                                    </ResponsiveNavLink>
+
+                                    <div class="border-t border-gray-200" />
+
+                                    <!-- Team Switcher -->
+                                    <div class="block px-4 py-2 text-xs text-gray-400">
+                                        تبديل الفرق
+                                    </div>
+
+                                    <template v-for="team in $page.props.auth.user.all_teams" :key="team.id">
+                                        <form @submit.prevent="switchToTeam(team)">
+                                            <ResponsiveNavLink as="button">
+                                                <div class="flex items-center">
+                                                    <svg v-if="team.id == $page.props.auth.user.current_team_id" class="me-2 size-5 text-green-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                    </svg>
+                                                    <div>{{ team.name }}</div>
+                                                </div>
+                                            </ResponsiveNavLink>
+                                        </form>
+                                    </template>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </transition>
+        </teleport>
     </div>
 </template>
