@@ -79,7 +79,7 @@
             <span class="font-medium">{{ item.name }}</span>
             <span class="text-xs text-gray-600">({{ translateSize(item.size) }})</span> 
             <br>
-            <span class="text-green-600 font-bold">{{ item.price }} ريال</span>
+            <span class="text-green-600 font-bold">{{ item.price }} جنيه</span>
           </div>
           <div class="flex items-center gap-2 self-end sm:self-center">
             <button @click="updateQuantity(index, -1)" :disabled="item.quantity <= 1" class="bg-yellow-500 text-white w-8 h-8 rounded-full transition disabled:opacity-50">-</button>
@@ -90,7 +90,7 @@
         </div>
 
         <div class="mt-4">
-          <p class="font-bold text-xl text-end">الإجمالي: {{ totalAmount }} ريال</p>
+          <p class="font-bold text-xl text-end">الإجمالي: {{ totalAmount }} جنيه</p>
         </div>
 
         <button @click="checkout" :disabled="cart.length === 0" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg mt-4 transition disabled:bg-gray-400">إصدار الفاتورة</button>
@@ -155,10 +155,10 @@ export default {
     },
     getProductPrice(product) {
         if (this.hasVariants(product) && product.selectedVariantIndex !== -1) {
-            return `${product.size_variants[product.selectedVariantIndex].price} ريال`;
+            return `${product.size_variants[product.selectedVariantIndex].price} جنيه`;
         }
         if (product.price) {
-            return `${product.price} ريال`;
+            return `${product.price} جنيه`;
         }
         return 'غير مسعر';
     },
