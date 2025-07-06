@@ -60,6 +60,17 @@ const canViewReports = computed(() => page.props.canViewReports);
                         </div>
                     </a>
 
+                    <!-- Card 5: المصروفات -->
+                    <a href="/expenses" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
+                        <div class="flex flex-col items-center">
+                            <div class="text-purple-500 text-4xl mb-4">
+                                💸
+                            </div>
+                            <h3 class="text-lg font-semibold text-gray-700">المصروفات</h3>
+                            <p class="text-sm text-gray-500">عرض وإدارة المصروفات</p>
+                        </div>
+                    </a>
+
                 </div>
             </div>
         </div>

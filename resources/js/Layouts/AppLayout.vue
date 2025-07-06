@@ -90,6 +90,9 @@ const logout = () => {
                                 <NavLink :href="route('purchases.index')" :active="route().current('purchases.index')">
                                     المشتريات
                                 </NavLink>
+                                <NavLink :href="route('expenses.index')" :active="route().current('expenses.index')">
+                                    المصروفات
+                                </NavLink>
                             </div>
                         </div>
 
@@ -291,6 +294,9 @@ const logout = () => {
                             </ResponsiveNavLink>
                             <ResponsiveNavLink :href="route('purchases.index')" :active="route().current('purchases.index')" @click="showingSidebar = false">
                                 المشتريات
+                            </ResponsiveNavLink>
+                            <ResponsiveNavLink :href="route('expenses.index')" :active="route().current('expenses.index')" @click="showingSidebar = false">
+                                المصروفات
                             </ResponsiveNavLink>
                         </div>
 

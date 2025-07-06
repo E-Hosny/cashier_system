@@ -6,7 +6,9 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 const page = usePage();
 const purchases = computed(() => page.props.purchases);
 const rawMaterials = computed(() => page.props.rawMaterials || []);
-const selectedDate = ref(page.props.selectedDate);
+const selectedDate = ref(page.props.selectedDate || '');
+const from = ref(page.props.from || '');
+const to = ref(page.props.to || '');
 const newPurchase = ref({
     description: '',
     quantity: '',
@@ -14,14 +16,20 @@ const newPurchase = ref({
     purchase_date: selectedDate.value
 });
 
-// **حساب إجمالي المشتريات لليوم المحدد**
+// **حساب إجمالي المشتريات للفترة المحددة**
 const totalAmount = computed(() => {
     return purchases.value.reduce((sum, purchase) => sum + Number(purchase.total_amount), 0);
 });
 
-// تحديث الفلتر حسب التاريخ
-const filterByDate = () => {
-    router.get('/purchases', { date: selectedDate.value }, { preserveState: true });
+// تحديث الفلتر حسب التاريخ أو الفترة
+const filterPurchases = () => {
+    // إذا تم اختيار يوم محدد، تجاهل الفترة
+    const data = {
+        date: selectedDate.value,
+        from: selectedDate.value ? '' : from.value,
+        to: selectedDate.value ? '' : to.value,
+    };
+    router.get('/purchases', data, { preserveState: true });
 };
 
 // إرسال بيانات المشتريات إلى الخادم
@@ -91,12 +99,24 @@ const submitPurchase = () => {
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
                 <div class="bg-white shadow-xl rounded-lg p-6">
                     
-                    <!-- اختيار تاريخ -->
-                    <div class="mb-4">
-                        <label class="block text-gray-700 font-semibold">تحديد التاريخ:</label>
-                        <input type="date" v-model="selectedDate" @change="filterByDate"
-                            class="w-full border-gray-300 rounded-md shadow-sm">
-                    </div>
+                    <!-- فلترة المشتريات -->
+                    <form @submit.prevent="filterPurchases" class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
+                        <div>
+                            <label class="block text-gray-700 font-semibold">يوم محدد</label>
+                            <input type="date" v-model="selectedDate" class="w-full border-gray-300 rounded-md shadow-sm">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 font-semibold">من تاريخ</label>
+                            <input type="date" v-model="from" class="w-full border-gray-300 rounded-md shadow-sm">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 font-semibold">إلى تاريخ</label>
+                            <input type="date" v-model="to" class="w-full border-gray-300 rounded-md shadow-sm">
+                        </div>
+                        <div class="flex items-end">
+                            <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 w-full">بحث</button>
+                        </div>
+                    </form>
 
                     <!-- نموذج إضافة المشتريات -->
                     <div class="mb-6 p-4 bg-gray-100 rounded-lg">

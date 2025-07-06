@@ -8,10 +8,20 @@
     <div class="py-12" dir="rtl">
       <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
         <div class="bg-white overflow-hidden shadow-xl sm:rounded-lg p-6">
-          <!-- اختيار تاريخ -->
+          <!-- اختيار فترة التواريخ -->
           <div class="mb-6 flex flex-col sm:flex-row items-stretch sm:items-center sm:justify-end gap-4">
-            <label class="text-gray-700 font-medium">📅 اختر التاريخ:</label>
-            <input type="date" v-model="selectedDate" @change="fetchSales" class="p-2 border rounded-lg" />
+            <div class="flex flex-col gap-1">
+              <label class="text-gray-700 font-medium">📅 من (يوم أو بداية فترة):</label>
+              <input type="date" v-model="dateFrom" class="p-2 border rounded-lg" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-gray-700 font-medium">إلى (نهاية الفترة - اختياري):</label>
+              <input type="date" v-model="dateTo" class="p-2 border rounded-lg" />
+            </div>
+            <button @click="fetchSales" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-lg mt-6 sm:mt-0">بحث</button>
+          </div>
+          <div class="mb-2 text-sm text-gray-500 text-end">
+            يمكنك اختيار يوم واحد فقط أو تحديد فترة من - إلى.
           </div>
 
           <!-- جدول المبيعات -->
@@ -45,6 +55,12 @@
           <div v-if="sales.length > 0" class="mt-6 text-xl font-bold text-center bg-gray-200 p-4 rounded-lg">
             💵 إجمالي المبيعات: {{ formatPrice(totalSales) }}
           </div>
+          <div v-if="sales.length > 0" class="mt-2 text-lg font-bold text-center bg-gray-100 p-3 rounded-lg">
+            🛒 إجمالي المشتريات: {{ formatPrice(totalPurchases) }}
+          </div>
+          <div v-if="sales.length > 0" class="mt-2 text-lg font-bold text-center bg-gray-100 p-3 rounded-lg">
+            💸 إجمالي المصروفات: {{ formatPrice(totalExpenses) }}
+          </div>
         </div>
       </div>
     </div>
@@ -60,16 +76,23 @@ export default {
   props: {
     sales: Array,
     date: String,
+    date_from: String,
+    date_to: String,
     totalSales: Number,
+    totalPurchases: Number,
+    totalExpenses: Number,
   },
   data() {
     return {
-      selectedDate: this.date, // تعيين التاريخ الافتراضي
+      dateFrom: this.date_from || this.date, // تعيين التاريخ الافتراضي
+      dateTo: this.date_to || '', // اجعل النهاية فارغة افتراضيًا
     };
   },
   methods: {
     fetchSales() {
-      Inertia.get(route("admin.sales.report"), { date: this.selectedDate });
+      const params = { date_from: this.dateFrom };
+      if (this.dateTo) params.date_to = this.dateTo;
+      Inertia.get(route("admin.sales.report"), params);
     },
     formatPrice(price) {
       return price ? Number(price).toFixed(2) : "0.00";

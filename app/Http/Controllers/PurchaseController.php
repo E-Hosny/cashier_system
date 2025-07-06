@@ -11,18 +11,35 @@ class PurchaseController extends Controller
 {
     public function index(Request $request): Response
     {
-        $date = $request->query('date', Carbon::today()->toDateString());
+        $query = Purchase::orderBy('purchase_date', 'desc');
 
-        $purchases = Purchase::whereDate('purchase_date', $date)
-            ->orderBy('purchase_date', 'desc')
-            ->get();
+        // فلترة حسب يوم محدد
+        if ($request->filled('date')) {
+            $query->whereDate('purchase_date', $request->date);
+        }
+        // فلترة حسب فترة زمنية
+        elseif ($request->filled('from') && $request->filled('to')) {
+            $query->whereBetween('purchase_date', [$request->from, $request->to]);
+        }
+        // فلترة من تاريخ فقط
+        elseif ($request->filled('from')) {
+            $query->where('purchase_date', '>=', $request->from);
+        }
+        // فلترة إلى تاريخ فقط
+        elseif ($request->filled('to')) {
+            $query->where('purchase_date', '<=', $request->to);
+        }
+
+        $purchases = $query->get();
 
         // جلب المواد الخام فقط
         $rawMaterials = \App\Models\Product::where('type', 'raw')->get(['id', 'name', 'unit']);
 
         return Inertia::render('Purchases/Index', [
             'purchases' => $purchases,
-            'selectedDate' => $date,
+            'selectedDate' => $request->date,
+            'from' => $request->from,
+            'to' => $request->to,
             'rawMaterials' => $rawMaterials,
         ]);
     }
