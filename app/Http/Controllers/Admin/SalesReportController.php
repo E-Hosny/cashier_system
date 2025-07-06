@@ -27,8 +27,8 @@ class SalesReportController extends Controller
                 ]);
             })
             ->with('product')
-            ->selectRaw('product_id, SUM(quantity) as total_quantity, AVG(price) as unit_price, SUM(quantity * price) as total_price')
-            ->groupBy('product_id')
+            ->selectRaw('product_id, size, SUM(quantity) as total_quantity, AVG(price) as unit_price, SUM(quantity * price) as total_price')
+            ->groupBy('product_id', 'size')
             ->get();
 
             $totalPurchases = \App\Models\Purchase::whereBetween('purchase_date', [
@@ -46,8 +46,8 @@ class SalesReportController extends Controller
                 $query->whereDate('created_at', $dateFrom);
             })
             ->with('product')
-            ->selectRaw('product_id, SUM(quantity) as total_quantity, AVG(price) as unit_price, SUM(quantity * price) as total_price')
-            ->groupBy('product_id')
+            ->selectRaw('product_id, size, SUM(quantity) as total_quantity, AVG(price) as unit_price, SUM(quantity * price) as total_price')
+            ->groupBy('product_id', 'size')
             ->get();
 
             $totalPurchases = \App\Models\Purchase::whereDate('purchase_date', $dateFrom)->sum('total_amount');

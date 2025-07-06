@@ -29,21 +29,23 @@
             <table class="w-full bg-white rounded-lg text-end responsive-table">
               <thead class="bg-gray-100">
                 <tr class="text-gray-700 text-end">
-                  <th class="p-4">📦 المنتج</th>
-                  <th class="p-4">📊 الكمية المباعة</th>
-                  <th class="p-4">💰 سعر الوحدة</th>
-                  <th class="p-4">💵 إجمالي المبيعات</th>
+                  <th class="p-4">المنتج</th>
+                  <th class="p-4">الحجم</th>
+                  <th class="p-4">الكمية</th>
+                  <th class="p-4">سعر الوحدة</th>
+                  <th class="p-4">إجمالي المبيعات</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="sales.length === 0">
-                    <td colspan="4" class="text-center p-6 text-gray-500">
+                    <td colspan="5" class="text-center p-6 text-gray-500">
                         لا توجد بيانات مبيعات لهذا اليوم.
                     </td>
                 </tr>
-                <tr v-for="sale in sales" :key="sale.product_id" class="border-t text-end">
+                <tr v-for="sale in sales" :key="sale.product_id + '-' + (sale.size || 'no-size')" class="border-t text-end">
                   <td class="p-4 font-semibold" data-label="المنتج">{{ sale.product.name }}</td>
-                  <td class="p-4 text-blue-600 font-bold" data-label="الكمية المباعة">{{ sale.total_quantity }}</td>
+                  <td class="p-4" data-label="الحجم">{{ sizeToArabic(sale.size) }}</td>
+                  <td class="p-4 text-blue-600 font-bold" data-label="الكمية">{{ sale.total_quantity }}</td>
                   <td class="p-4 text-green-600 font-bold" data-label="سعر الوحدة">{{ formatPrice(sale.unit_price) }}</td>
                   <td class="p-4 text-red-600 font-bold" data-label="إجمالي المبيعات">{{ formatPrice(sale.total_price) }}</td>
                 </tr>
@@ -96,6 +98,11 @@ export default {
     },
     formatPrice(price) {
       return price ? Number(price).toFixed(2) : "0.00";
+    },
+    sizeToArabic(size) {
+      if (!size) return 'غير محدد';
+      const map = { small: 'صغير', medium: 'وسط', large: 'كبير' };
+      return map[size] || size;
     }
   },
 };
