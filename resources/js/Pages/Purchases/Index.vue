@@ -9,11 +9,12 @@ const rawMaterials = computed(() => page.props.rawMaterials || []);
 const selectedDate = ref(page.props.selectedDate || '');
 const from = ref(page.props.from || '');
 const to = ref(page.props.to || '');
+const today = new Date().toISOString().slice(0, 10);
 const newPurchase = ref({
     description: '',
     quantity: '',
     total_amount: '',
-    purchase_date: selectedDate.value
+    purchase_date: today
 });
 
 // **حساب إجمالي المشتريات للفترة المحددة**
@@ -44,7 +45,7 @@ const submitPurchase = () => {
                 description: '',
                 quantity: '',
                 total_amount: '',
-                purchase_date: selectedDate.value
+                purchase_date: today
             };
         }
     });
