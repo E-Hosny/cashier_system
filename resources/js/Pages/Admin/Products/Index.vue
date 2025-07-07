@@ -8,9 +8,48 @@
       </div>
     </div>
 
+    <!-- 🔍 فلاتر التصفية -->
+    <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+      <div class="flex flex-col md:flex-row gap-4 items-center filters-mobile">
+        <div class="flex-1">
+          <label class="block text-gray-700 mb-2 font-semibold">البحث بالاسم:</label>
+          <input 
+            v-model="searchTerm" 
+            type="text" 
+            placeholder="ابحث عن منتج..." 
+            class="w-full p-3 border border-gray-300 rounded-lg focus:ring focus:ring-blue-300"
+          />
+        </div>
+        <div class="flex-1">
+          <label class="block text-gray-700 mb-2 font-semibold">تصفية حسب الفئة:</label>
+          <select v-model="selectedCategory" @change="filterProducts" class="w-full p-3 border border-gray-300 rounded-lg focus:ring focus:ring-blue-300">
+            <option value="">جميع الفئات</option>
+            <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
+          </select>
+        </div>
+        <div class="flex gap-2">
+          <button @click="clearFilters" class="btn-gray">🗑️ مسح الفلاتر</button>
+          <div class="text-gray-600 text-sm flex items-center">
+            <span class="font-semibold">عدد المنتجات:</span>
+            <span class="mr-2 text-blue-600 font-bold">{{ products.length }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ✅ جدول عرض المنتجات -->
     <div class="overflow-x-auto bg-white rounded-xl shadow-lg">
-      <table class="w-full text-end">
+      <!-- رسالة عدم وجود نتائج -->
+      <div v-if="products.length === 0" class="p-8 text-center">
+        <div class="text-gray-500 text-lg mb-4">🔍</div>
+        <h3 class="text-xl font-semibold text-gray-700 mb-2">لا توجد منتجات</h3>
+        <p class="text-gray-600 mb-4">
+          {{ searchTerm || selectedCategory ? 'لم يتم العثور على منتجات تطابق معايير البحث المحددة.' : 'لا توجد منتجات في النظام حالياً.' }}
+        </p>
+        <button @click="clearFilters" class="btn-primary">عرض جميع المنتجات</button>
+      </div>
+
+      <table v-else class="w-full text-end">
         <thead class="bg-gray-200 hidden sm:table-header-group">
           <tr>
             <th class="p-4"></th>
@@ -87,6 +126,8 @@ export default {
   layout: AppLayout,
   props: {
     products: Array,
+    categories: Array,
+    filters: Object,
   },
   data() {
     return {
@@ -96,6 +137,8 @@ export default {
         large: 'كبير',
       },
       expandedRows: [],
+      selectedCategory: this.filters?.category_id || '',
+      searchTerm: this.filters?.searchTerm || '',
     };
   },
   methods: {
@@ -127,7 +170,32 @@ export default {
         return acc;
       }, {});
     },
+    filterProducts() {
+      // إرسال الفلاتر إلى السيرفر
+      Inertia.get(route('admin.products.index'), {
+        category_id: this.selectedCategory,
+        searchTerm: this.searchTerm,
+      }, {
+        preserveState: true,
+        replace: true,
+        preserveScroll: true,
+      });
+    },
+    clearFilters() {
+      this.selectedCategory = '';
+      this.searchTerm = '';
+      this.filterProducts();
+    },
   },
+  watch: {
+    selectedCategory() {
+      this.filterProducts();
+    },
+    searchTerm() {
+      // بحث مباشر عند الكتابة
+      this.filterProducts();
+    }
+  }
 };
 </script>
 
@@ -144,42 +212,82 @@ export default {
 .btn-red {
   @apply bg-red-500 hover:bg-red-600 text-white font-bold px-4 py-2 rounded-lg transition;
 }
+.btn-gray {
+  @apply bg-gray-500 hover:bg-gray-600 text-white font-bold px-4 py-2 rounded-lg transition;
+}
 
-/* Styles for responsive table */
+/* تحسين الفلاتر للجوال */
 @media (max-width: 640px) {
-  td[data-label]::before {
-    content: attr(data-label) " :";
-    font-weight: bold;
-    display: inline-block;
-    margin-right: 0.5rem; /* Equivalent to mr-2 in Tailwind */
-    min-width: 100px; /* Adjust as needed */
-    text-align: right;
+  .filters-mobile {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 1rem !important;
   }
+  .filters-mobile > * {
+    width: 100% !important;
+  }
+  .filters-mobile .btn-gray, .filters-mobile .btn-primary {
+    width: 100%;
+    margin-top: 0.5rem;
+  }
+}
 
-  td.p-4 {
+/* تحسين عرض المنتجات ككروت في الجوال */
+@media (max-width: 640px) {
+  table {
+    display: block;
+    width: 100%;
+  }
+  thead {
+    display: none;
+  }
+  tbody {
+    display: block;
+    width: 100%;
+  }
+  tr {
+    display: block;
+    background: #fff;
+    margin-bottom: 1.5rem;
+    border-radius: 1rem;
+    box-shadow: 0 2px 8px #0001;
+    padding: 1rem 0.5rem;
+  }
+  td {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding-top: 0.75rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid #e5e7eb; /* gray-200 */
+    padding: 0.5rem 0.75rem;
+    border: none;
+    border-bottom: 1px solid #f3f4f6;
+    font-size: 1rem;
   }
-  
-  td > * {
-    flex-grow: 1;
-    text-align: left;
+  td[data-label]::before {
+    content: attr(data-label) " :";
+    font-weight: bold;
+    color: #374151;
+    min-width: 90px;
+    margin-left: 0.5rem;
+    text-align: right;
   }
-
-  td > img {
-    flex-grow: 0;
-  }
-  
-  td > .flex {
-      justify-content: flex-end;
-  }
-
-  tr.block:last-child td:last-child {
+  td:last-child {
     border-bottom: none;
+  }
+  td > img {
+    margin: 0 auto;
+    display: block;
+    max-width: 60px;
+    max-height: 60px;
+    border-radius: 0.5rem;
+  }
+  .flex.justify-center.items-center.gap-2 {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .btn-yellow, .btn-red {
+    width: 100%;
+    font-size: 1rem;
+    padding: 0.75rem 0;
   }
 }
 </style>

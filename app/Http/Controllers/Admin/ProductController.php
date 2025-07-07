@@ -11,14 +11,32 @@ use Inertia\Inertia;
 
 class ProductController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $products = Product::with(['category', 'ingredients'])
-            ->where('type', 'finished')
-            ->latest()->get()->append(['sizes_in_arabic', 'available_sizes']);
+        $query = Product::with(['category', 'ingredients'])
+            ->where('type', 'finished');
+
+        // تصفية حسب الفئة إذا تم تحديدها
+        if ($request->has('category_id') && $request->category_id !== '') {
+            $query->where('category_id', $request->category_id);
+        }
+
+        // تصفية حسب الاسم إذا تم تحديده
+        if ($request->has('searchTerm') && trim($request->searchTerm) !== '') {
+            $search = $request->searchTerm;
+            $query->where('name', 'like', "%$search%");
+        }
+
+        $products = $query->latest()->get()->append(['sizes_in_arabic', 'available_sizes']);
+        $categories = Category::latest()->get();
 
         return Inertia::render('Admin/Products/Index', [
             'products' => $products,
+            'categories' => $categories,
+            'filters' => [
+                'category_id' => $request->category_id ?? '',
+                'searchTerm' => $request->searchTerm ?? '',
+            ],
         ]);
     }
 
