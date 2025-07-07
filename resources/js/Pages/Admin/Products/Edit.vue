@@ -30,19 +30,28 @@
 
       <!-- Size Variants & Their Ingredients -->
       <div class="bg-white shadow-md rounded-xl p-6 border">
-        <h2 class="text-xl font-semibold text-gray-700 mb-4">الأحجام والأسعار والمكونات</h2>
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-xl font-semibold text-gray-700">الأحجام والأسعار والمكونات</h2>
+          <div class="flex gap-2">
+            <button @click="activateAllSizes" type="button" class="btn-green text-sm">تفعيل الكل</button>
+            <button @click="deactivateAllSizes" type="button" class="btn-gray text-sm">إلغاء تفعيل الكل</button>
+          </div>
+        </div>
         <div class="space-y-6">
           <div v-for="(variant, v_index) in form.size_variants" :key="v_index" class="p-4 border rounded-lg bg-gray-50">
-             <div class="flex flex-wrap items-center gap-4">
-                <label class="flex items-center min-w-[120px] font-bold text-lg">{{ variant.label }}</label>
-                <div class="flex-1">
+             <div class="flex flex-wrap items-center gap-4 mb-4">
+                <label class="flex items-center min-w-[120px] font-bold">
+                  <input type="checkbox" v-model="variant.is_active" class="form-checkbox h-5 w-5 text-blue-600 mr-2" />
+                  {{ variant.label }}
+                </label>
+                <div v-if="variant.is_active" class="flex-1">
                   <label class="block text-sm font-medium text-gray-600 mb-1">السعر</label>
                   <input type="number" v-model="variant.price" class="input-style" placeholder="السعر" step="0.01" required />
                 </div>
               </div>
               
               <!-- Ingredients for this variant -->
-              <div class="mt-4 pt-4 border-t">
+              <div v-if="variant.is_active" class="mt-4 pt-4 border-t">
                   <h3 class="font-semibold text-gray-600 mb-2">مكونات حجم ({{ variant.label }})</h3>
                   <div v-for="(ingredient, i_index) in variant.ingredients" :key="i_index" class="flex gap-4 items-end mb-4">
                       <div class="flex-1">
@@ -100,6 +109,7 @@ export default {
                         size: sizeInfo.value,
                         label: sizeInfo.label,
                         price: existingVariant ? existingVariant.price : '',
+                        is_active: existingVariant ? true : false,
                         ingredients: existingIngredients.map(ing => ({
                             id: ing.id,
                             quantity: ing.pivot.quantity_consumed
@@ -119,7 +129,31 @@ export default {
         removeIngredient(variant, index) {
             variant.ingredients.splice(index, 1);
         },
+        activateAllSizes() {
+            this.form.size_variants.forEach(variant => variant.is_active = true);
+        },
+        deactivateAllSizes() {
+            this.form.size_variants.forEach(variant => variant.is_active = false);
+        },
         submitProduct() {
+            if (!this.form.name || this.form.name.trim() === '') {
+                alert('يرجى إدخال اسم المنتج.');
+                return;
+            }
+            
+            const activeVariants = this.form.size_variants.filter(v => v.is_active);
+            if (activeVariants.length === 0) {
+                alert('يرجى تفعيل حجم واحد على الأقل وإدخال سعره.');
+                return;
+            }
+            
+            for (const variant of activeVariants) {
+                if (!variant.price || isNaN(variant.price)) {
+                    alert('يرجى إدخال سعر لكل حجم مفعّل.');
+                    return;
+                }
+            }
+
             const formData = new FormData();
             formData.append("_method", "PUT");
             formData.append("name", this.form.name);
@@ -128,9 +162,6 @@ export default {
                 formData.append("image", this.form.image);
             }
             
-            // Filter out variants that don't have a price, as they are considered "inactive"
-            const activeVariants = this.form.size_variants.filter(v => v.price !== '' && v.price !== null);
-
             activeVariants.forEach((variant, v_index) => {
                 formData.append(`size_variants[${v_index}][size]`, variant.size);
                 formData.append(`size_variants[${v_index}][price]`, variant.price);

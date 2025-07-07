@@ -30,7 +30,13 @@
 
         <!-- Size Variants & Their Ingredients -->
         <div class="bg-white shadow-md rounded-xl p-6 border">
-            <h2 class="text-xl font-semibold text-gray-700 mb-4">الأحجام والأسعار والمكونات</h2>
+            <div class="flex justify-between items-center mb-4">
+              <h2 class="text-xl font-semibold text-gray-700">الأحجام والأسعار والمكونات</h2>
+              <div class="flex gap-2">
+                <button @click="activateAllSizes" type="button" class="btn-green text-sm">تفعيل الكل</button>
+                <button @click="deactivateAllSizes" type="button" class="btn-gray text-sm">إلغاء تفعيل الكل</button>
+              </div>
+            </div>
             <div class="space-y-4">
                 <div v-for="(variant, v_index) in form.size_variants" :key="v_index" class="p-4 border rounded-lg bg-gray-50">
                     <div class="flex flex-wrap items-center gap-4 mb-4">
@@ -113,6 +119,12 @@ export default {
         },
         removeIngredient(variant, index) {
             variant.ingredients.splice(index, 1);
+        },
+        activateAllSizes() {
+            this.form.size_variants.forEach(v => v.is_active = true);
+        },
+        deactivateAllSizes() {
+            this.form.size_variants.forEach(v => v.is_active = false);
         },
         submit() {
             const activeVariants = this.form.size_variants.filter(v => v.is_active);
