@@ -2,9 +2,10 @@
   <div class="container mx-auto p-4 sm:p-6" dir="rtl">
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
       <h1 class="text-3xl font-bold text-gray-800">📦 إدارة المنتجات</h1>
-      <div class="flex gap-4">
-        <a :href="route('admin.products.create')" class="btn-primary">➕ إضافة منتج جديد</a>
-        <a :href="route('admin.categories.index')" class="btn-green">📁 إدارة الفئات</a>
+      <div class="flex flex-col sm:flex-row gap-2 sm:gap-4">
+        <a :href="route('admin.products.export')" class="btn-green text-center">📊 تصدير Excel</a>
+        <a :href="route('admin.products.create')" class="btn-primary text-center">➕ إضافة منتج جديد</a>
+        <a :href="route('admin.categories.index')" class="btn-green text-center">📁 إدارة الفئات</a>
       </div>
     </div>
 

@@ -8,6 +8,8 @@ use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
+use App\Exports\ProductsExport;
+use Maatwebsite\Excel\Facades\Excel;
 
 class ProductController extends Controller
 {
@@ -38,6 +40,12 @@ class ProductController extends Controller
                 'searchTerm' => $request->searchTerm ?? '',
             ],
         ]);
+    }
+
+    public function export()
+    {
+        $filename = 'products_' . date('Y-m-d_H-i-s') . '.xlsx';
+        return Excel::download(new ProductsExport, $filename);
     }
 
     public function create()
