@@ -20,29 +20,42 @@
             font-family: 'arial', sans-serif;
             direction: rtl;
             text-align: right;
+            font-size: 16px;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 20px;
+            font-size: 15px;
         }
 
         th, td {
             border: 1px solid black;
-            padding: 8px;
+            padding: 12px;
             text-align: right;
         }
         
         th {
             background-color: #f2f2f2;
             font-weight: bold;
+            font-size: 16px;
         }
         
         .total {
             font-weight: bold;
-            font-size: 1.2em;
+            font-size: 18px;
             margin-top: 20px;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        p {
+            font-size: 16px;
+            margin-bottom: 15px;
         }
     </style>
 </head>

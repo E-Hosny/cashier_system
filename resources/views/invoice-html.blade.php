@@ -9,27 +9,28 @@
             direction: rtl; 
             padding: 10px; 
             margin: 0;
-            font-size: 12px;
+            font-size: 16px;
         }
         table { 
             width: 100%; 
             border-collapse: collapse; 
             margin-top: 15px; 
-            font-size: 11px;
+            font-size: 15px;
         }
         th, td { 
             border: 1px solid #000; 
-            padding: 6px; 
+            padding: 10px; 
             text-align: right; 
         }
         th { 
             background: #eee; 
             font-weight: bold;
+            font-size: 16px;
         }
         .total { 
             margin-top: 15px; 
             font-weight: bold; 
-            font-size: 14px; 
+            font-size: 18px; 
             text-align: center;
         }
         .logo {
@@ -43,12 +44,12 @@
             margin-bottom: 15px;
         }
         .invoice-title {
-            font-size: 16px;
+            font-size: 22px;
             font-weight: bold;
             margin: 5px 0;
         }
         .invoice-date {
-            font-size: 11px;
+            font-size: 16px;
             color: #666;
         }
         @media print {
