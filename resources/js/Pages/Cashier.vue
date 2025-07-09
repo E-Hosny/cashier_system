@@ -93,7 +93,17 @@
           <p class="font-bold text-xl text-end">الإجمالي: {{ totalAmount }} جنيه</p>
         </div>
 
-        <button @click="checkout" :disabled="cart.length === 0" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg mt-4 transition disabled:bg-gray-400">إصدار الفاتورة</button>
+        <button 
+          @click="checkout" 
+          :disabled="cart.length === 0 || isCheckoutLoading" 
+          class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg mt-4 transition disabled:bg-gray-400 flex items-center justify-center gap-2"
+        >
+          <svg v-if="isCheckoutLoading" class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          {{ isCheckoutLoading ? 'جاري إصدار الفاتورة...' : 'إصدار الفاتورة' }}
+        </button>
         <button @click="clearCart" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-lg mt-2 transition">تصفير السلة 🗑️</button>
       </div>
     </div>
@@ -125,6 +135,7 @@ export default {
       orderId: null,
       iframeVisible: false,
       liveProducts: [],
+      isCheckoutLoading: false,
       sizeTranslations: {
         small: 'صغير',
         medium: 'وسط',
@@ -224,6 +235,8 @@ export default {
       this.cart = [];
     },
     checkout() {
+      this.isCheckoutLoading = true;
+      
       const checkoutData = {
         items: this.cart.map(item => ({
           product_id: item.product_id,
@@ -236,15 +249,29 @@ export default {
         payment_method: 'cash'
       };
 
-      axios.post('/store-order', checkoutData)
+      // تحسين الأداء: إرسال البيانات بشكل محسن
+      axios.post('/store-order', checkoutData, {
+        timeout: 10000, // timeout 10 ثوانٍ
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      })
         .then(response => {
           this.orderId = response.data.order_id;
           this.clearCart();
-          this.$nextTick(() => this.printInvoice());
+          
+          // تحسين الأداء: تقليل وقت الانتظار قبل الطباعة
+          setTimeout(() => {
+            this.printInvoice();
+          }, 100);
         })
         .catch(error => {
-          console.error('خطأ أثناء إصدار الفاتورة:', error.response.data);
-          alert('حدث خطأ: ' + (error.response.data.message || 'يرجى مراجعة البيانات'));
+          console.error('خطأ أثناء إصدار الفاتورة:', error.response?.data || error.message);
+          alert('حدث خطأ: ' + (error.response?.data?.message || 'يرجى مراجعة البيانات'));
+        })
+        .finally(() => {
+          this.isCheckoutLoading = false;
         });
     },
     printInvoice() {
@@ -254,19 +281,8 @@ export default {
         const iframe = document.getElementById('invoice-frame');
         if (iframe) {
           iframe.onload = () => {
-            const iframeWindow = iframe.contentWindow;
-            iframeWindow.focus();
-            iframeWindow.print();
-
-            iframeWindow.onafterprint = () => {
-              setTimeout(() => {
-                this.iframeVisible = false;
-              }, 500);
-            };
-
-            setTimeout(() => {
-              this.iframeVisible = false;
-            }, 5000);
+            // الطباعة التلقائية ستتم من داخل الفاتورة HTML
+            console.log('تم تحميل الفاتورة - الطباعة ستتم تلقائياً');
           };
 
           iframe.src = `/invoice-html/${this.orderId}`;
@@ -285,12 +301,20 @@ export default {
       if (e.data === 'close-iframe') {
         this.closeIframe();
       }
+    },
+    preloadInvoiceImage() {
+      // تحميل صورة الشعار مسبقاً لتسريع عرض الفاتورة
+      const img = new Image();
+      img.src = '/images/mylogo.png';
     }
   },
   mounted() {
     this.initializeProducts();
     document.addEventListener('keydown', this.handleEscape);
     window.addEventListener('message', this.handleIframeMessage);
+    
+    // تحسين الأداء: تحميل الصورة مسبقاً
+    this.preloadInvoiceImage();
   },
   beforeDestroy() {
     document.removeEventListener('keydown', this.handleEscape);

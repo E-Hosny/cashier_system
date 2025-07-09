@@ -53,62 +53,109 @@ class CashierController extends Controller
         ]);
 
         $order = null;
+        
+        // تحسين الأداء: استخدام bulk operations بدلاً من عمليات فردية
         DB::transaction(function () use ($data, &$order) {
-            // 1. Create the order
+            // 1. إنشاء الطلب
             $order = Order::create([
                 'total' => $data['total_price'],
                 'payment_method' => $data['payment_method'],
                 'status' => 'completed',
             ]);
 
-            // 2. Create order items
-            $order->items()->createMany($data['items']);
+            // 2. إنشاء عناصر الطلب بشكل جماعي
+            $orderItems = [];
+            foreach ($data['items'] as $item) {
+                $orderItems[] = [
+                    'order_id' => $order->id,
+                    'product_id' => $item['product_id'],
+                    'product_name' => $item['product_name'],
+                    'quantity' => $item['quantity'],
+                    'price' => $item['price'],
+                    'size' => $item['size'],
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            }
+            OrderItem::insert($orderItems);
 
-            // 3. Eager load relationships for stock deduction
-            $order->load('items.product.ingredients');
+            // 3. تحسين عمليات المخزون: تجميع العمليات
+            $stockUpdates = [];
+            $stockMovements = [];
+            
+            // تجميع جميع المنتجات المطلوبة مسبقاً مع تحسين الاستعلام
+            $productIds = collect($data['items'])->pluck('product_id')->unique();
+            $products = Product::select('id', 'type', 'stock')
+                ->whereIn('id', $productIds)
+                ->get()
+                ->keyBy('id');
+            
+            // تجميع جميع المكونات المطلوبة مسبقاً
+            $finishedProductIds = $products->where('type', 'finished')->keys();
+            $ingredients = collect();
+            if ($finishedProductIds->isNotEmpty()) {
+                $ingredients = DB::table('ingredients')
+                    ->select('finished_product_id', 'raw_material_id', 'quantity_consumed', 'size')
+                    ->whereIn('finished_product_id', $finishedProductIds)
+                    ->get()
+                    ->groupBy('finished_product_id');
+            }
+            
+            foreach ($data['items'] as $item) {
+                $product = $products->get($item['product_id']);
+                if (!$product) continue;
 
-            // 4. Deduct stock for each item sold
-            foreach ($order->items as $item) {
-                $product = $item->product;
-
-                // A) If it's a finished product, find ingredients for the specific size sold
+                // A) إذا كان منتج نهائي، ابحث عن المكونات للمقاس المحدد
                 if ($product->type === 'finished') {
-                    // Find ingredients that match the product ID and the specific size sold
-                    $ingredientsForSize = DB::table('ingredients')
-                        ->where('finished_product_id', $product->id)
-                        ->where('size', $item->size) // <--- Key change: filter by size
-                        ->get();
+                    $productIngredients = $ingredients->get($product->id, collect());
+                    $ingredientsForSize = $productIngredients->where('size', $item['size']);
 
-                    if ($ingredientsForSize->isNotEmpty()) {
-                        foreach ($ingredientsForSize as $ingredient) {
-                            $quantityToDeduct = $item->quantity * $ingredient->quantity_consumed;
-                            
-                            // Decrement stock of the raw material
-                            DB::table('products')->where('id', $ingredient->raw_material_id)->decrement('stock', $quantityToDeduct);
-
-                            // Record the stock movement
-                            StockMovement::create([
-                                'product_id' => $ingredient->raw_material_id,
-                                'quantity' => -$quantityToDeduct,
-                                'type' => 'sale_deduction',
-                                'related_order_id' => $order->id,
-                            ]);
+                    foreach ($ingredientsForSize as $ingredient) {
+                        $quantityToDeduct = $item['quantity'] * $ingredient->quantity_consumed;
+                        
+                        // تجميع تحديثات المخزون
+                        if (!isset($stockUpdates[$ingredient->raw_material_id])) {
+                            $stockUpdates[$ingredient->raw_material_id] = 0;
                         }
+                        $stockUpdates[$ingredient->raw_material_id] -= $quantityToDeduct;
+                        
+                        // تجميع حركات المخزون
+                        $stockMovements[] = [
+                            'product_id' => $ingredient->raw_material_id,
+                            'quantity' => -$quantityToDeduct,
+                            'type' => 'sale_deduction',
+                            'related_order_id' => $order->id,
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ];
                     }
                 } 
-                // B) If it's a simple product (raw material sold directly)
+                // B) إذا كان منتج بسيط (مادة خام تباع مباشرة)
                 else if ($product->type === 'raw' && $product->stock !== null) {
-                     // Decrement stock of the product itself
-                     $product->decrement('stock', $item->quantity);
-
-                     // Record the stock movement
-                     StockMovement::create([
-                         'product_id' => $product->id,
-                         'quantity' => -$item->quantity,
-                         'type' => 'sale_deduction',
-                         'related_order_id' => $order->id,
-                     ]);
+                    if (!isset($stockUpdates[$product->id])) {
+                        $stockUpdates[$product->id] = 0;
+                    }
+                    $stockUpdates[$product->id] -= $item['quantity'];
+                    
+                    $stockMovements[] = [
+                        'product_id' => $product->id,
+                        'quantity' => -$item['quantity'],
+                        'type' => 'sale_deduction',
+                        'related_order_id' => $order->id,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
                 }
+            }
+            
+            // تنفيذ تحديثات المخزون بشكل جماعي
+            foreach ($stockUpdates as $productId => $change) {
+                DB::table('products')->where('id', $productId)->increment('stock', $change);
+            }
+            
+            // إدراج حركات المخزون بشكل جماعي
+            if (!empty($stockMovements)) {
+                StockMovement::insert($stockMovements);
             }
         });
 
@@ -138,7 +185,13 @@ class CashierController extends Controller
 
 public function invoiceHtml($orderId)
 {
-    $order = Order::with('items.product')->findOrFail($orderId);
+    // تحسين الأداء: استخدام select محدد بدلاً من تحميل كل البيانات
+    $order = Order::select('id', 'total', 'created_at')
+        ->with(['items' => function($query) {
+            $query->select('order_id', 'product_name', 'quantity', 'price', 'size');
+        }])
+        ->findOrFail($orderId);
+    
     return view('invoice-html', compact('order'));
 }
 
