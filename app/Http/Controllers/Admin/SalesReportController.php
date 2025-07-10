@@ -31,6 +31,12 @@ class SalesReportController extends Controller
             ->groupBy('product_id', 'size')
             ->get();
 
+            // حساب إجمالي المبيعات من جدول الطلبات (بعد الخصم)
+            $totalSales = Order::whereBetween('created_at', [
+                Carbon::parse($dateFrom)->startOfDay(),
+                Carbon::parse($dateTo)->endOfDay()
+            ])->sum('total');
+
             $totalPurchases = \App\Models\Purchase::whereBetween('purchase_date', [
                 Carbon::parse($dateFrom)->toDateString(),
                 Carbon::parse($dateTo)->toDateString()
@@ -50,11 +56,12 @@ class SalesReportController extends Controller
             ->groupBy('product_id', 'size')
             ->get();
 
+            // حساب إجمالي المبيعات من جدول الطلبات (بعد الخصم)
+            $totalSales = Order::whereDate('created_at', $dateFrom)->sum('total');
+
             $totalPurchases = \App\Models\Purchase::whereDate('purchase_date', $dateFrom)->sum('total_amount');
             $totalExpenses = \App\Models\Expense::whereDate('expense_date', $dateFrom)->sum('amount');
         }
-
-        $totalSales = $sales->sum('total_price');
 
         return Inertia::render('Admin/SalesReport', [
             'sales' => $sales,

@@ -71,6 +71,21 @@
       <!-- ✅ السلة -->
       <div class="w-full lg:w-1/5 bg-gray-100 p-4 rounded-lg shadow-md order-2 lg:order-3">
         <h2 class="text-xl font-semibold text-end mb-4">🛒 السلة</h2>
+        
+        <!-- VIP Toggle -->
+        <div class="mb-4 p-3 bg-gradient-to-r from-purple-100 to-pink-100 rounded-lg border border-purple-200">
+          <div class="flex items-center justify-between">
+            <span class="text-purple-800 font-semibold">👑 VIP خصم 50%</span>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" v-model="isVipEnabled" class="sr-only peer">
+              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+            </label>
+          </div>
+          <div v-if="isVipEnabled" class="mt-2 text-sm text-purple-700">
+            ✅ تم تفعيل خصم VIP
+          </div>
+        </div>
+        
         <div v-if="cart.length === 0" class="text-center text-gray-500 py-8">
             السلة فارغة حالياً.
         </div>
@@ -89,8 +104,14 @@
           </div>
         </div>
 
-        <div class="mt-4">
-          <p class="font-bold text-xl text-end">الإجمالي: {{ totalAmount }} جنيه</p>
+        <div class="mt-4 space-y-2">
+          <div v-if="isVipEnabled" class="flex justify-between items-center text-purple-700">
+            <span>👑 خصم VIP (50%):</span>
+            <span class="font-bold">مفعل</span>
+          </div>
+          <div class="border-t pt-2">
+            <p class="font-bold text-xl text-end">الإجمالي: {{ totalAmount }} جنيه</p>
+          </div>
         </div>
 
         <button 
@@ -136,6 +157,7 @@ export default {
       iframeVisible: false,
       liveProducts: [],
       isCheckoutLoading: false,
+      isVipEnabled: false,
       sizeTranslations: {
         small: 'صغير',
         medium: 'وسط',
@@ -150,7 +172,11 @@ export default {
         .filter(p => p.name.toLowerCase().includes(this.searchQuery.toLowerCase()));
     },
     totalAmount() {
-      return this.cart.reduce((total, item) => total + item.price * item.quantity, 0).toFixed(2);
+      const originalTotal = this.cart.reduce((total, item) => total + item.price * item.quantity, 0);
+      if (!this.isVipEnabled) {
+        return originalTotal.toFixed(2);
+      }
+      return (originalTotal * 0.5).toFixed(2);
     },
   },
   methods: {

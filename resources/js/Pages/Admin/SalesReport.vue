@@ -55,8 +55,12 @@
 
           <!-- إجمالي المبيعات -->
           <div v-if="sales.length > 0" class="mt-6 text-xl font-bold text-center bg-gray-200 p-4 rounded-lg">
-            💵 إجمالي المبيعات: {{ formatPrice(totalSales) }}
+            💵 إجمالي المبيعات (بعد الخصم): {{ formatPrice(totalSales) }}
           </div>
+          <div v-if="sales.length > 0" class="mt-2 text-sm text-center text-gray-600 bg-yellow-100 p-2 rounded-lg">
+            📊 ملاحظة: المبالغ في الجدول أعلاه هي المبالغ الأصلية. إجمالي المبيعات يعرض المبلغ النهائي بعد تطبيق خصم VIP.
+          </div>
+          
           <div v-if="sales.length > 0" class="mt-2 text-lg font-bold text-center bg-gray-100 p-3 rounded-lg">
             🛒 إجمالي المشتريات: {{ formatPrice(totalPurchases) }}
           </div>

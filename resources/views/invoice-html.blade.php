@@ -86,7 +86,8 @@
         </tbody>
     </table>
 
-    <div class="total">الإجمالي الكلي: {{ number_format($order->total, 2) }}</div>
+
+    <div class="total">الإجمالي الكلي: {{ number_format($order->total, 2) }} جنيه</div>
     
 
 </body>
