@@ -15,7 +15,8 @@ class Order extends Model
         'total',
         'status',
         'payment_method',
-        'tenant_id'
+        'tenant_id',
+        'offline_id'
     ];
 
     public function items()

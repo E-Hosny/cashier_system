@@ -234,7 +234,7 @@ export default {
     clearCart() {
       this.cart = [];
     },
-    checkout() {
+    async checkout() {
       this.isCheckoutLoading = true;
       
       const checkoutData = {
@@ -246,33 +246,151 @@ export default {
           size: item.size
         })),
         total_price: this.totalAmount,
-        payment_method: 'cash'
+        payment_method: 'cash',
+        offline_id: `offline_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
       };
 
-      // تحسين الأداء: إرسال البيانات بشكل محسن
-      axios.post('/store-order', checkoutData, {
-        timeout: 10000, // timeout 10 ثوانٍ
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
-      })
-        .then(response => {
-          this.orderId = response.data.order_id;
-          this.clearCart();
-          
-          // تحسين الأداء: تقليل وقت الانتظار قبل الطباعة
-          setTimeout(() => {
-            this.printInvoice();
-          }, 100);
-        })
-        .catch(error => {
-          console.error('خطأ أثناء إصدار الفاتورة:', error.response?.data || error.message);
-          alert('حدث خطأ: ' + (error.response?.data?.message || 'يرجى مراجعة البيانات'));
-        })
-        .finally(() => {
-          this.isCheckoutLoading = false;
+      try {
+        // محاولة الإرسال عبر الإنترنت أولاً
+        const response = await axios.post('/store-order', checkoutData, {
+          timeout: 5000, // timeout 5 ثوانٍ
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
         });
+
+        this.orderId = response.data.order_id;
+        this.clearCart();
+        
+        setTimeout(() => {
+          this.printInvoice();
+        }, 100);
+
+      } catch (error) {
+        console.log('فشل الاتصال بالخادم، جاري حفظ الطلب محلياً...');
+        
+        // حفظ الطلب محلياً
+        await this.saveOfflineOrder(checkoutData);
+        
+        this.clearCart();
+        this.showOfflineMessage();
+      } finally {
+        this.isCheckoutLoading = false;
+      }
+    },
+
+    async saveOfflineOrder(orderData) {
+      try {
+        // حفظ في IndexedDB
+        if ('indexedDB' in window) {
+          const db = await this.openDB();
+          const tx = db.transaction('orders', 'readwrite');
+          const store = tx.objectStore('orders');
+          await store.add({
+            ...orderData,
+            timestamp: Date.now(),
+            status: 'pending'
+          });
+        }
+
+        // حفظ في localStorage كنسخة احتياطية
+        const offlineOrders = JSON.parse(localStorage.getItem('offlineOrders') || '[]');
+        offlineOrders.push(orderData);
+        localStorage.setItem('offlineOrders', JSON.stringify(offlineOrders));
+
+        console.log('تم حفظ الطلب محلياً بنجاح');
+      } catch (error) {
+        console.error('فشل في حفظ الطلب محلياً:', error);
+        throw error;
+      }
+    },
+
+    async openDB() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open('CashierSystem', 1);
+        
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result);
+        
+        request.onupgradeneeded = (event) => {
+          const db = event.target.result;
+          
+          if (!db.objectStoreNames.contains('orders')) {
+            const orderStore = db.createObjectStore('orders', { keyPath: 'id', autoIncrement: true });
+            orderStore.createIndex('timestamp', 'timestamp', { unique: false });
+          }
+        };
+      });
+    },
+
+    showOfflineMessage() {
+      alert('تم حفظ الطلب محلياً. سيتم مزامنته عند عودة الإنترنت.');
+    },
+
+    async registerServiceWorker() {
+      if ('serviceWorker' in navigator) {
+        try {
+          const registration = await navigator.serviceWorker.register('/sw.js');
+          console.log('Service Worker registered:', registration);
+        } catch (error) {
+          console.error('Service Worker registration failed:', error);
+        }
+      }
+    },
+
+    monitorConnection() {
+      window.addEventListener('online', () => {
+        console.log('متصل بالإنترنت');
+        this.syncOfflineOrders();
+      });
+
+      window.addEventListener('offline', () => {
+        console.log('غير متصل بالإنترنت');
+      });
+    },
+
+    async syncOfflineOrders() {
+      try {
+        // مزامنة من IndexedDB
+        if ('indexedDB' in window) {
+          const db = await this.openDB();
+          const tx = db.transaction('orders', 'readonly');
+          const store = tx.objectStore('orders');
+          const offlineOrders = await store.getAll();
+
+          if (offlineOrders.length > 0) {
+            for (const order of offlineOrders) {
+              try {
+                await axios.post('/api/offline/store-order', order);
+                // حذف الطلب من IndexedDB بعد المزامنة الناجحة
+                const deleteTx = db.transaction('orders', 'readwrite');
+                const deleteStore = deleteTx.objectStore('orders');
+                await deleteStore.delete(order.id);
+              } catch (error) {
+                console.error('فشل في مزامنة الطلب:', error);
+              }
+            }
+            console.log('تم مزامنة الطلبات المحفوظة محلياً');
+          }
+        }
+
+        // مزامنة من localStorage
+        const localStorageOrders = JSON.parse(localStorage.getItem('offlineOrders') || '[]');
+        if (localStorageOrders.length > 0) {
+          for (const order of localStorageOrders) {
+            try {
+              await axios.post('/api/offline/store-order', order);
+            } catch (error) {
+              console.error('فشل في مزامنة الطلب من localStorage:', error);
+            }
+          }
+          localStorage.removeItem('offlineOrders');
+          console.log('تم مزامنة الطلبات من localStorage');
+        }
+      } catch (error) {
+        console.error('فشل في مزامنة الطلبات:', error);
+      }
     },
     printInvoice() {
       this.iframeVisible = true;
@@ -315,6 +433,12 @@ export default {
     
     // تحسين الأداء: تحميل الصورة مسبقاً
     this.preloadInvoiceImage();
+    
+    // تسجيل Service Worker للعمل بدون إنترنت
+    this.registerServiceWorker();
+    
+    // مراقبة حالة الاتصال
+    this.monitorConnection();
   },
   beforeDestroy() {
     document.removeEventListener('keydown', this.handleEscape);
