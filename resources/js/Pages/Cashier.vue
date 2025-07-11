@@ -275,15 +275,20 @@ export default {
 
       } catch (error) {
         console.log('فشل الاتصال بالخادم، جاري حفظ الطلب محلياً...');
-        
         // حفظ الطلب محلياً
         await this.saveOfflineOrder(checkoutData);
-        
         this.clearCart();
-        this.showOfflineMessage();
-        
-        // طباعة الفاتورة محلياً
-        this.printOfflineInvoice(checkoutData);
+        // طباعة الفاتورة أولاً
+        await new Promise((resolve) => {
+          setTimeout(() => {
+            this.printOfflineInvoice(checkoutData);
+            resolve();
+          }, 100);
+        });
+        // ثم إظهار رسالة التأكيد بعد الطباعة
+        setTimeout(() => {
+          this.showOfflineMessage();
+        }, 1000);
       } finally {
         this.isCheckoutLoading = false;
       }
