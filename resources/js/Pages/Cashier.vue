@@ -274,7 +274,7 @@ export default {
         }, 100);
 
       } catch (error) {
-        console.log('فشل الاتصال بالخادم، جاري حفظ الطلب محلياً...');
+        console.log('catch: Network/server error, سيتم الحفظ محلياً والطباعة...', error);
         // حفظ الطلب محلياً
         await this.saveOfflineOrder(checkoutData);
         this.clearCart();
@@ -285,7 +285,7 @@ export default {
             resolve();
           }, 100);
         });
-        // ثم إظهار رسالة التأكيد بعد الطباعة
+        // رسالة التأكيد بعد الطباعة
         setTimeout(() => {
           this.showOfflineMessage();
         }, 1000);
