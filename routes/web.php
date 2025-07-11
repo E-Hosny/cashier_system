@@ -65,6 +65,10 @@ Route::middleware([
         return view("offline");
     })->name("offline");
 
+    Route::get("/test-offline", function () {
+        return view("test-offline");
+    })->name("test-offline");
+
     // Sales Report
     Route::get("/sales-report", [SalesReportController::class, "index"])->name("admin.sales.report");
 

@@ -349,6 +349,9 @@ export default {
     },
 
     monitorConnection() {
+      // فحص حالة الاتصال عند التحميل
+      this.checkConnectionStatus();
+      
       window.addEventListener('online', () => {
         console.log('متصل بالإنترنت');
         this.isOnline = true;
@@ -359,6 +362,26 @@ export default {
         console.log('غير متصل بالإنترنت');
         this.isOnline = false;
       });
+
+      // فحص دوري لحالة الاتصال كل 30 ثانية
+      setInterval(() => {
+        this.checkConnectionStatus();
+      }, 30000);
+    },
+
+    async checkConnectionStatus() {
+      try {
+        // محاولة الوصول إلى نقطة نهاية بسيطة
+        await fetch('/api/health-check', { 
+          method: 'HEAD',
+          cache: 'no-cache',
+          timeout: 3000
+        });
+        this.isOnline = true;
+      } catch (error) {
+        console.log('لا يوجد اتصال بالإنترنت');
+        this.isOnline = false;
+      }
     },
 
     async syncOfflineOrders() {
@@ -446,27 +469,132 @@ export default {
       // إنشاء فاتورة HTML محلية
       const invoiceHTML = this.generateOfflineInvoiceHTML(orderData);
       
-      // إنشاء نافذة طباعة جديدة
-      const printWindow = window.open('', '_blank');
-      printWindow.document.write(invoiceHTML);
-      printWindow.document.close();
+      // إنشاء iframe للطباعة بدلاً من window.open()
+      const printIframe = document.createElement('iframe');
+      printIframe.style.position = 'fixed';
+      printIframe.style.top = '-9999px';
+      printIframe.style.left = '-9999px';
+      printIframe.style.width = '320px';
+      printIframe.style.height = '500px';
+      document.body.appendChild(printIframe);
       
-      // انتظار تحميل الصور ثم الطباعة
+      // كتابة محتوى الفاتورة في iframe
+      const iframeDoc = printIframe.contentDocument || printIframe.contentWindow.document;
+      iframeDoc.open();
+      iframeDoc.write(invoiceHTML);
+      iframeDoc.close();
+      
+      // انتظار تحميل المحتوى ثم الطباعة
       setTimeout(() => {
         try {
-          printWindow.print();
+          printIframe.contentWindow.focus();
+          printIframe.contentWindow.print();
+          
+          // إزالة iframe بعد الطباعة
           setTimeout(() => {
-            printWindow.close();
-          }, 1000);
+            document.body.removeChild(printIframe);
+          }, 2000);
         } catch (error) {
           console.error('فشل في الطباعة:', error);
-          // محاولة الطباعة مرة أخرى
+          
+          // محاولة بديلة: إنشاء نافذة جديدة
+          try {
+            const printWindow = window.open('', '_blank', 'width=320,height=500');
+            if (printWindow) {
+              printWindow.document.write(invoiceHTML);
+              printWindow.document.close();
+              
+              setTimeout(() => {
+                printWindow.print();
+                setTimeout(() => {
+                  printWindow.close();
+                }, 1000);
+              }, 500);
+            } else {
+              // إذا فشلت النافذة المنبثقة، اعرض الفاتورة في نافذة منبثقة
+              this.showOfflineInvoiceInModal(invoiceHTML);
+            }
+          } catch (fallbackError) {
+            console.error('فشل في الطباعة البديلة:', fallbackError);
+            this.showOfflineInvoiceInModal(invoiceHTML);
+          }
+          
+          // إزالة iframe في جميع الحالات
           setTimeout(() => {
-            printWindow.print();
-            printWindow.close();
+            if (document.body.contains(printIframe)) {
+              document.body.removeChild(printIframe);
+            }
           }, 2000);
         }
       }, 500);
+    },
+
+    showOfflineInvoiceInModal(invoiceHTML) {
+      // إنشاء modal لعرض الفاتورة
+      const modal = document.createElement('div');
+      modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.8);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      `;
+      
+      const modalContent = document.createElement('div');
+      modalContent.style.cssText = `
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        max-width: 90%;
+        max-height: 90%;
+        overflow: auto;
+        direction: rtl;
+      `;
+      
+      modalContent.innerHTML = `
+        <div style="text-align: center; margin-bottom: 20px;">
+          <h3 style="color: #e74c3c; margin-bottom: 10px;">⚠️ فاتورة محلية</h3>
+          <p style="color: #666; margin-bottom: 15px;">تم إنشاء هذه الفاتورة بدون إنترنت</p>
+          <button onclick="window.print()" style="
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+          ">طباعة الفاتورة</button>
+          <button onclick="this.parentElement.parentElement.parentElement.remove()" style="
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+          ">إغلاق</button>
+        </div>
+        <div style="border-top: 1px solid #eee; padding-top: 20px;">
+          ${invoiceHTML}
+        </div>
+      `;
+      
+      modal.appendChild(modalContent);
+      document.body.appendChild(modal);
+      
+      // إغلاق modal عند الضغط على ESC
+      const handleEscape = (e) => {
+        if (e.key === 'Escape') {
+          document.body.removeChild(modal);
+          document.removeEventListener('keydown', handleEscape);
+        }
+      };
+      document.addEventListener('keydown', handleEscape);
     },
 
     generateOfflineInvoiceHTML(orderData) {
@@ -481,82 +609,115 @@ export default {
             <meta charset="UTF-8">
             <title>فاتورة محلية</title>
             <style>
+                @page {
+                    size: 80mm 297mm;
+                    margin: 5mm;
+                }
                 body { 
                     font-family: Arial, sans-serif; 
                     direction: rtl; 
-                    padding: 10px; 
+                    padding: 5px; 
                     margin: 0;
-                    font-size: 16px;
-                    max-width: 320px;
+                    font-size: 12px;
+                    max-width: 70mm;
                     margin: 0 auto;
+                    line-height: 1.3;
                 }
                 table { 
                     width: 100%; 
                     border-collapse: collapse; 
-                    margin-top: 15px; 
-                    font-size: 14px;
+                    margin-top: 10px; 
+                    font-size: 11px;
                 }
                 th, td { 
                     border: 1px solid #000; 
-                    padding: 8px; 
+                    padding: 4px; 
                     text-align: right; 
+                    font-size: 10px;
                 }
                 th { 
                     background: #eee; 
                     font-weight: bold;
-                    font-size: 14px;
+                    font-size: 11px;
                 }
                 .total { 
-                    margin-top: 15px; 
+                    margin-top: 10px; 
                     font-weight: bold; 
-                    font-size: 16px; 
+                    font-size: 14px; 
                     text-align: center;
-                }
-                .logo {
-                    width: 120px;
-                    height: auto;
-                    display: block;
-                    margin: 0 auto 10px;
+                    border-top: 2px solid #000;
+                    padding-top: 5px;
                 }
                 .header {
                     text-align: center;
-                    margin-bottom: 15px;
+                    margin-bottom: 10px;
+                    border-bottom: 2px solid #000;
+                    padding-bottom: 10px;
                 }
                 .invoice-title {
-                    font-size: 18px;
+                    font-size: 16px;
                     font-weight: bold;
                     margin: 5px 0;
                 }
                 .invoice-date {
-                    font-size: 14px;
+                    font-size: 11px;
                     color: #666;
                 }
                 .offline-notice {
                     background: #fff3cd;
                     border: 1px solid #ffeaa7;
-                    padding: 8px;
-                    margin: 10px 0;
-                    border-radius: 4px;
-                    font-size: 12px;
+                    padding: 5px;
+                    margin: 8px 0;
+                    border-radius: 3px;
+                    font-size: 9px;
                     text-align: center;
                 }
+                .logo-placeholder {
+                    width: 60px;
+                    height: 30px;
+                    background: #f0f0f0;
+                    margin: 0 auto 8px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    border: 1px solid #ddd;
+                    font-size: 8px;
+                    color: #666;
+                }
+                .order-id {
+                    text-align: center;
+                    margin: 8px 0;
+                    font-size: 9px;
+                    color: #666;
+                    background: #f8f9fa;
+                    padding: 3px;
+                    border-radius: 2px;
+                }
+                .footer {
+                    text-align: center;
+                    margin-top: 15px;
+                    font-size: 10px;
+                    color: #666;
+                    border-top: 1px solid #eee;
+                    padding-top: 8px;
+                }
                 @media print {
-                    body { margin: 0; }
+                    body { 
+                        margin: 0; 
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                    }
                     .no-print { display: none; }
                 }
             </style>
         </head>
-        <body onload="setTimeout(() => { window.print(); }, 200)">
+        <body>
             <div class="header">
-                <div style="width: 120px; height: 60px; background: #f0f0f0; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; border: 1px solid #ddd;">
-                    <span style="font-size: 12px; color: #666;">شعار المتجر</span>
-                </div>
+                <div class="logo-placeholder">شعار المتجر</div>
                 <div class="invoice-title">فاتورة رقم #${orderId}</div>
                 <div class="invoice-date">التاريخ: ${now.toLocaleDateString('ar-SA')} ${now.toLocaleTimeString('ar-SA')}</div>
                 <div class="offline-notice">⚠️ فاتورة محلية - سيتم مزامنتها عند عودة الإنترنت</div>
-                <div style="text-align: center; margin: 10px 0; font-size: 11px; color: #666; background: #f8f9fa; padding: 5px; border-radius: 3px;">
-                  معرف الطلب: ${orderId}
-                </div>
+                <div class="order-id">معرف الطلب: ${orderId}</div>
             </div>
 
             <table>
@@ -571,7 +732,7 @@ export default {
                 <tbody>
                     ${orderData.items.map(item => `
                         <tr>
-                            <td>${item.product_name} ${item.size ? `(${item.size})` : ''}</td>
+                            <td>${item.product_name}${item.size ? ` (${item.size})` : ''}</td>
                             <td>${item.quantity}</td>
                             <td>${parseFloat(item.price).toFixed(2)}</td>
                             <td>${(item.quantity * parseFloat(item.price)).toFixed(2)}</td>
@@ -582,12 +743,9 @@ export default {
 
             <div class="total">الإجمالي الكلي: ${total.toFixed(2)} جنيه</div>
             
-            <div style="text-align: center; margin-top: 20px; font-size: 12px; color: #666;">
-                شكراً لزيارتكم 🌟
-            </div>
-            
-            <div style="text-align: center; margin-top: 10px; font-size: 10px; color: #999; border-top: 1px solid #eee; padding-top: 10px;">
-                تم إنشاء هذه الفاتورة في وضع عدم الاتصال
+            <div class="footer">
+                <div style="margin-bottom: 5px;">شكراً لزيارتكم 🌟</div>
+                <div style="font-size: 8px; color: #999;">تم إنشاء هذه الفاتورة في وضع عدم الاتصال</div>
             </div>
         </body>
         </html>
