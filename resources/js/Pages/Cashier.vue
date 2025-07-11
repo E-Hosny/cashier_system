@@ -4,6 +4,11 @@
       <h1 class="text-3xl font-extrabold text-gray-800 text-center sm:text-right">🍹 واجهة الكاشير</h1>
       <img src="/images/mylogo.png" alt="Logo" class="w-32" />
     </div>
+    
+    <!-- مؤشر حالة الاتصال -->
+    <div v-if="!isOnline" class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4 text-center">
+      <span class="font-bold">⚠️ وضع عدم الاتصال:</span> يمكنك العمل محلياً وطباعة الفواتير. سيتم مزامنة الطلبات عند عودة الإنترنت.
+    </div>
 
     <div class="flex flex-col lg:flex-row gap-6">
       <!-- ✅ الفئات -->
@@ -102,7 +107,7 @@
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
           </svg>
-          {{ isCheckoutLoading ? 'جاري إصدار الفاتورة...' : 'إصدار الفاتورة' }}
+          {{ isCheckoutLoading ? 'جاري إصدار الفاتورة...' : (isOnline ? 'إصدار الفاتورة' : 'إصدار فاتورة محلية') }}
         </button>
         <button @click="clearCart" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-lg mt-2 transition">تصفير السلة 🗑️</button>
       </div>
@@ -136,6 +141,7 @@ export default {
       iframeVisible: false,
       liveProducts: [],
       isCheckoutLoading: false,
+      isOnline: navigator.onLine,
       sizeTranslations: {
         small: 'صغير',
         medium: 'وسط',
@@ -275,6 +281,9 @@ export default {
         
         this.clearCart();
         this.showOfflineMessage();
+        
+        // طباعة الفاتورة محلياً
+        this.printOfflineInvoice(checkoutData);
       } finally {
         this.isCheckoutLoading = false;
       }
@@ -325,7 +334,7 @@ export default {
     },
 
     showOfflineMessage() {
-      alert('تم حفظ الطلب محلياً. سيتم مزامنته عند عودة الإنترنت.');
+      alert('تم حفظ الطلب محلياً وطباعة الفاتورة. سيتم مزامنة الطلب مع الخادم عند عودة الإنترنت.\n\nملاحظة: الفاتورة المطبوعة تحتوي على معرف فريد للطلب المحلي.');
     },
 
     async registerServiceWorker() {
@@ -342,11 +351,13 @@ export default {
     monitorConnection() {
       window.addEventListener('online', () => {
         console.log('متصل بالإنترنت');
+        this.isOnline = true;
         this.syncOfflineOrders();
       });
 
       window.addEventListener('offline', () => {
         console.log('غير متصل بالإنترنت');
+        this.isOnline = false;
       });
     },
 
@@ -424,6 +435,163 @@ export default {
       // تحميل صورة الشعار مسبقاً لتسريع عرض الفاتورة
       const img = new Image();
       img.src = '/images/mylogo.png';
+    },
+
+    // تحسين التعامل مع الأخطاء في الطباعة
+    handlePrintError(error) {
+      console.error('خطأ في الطباعة:', error);
+      alert('حدث خطأ في الطباعة. يرجى المحاولة مرة أخرى أو استخدام Ctrl+P للطباعة اليدوية.');
+    },
+    printOfflineInvoice(orderData) {
+      // إنشاء فاتورة HTML محلية
+      const invoiceHTML = this.generateOfflineInvoiceHTML(orderData);
+      
+      // إنشاء نافذة طباعة جديدة
+      const printWindow = window.open('', '_blank');
+      printWindow.document.write(invoiceHTML);
+      printWindow.document.close();
+      
+      // انتظار تحميل الصور ثم الطباعة
+      setTimeout(() => {
+        try {
+          printWindow.print();
+          setTimeout(() => {
+            printWindow.close();
+          }, 1000);
+        } catch (error) {
+          console.error('فشل في الطباعة:', error);
+          // محاولة الطباعة مرة أخرى
+          setTimeout(() => {
+            printWindow.print();
+            printWindow.close();
+          }, 2000);
+        }
+      }, 500);
+    },
+
+    generateOfflineInvoiceHTML(orderData) {
+      const now = new Date();
+      const orderId = orderData.offline_id;
+      const total = parseFloat(orderData.total_price);
+      
+      return `
+        <!DOCTYPE html>
+        <html lang="ar" dir="rtl">
+        <head>
+            <meta charset="UTF-8">
+            <title>فاتورة محلية</title>
+            <style>
+                body { 
+                    font-family: Arial, sans-serif; 
+                    direction: rtl; 
+                    padding: 10px; 
+                    margin: 0;
+                    font-size: 16px;
+                    max-width: 320px;
+                    margin: 0 auto;
+                }
+                table { 
+                    width: 100%; 
+                    border-collapse: collapse; 
+                    margin-top: 15px; 
+                    font-size: 14px;
+                }
+                th, td { 
+                    border: 1px solid #000; 
+                    padding: 8px; 
+                    text-align: right; 
+                }
+                th { 
+                    background: #eee; 
+                    font-weight: bold;
+                    font-size: 14px;
+                }
+                .total { 
+                    margin-top: 15px; 
+                    font-weight: bold; 
+                    font-size: 16px; 
+                    text-align: center;
+                }
+                .logo {
+                    width: 120px;
+                    height: auto;
+                    display: block;
+                    margin: 0 auto 10px;
+                }
+                .header {
+                    text-align: center;
+                    margin-bottom: 15px;
+                }
+                .invoice-title {
+                    font-size: 18px;
+                    font-weight: bold;
+                    margin: 5px 0;
+                }
+                .invoice-date {
+                    font-size: 14px;
+                    color: #666;
+                }
+                .offline-notice {
+                    background: #fff3cd;
+                    border: 1px solid #ffeaa7;
+                    padding: 8px;
+                    margin: 10px 0;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    text-align: center;
+                }
+                @media print {
+                    body { margin: 0; }
+                    .no-print { display: none; }
+                }
+            </style>
+        </head>
+        <body onload="setTimeout(() => { window.print(); }, 200)">
+            <div class="header">
+                <div style="width: 120px; height: 60px; background: #f0f0f0; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; border: 1px solid #ddd;">
+                    <span style="font-size: 12px; color: #666;">شعار المتجر</span>
+                </div>
+                <div class="invoice-title">فاتورة رقم #${orderId}</div>
+                <div class="invoice-date">التاريخ: ${now.toLocaleDateString('ar-SA')} ${now.toLocaleTimeString('ar-SA')}</div>
+                <div class="offline-notice">⚠️ فاتورة محلية - سيتم مزامنتها عند عودة الإنترنت</div>
+                <div style="text-align: center; margin: 10px 0; font-size: 11px; color: #666; background: #f8f9fa; padding: 5px; border-radius: 3px;">
+                  معرف الطلب: ${orderId}
+                </div>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>المنتج</th>
+                        <th>الكمية</th>
+                        <th>السعر</th>
+                        <th>الإجمالي</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${orderData.items.map(item => `
+                        <tr>
+                            <td>${item.product_name} ${item.size ? `(${item.size})` : ''}</td>
+                            <td>${item.quantity}</td>
+                            <td>${parseFloat(item.price).toFixed(2)}</td>
+                            <td>${(item.quantity * parseFloat(item.price)).toFixed(2)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+
+            <div class="total">الإجمالي الكلي: ${total.toFixed(2)} جنيه</div>
+            
+            <div style="text-align: center; margin-top: 20px; font-size: 12px; color: #666;">
+                شكراً لزيارتكم 🌟
+            </div>
+            
+            <div style="text-align: center; margin-top: 10px; font-size: 10px; color: #999; border-top: 1px solid #eee; padding-top: 10px;">
+                تم إنشاء هذه الفاتورة في وضع عدم الاتصال
+            </div>
+        </body>
+        </html>
+      `;
     }
   },
   mounted() {

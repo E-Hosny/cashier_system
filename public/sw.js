@@ -14,7 +14,10 @@ const OFFLINE_URLS = [
   "/css/app.css",
   "/js/app.js",
   "/images/mylogo.png",
-  "/fonts/figtree.woff2"
+  "/fonts/figtree.woff2",
+  "/build/assets/app-CSfH5biG.css",
+  "/build/assets/app-tah7u06H.js",
+  "/build/assets/Cashier-Mbusu6mB.js"
 ];
 
 // Install event - cache offline resources
@@ -84,6 +87,11 @@ self.addEventListener("fetch", (event) => {
             // Return offline page for navigation requests
             if (event.request.destination === "document") {
               return caches.match("/offline");
+            }
+            
+            // For images, return a default image or empty response
+            if (event.request.destination === "image") {
+              return new Response("", { status: 404 });
             }
             
             // Return cached version for other requests
