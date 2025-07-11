@@ -274,18 +274,11 @@ export default {
         }, 100);
 
       } catch (error) {
-        console.log('catch: Network/server error, سيتم الحفظ محلياً والطباعة...', error);
-        // حفظ الطلب محلياً
+        console.log('دخلنا في catch بسبب خطأ الشبكة أو السيرفر:', error);
         await this.saveOfflineOrder(checkoutData);
         this.clearCart();
-        // طباعة الفاتورة أولاً
-        await new Promise((resolve) => {
-          setTimeout(() => {
-            this.printOfflineInvoice(checkoutData);
-            resolve();
-          }, 100);
-        });
-        // رسالة التأكيد بعد الطباعة
+        console.log('سيتم الآن طباعة الفاتورة...');
+        this.printOfflineInvoice(checkoutData);
         setTimeout(() => {
           this.showOfflineMessage();
         }, 1000);
@@ -471,6 +464,7 @@ export default {
       alert('حدث خطأ في الطباعة. يرجى المحاولة مرة أخرى أو استخدام Ctrl+P للطباعة اليدوية.');
     },
     printOfflineInvoice(orderData) {
+      console.log('تشغيل دالة printOfflineInvoice');
       // إنشاء فاتورة HTML محلية
       const invoiceHTML = this.generateOfflineInvoiceHTML(orderData);
       
