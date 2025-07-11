@@ -127,6 +127,7 @@
 </template>
 
 <script>
+console.log('تم تحميل Cashier.vue');
 export default {
   props: {
     products: Array,
@@ -241,6 +242,7 @@ export default {
       this.cart = [];
     },
     async checkout() {
+      console.log('بدأت دالة checkout');
       this.isCheckoutLoading = true;
       
       const checkoutData = {
