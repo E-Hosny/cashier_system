@@ -89,7 +89,13 @@
               <td class="p-4 block sm:table-cell" data-label="الإجراءات">
                 <div class="flex justify-center items-center gap-2">
                   <a :href="route('admin.products.edit', product.id)" class="btn-yellow">✏️ تعديل</a>
-                  <button @click="deleteProduct(product.id)" class="btn-red">🗑️ حذف</button>
+                  <button
+                    v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('admin')"
+                    @click="deleteProduct(product.id)"
+                    class="btn-red"
+                  >
+                    🗑️ حذف
+                  </button>
                 </div>
               </td>
             </tr>

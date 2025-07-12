@@ -27,7 +27,13 @@
           <span class="text-gray-800 font-medium">{{ cat.name }}</span>
           <div class="flex gap-2 self-end sm:self-center">
             <button @click="editCategory(cat)" class="btn-yellow text-sm">تعديل</button>
-            <button @click="deleteCategory(cat.id)" class="btn-red text-sm">حذف</button>
+            <button
+              v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('admin')"
+              @click="deleteCategory(cat.id)"
+              class="btn-red text-sm"
+            >
+              حذف
+            </button>
           </div>
         </li>
       </ul>
