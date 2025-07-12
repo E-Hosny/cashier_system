@@ -14,7 +14,7 @@
       <div class="w-64 bg-gray-50 border-l border-gray-200 flex-shrink-0">
         <div class="p-3">
           <h3 class="text-base font-semibold text-gray-800 mb-3 text-center">📋 الفئات</h3>
-          <div class="space-y-1">
+          <div class="space-y-1 max-h-80 overflow-y-auto hover:overflow-y-scroll scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
             <div
               class="cursor-pointer px-2 py-1.5 bg-blue-100 hover:bg-blue-200 rounded-lg text-center font-bold text-blue-800 shadow transition-colors text-xs"
               :class="{ 'bg-blue-300': selectedCategoryId === null }"
