@@ -15,7 +15,8 @@ class Order extends Model
         'total',
         'status',
         'payment_method',
-        'tenant_id'
+        'tenant_id',
+        'cashier_shift_id'
     ];
 
     public function items()
@@ -27,6 +28,14 @@ class Order extends Model
 {
     return $this->belongsTo(User::class, 'tenant_id');
 }
+
+    /**
+     * العلاقة مع وردية الكاشير
+     */
+    public function cashierShift()
+    {
+        return $this->belongsTo(CashierShift::class);
+    }
 
 protected static function booted()
 {

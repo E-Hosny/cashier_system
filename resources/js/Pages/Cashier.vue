@@ -4,7 +4,26 @@
     <div class="flex-shrink-0 bg-white border-b border-gray-200 p-2 px-4">
       <div class="flex justify-between items-center gap-2">
         <h1 class="text-xl font-extrabold text-gray-800">🍹 واجهة الكاشير</h1>
-        <img src="/images/mylogo.png" alt="Logo" class="w-14" />
+        <div class="flex items-center gap-4">
+          <!-- زر إدارة الوردية -->
+          <div class="flex items-center gap-2">
+            <button 
+              v-if="!currentShift" 
+              @click="showShiftModal = true"
+              class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+            >
+              🕐 بدء وردية
+            </button>
+            <button 
+              v-else 
+              @click="showCloseShiftModal = true"
+              class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+            >
+              🔒 تقفيل الوردية
+            </button>
+          </div>
+          <img src="/images/mylogo.png" alt="Logo" class="w-14" />
+        </div>
       </div>
     </div>
 
@@ -148,6 +167,163 @@
         <iframe id="invoice-frame" class="w-full h-full" frameborder="0"></iframe>
       </div>
     </div>
+
+    <!-- نافذة بدء الوردية -->
+    <div
+      v-if="showShiftModal"
+      class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"
+      @click.self="showShiftModal = false"
+    >
+      <div class="bg-white rounded-lg shadow-lg p-6 w-96 max-w-md">
+        <h3 class="text-lg font-bold text-gray-800 mb-4 text-center">بدء وردية جديدة</h3>
+        
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">نوع الوردية</label>
+            <select v-model="newShiftType" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+              <option value="morning">وردية صباحية</option>
+              <option value="evening">وردية مسائية</option>
+            </select>
+          </div>
+          
+          <div class="flex gap-3">
+            <button 
+              @click="startShift"
+              :disabled="isStartingShift"
+              class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg transition disabled:bg-gray-400"
+            >
+              {{ isStartingShift ? 'جاري البدء...' : 'بدء الوردية' }}
+            </button>
+            <button 
+              @click="showShiftModal = false"
+              class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 rounded-lg transition"
+            >
+              إلغاء
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- نافذة تقفيل الوردية -->
+    <div
+      v-if="showCloseShiftModal"
+      class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"
+      @click.self="showCloseShiftModal = false"
+    >
+      <div class="bg-white rounded-lg shadow-lg p-6 w-96 max-w-md">
+        <h3 class="text-lg font-bold text-gray-800 mb-4 text-center">تأكيد تقفيل الوردية</h3>
+        
+        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+          <p class="text-sm text-yellow-800">
+            هل أنت متأكد من رغبتك في تقفيل الوردية؟ سيتم حساب إجمالي المبيعات وعرضها للمراجعة.
+          </p>
+        </div>
+        
+        <div class="flex gap-3">
+          <button 
+            @click="confirmCloseShift"
+            :disabled="isClosingShift"
+            class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg transition disabled:bg-gray-400"
+          >
+            {{ isClosingShift ? 'جاري التقفيل...' : 'تأكيد التقفيل' }}
+          </button>
+          <button 
+            @click="showCloseShiftModal = false"
+            class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 rounded-lg transition"
+          >
+            إلغاء
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- نافذة تفاصيل المبيعات -->
+    <div
+      v-if="showSalesModal"
+      class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"
+      @click.self="showSalesModal = false"
+    >
+      <div class="bg-white rounded-lg shadow-lg p-6 w-[600px] max-h-[80vh] overflow-y-auto">
+        <h3 class="text-lg font-bold text-gray-800 mb-4 text-center">تفاصيل المبيعات - {{ closedShift?.shift_type === 'morning' ? 'وردية صباحية' : 'وردية مسائية' }}</h3>
+        
+        <div v-if="closedShift" class="space-y-4">
+          <!-- ملخص المبيعات -->
+          <div class="grid grid-cols-2 gap-4">
+            <div class="bg-blue-50 p-4 rounded-lg">
+              <h4 class="font-semibold text-blue-800">إجمالي المبيعات</h4>
+              <p class="text-2xl font-bold text-blue-600">{{ closedShift.total_sales }} جنيه</p>
+            </div>
+            <div class="bg-green-50 p-4 rounded-lg">
+              <h4 class="font-semibold text-green-800">المبلغ المتوقع</h4>
+              <p class="text-2xl font-bold text-green-600">{{ closedShift.expected_amount }} جنيه</p>
+            </div>
+          </div>
+
+          <!-- إدخال المبلغ النقدي -->
+          <div class="bg-yellow-50 p-4 rounded-lg">
+            <label class="block text-sm font-medium text-yellow-800 mb-2">المبلغ النقدي الموجود في الصندوق</label>
+            <input 
+              v-model.number="cashAmount" 
+              type="number" 
+              step="0.01"
+              class="w-full p-3 border border-yellow-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+              placeholder="أدخل المبلغ النقدي"
+            />
+            <div v-if="cashAmount > 0" class="mt-2">
+              <p class="text-sm">
+                <span class="font-semibold">الفرق:</span> 
+                <span :class="getDifferenceClass()">{{ getDifference() }} جنيه</span>
+              </p>
+            </div>
+          </div>
+
+          <!-- ملاحظات -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">ملاحظات (اختياري)</label>
+            <textarea 
+              v-model="shiftNotes" 
+              rows="3"
+              class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="أضف أي ملاحظات هنا..."
+            ></textarea>
+          </div>
+
+          <!-- تفاصيل المبيعات -->
+          <div v-if="salesDetails.length > 0">
+            <h4 class="font-semibold text-gray-800 mb-2">تفاصيل المبيعات</h4>
+            <div class="max-h-60 overflow-y-auto border border-gray-200 rounded-lg">
+              <div v-for="order in salesDetails" :key="order.id" class="p-3 border-b border-gray-100">
+                <div class="flex justify-between items-center">
+                  <span class="font-medium">طلب #{{ order.id }}</span>
+                  <span class="text-green-600 font-bold">{{ order.total }} جنيه</span>
+                </div>
+                <div class="text-sm text-gray-600 mt-1">
+                  {{ new Date(order.created_at).toLocaleString('ar-EG') }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- أزرار التحكم -->
+          <div class="flex gap-3 pt-4">
+            <button 
+              @click="handOverShift"
+              :disabled="!cashAmount || isHandingOver"
+              class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg transition disabled:bg-gray-400"
+            >
+              {{ isHandingOver ? 'جاري التسليم...' : 'تم التسليم' }}
+            </button>
+            <button 
+              @click="showSalesModal = false"
+              class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 rounded-lg transition"
+            >
+              إغلاق
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -171,6 +347,19 @@ export default {
         medium: 'وسط',
         large: 'كبير',
       },
+      // متغيرات إدارة الورديات
+      currentShift: null,
+      showShiftModal: false,
+      showCloseShiftModal: false,
+      showSalesModal: false,
+      newShiftType: 'morning',
+      isStartingShift: false,
+      isClosingShift: false,
+      isHandingOver: false,
+      closedShift: null,
+      cashAmount: 0,
+      shiftNotes: '',
+      salesDetails: [],
     };
   },
   computed: {
@@ -336,7 +525,119 @@ export default {
       // تحميل صورة الشعار مسبقاً لتسريع عرض الفاتورة
       const img = new Image();
       img.src = '/images/mylogo.png';
-    }
+    },
+
+    // === إدارة الورديات ===
+    
+    // بدء وردية جديدة
+    async startShift() {
+      this.isStartingShift = true;
+      
+      try {
+        const response = await axios.post('/cashier-shifts/start', {
+          shift_type: this.newShiftType
+        });
+        
+        if (response.data.success) {
+          this.currentShift = response.data.shift;
+          this.showShiftModal = false;
+          this.newShiftType = 'morning';
+          alert('تم بدء الوردية بنجاح!');
+        }
+      } catch (error) {
+        console.error('خطأ في بدء الوردية:', error);
+        alert('حدث خطأ: ' + (error.response?.data?.message || 'فشل في بدء الوردية'));
+      } finally {
+        this.isStartingShift = false;
+      }
+    },
+
+    // تأكيد تقفيل الوردية
+    async confirmCloseShift() {
+      this.isClosingShift = true;
+      
+      try {
+        const response = await axios.post('/cashier-shifts/close', {
+          cash_amount: 0, // سيتم تحديثه لاحقاً
+          notes: ''
+        });
+        
+        if (response.data.success) {
+          this.closedShift = response.data.shift;
+          this.salesDetails = response.data.sales_details || [];
+          this.showCloseShiftModal = false;
+          this.showSalesModal = true;
+          this.currentShift = null;
+        }
+      } catch (error) {
+        console.error('خطأ في تقفيل الوردية:', error);
+        alert('حدث خطأ: ' + (error.response?.data?.message || 'فشل في تقفيل الوردية'));
+      } finally {
+        this.isClosingShift = false;
+      }
+    },
+
+    // تسليم الوردية
+    async handOverShift() {
+      if (!this.cashAmount) {
+        alert('يرجى إدخال المبلغ النقدي');
+        return;
+      }
+
+      this.isHandingOver = true;
+      
+      try {
+        // تحديث الوردية بالمبلغ النقدي أولاً
+        await axios.put(`/cashier-shifts/${this.closedShift.id}/update-cash`, {
+          cash_amount: this.cashAmount,
+          notes: this.shiftNotes
+        });
+
+        // تسليم الوردية
+        const response = await axios.post('/cashier-shifts/handover');
+        
+        if (response.data.success) {
+          this.showSalesModal = false;
+          this.closedShift = null;
+          this.cashAmount = 0;
+          this.shiftNotes = '';
+          this.salesDetails = [];
+          alert('تم تسليم الوردية بنجاح!');
+        }
+      } catch (error) {
+        console.error('خطأ في تسليم الوردية:', error);
+        alert('حدث خطأ: ' + (error.response?.data?.message || 'فشل في تسليم الوردية'));
+      } finally {
+        this.isHandingOver = false;
+      }
+    },
+
+    // الحصول على الوردية الحالية
+    async getCurrentShift() {
+      try {
+        const response = await axios.get('/cashier-shifts/current');
+        if (response.data.success) {
+          this.currentShift = response.data.shift;
+        }
+      } catch (error) {
+        // لا توجد وردية نشطة
+        this.currentShift = null;
+      }
+    },
+
+    // حساب الفرق بين النقدي والمتوقع
+    getDifference() {
+      if (!this.closedShift || !this.cashAmount) return 0;
+      return (this.cashAmount - this.closedShift.expected_amount).toFixed(2);
+    },
+
+    // الحصول على لون الفرق
+    getDifferenceClass() {
+      const difference = parseFloat(this.getDifference());
+      if (difference > 0) return 'text-green-600 font-bold';
+      if (difference < 0) return 'text-red-600 font-bold';
+      return 'text-gray-600 font-bold';
+    },
   },
   mounted() {
     this.initializeProducts();
@@ -345,6 +646,9 @@ export default {
     
     // تحسين الأداء: تحميل الصورة مسبقاً
     this.preloadInvoiceImage();
+    
+    // الحصول على الوردية الحالية
+    this.getCurrentShift();
   },
   beforeDestroy() {
     document.removeEventListener('keydown', this.handleEscape);

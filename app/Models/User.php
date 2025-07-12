@@ -74,6 +74,23 @@ class User extends Authenticatable
     return $this->hasMany(User::class, 'tenant_id');
 }
 
+    /**
+     * العلاقة مع ورديات الكاشير
+     */
+    public function cashierShifts()
+    {
+        return $this->hasMany(CashierShift::class);
+    }
+
+    /**
+     * الحصول على الوردية النشطة للمستخدم
+     */
+    public function getActiveShift()
+    {
+        return $this->cashierShifts()
+            ->where('status', 'active')
+            ->first();
+    }
 
     
 }

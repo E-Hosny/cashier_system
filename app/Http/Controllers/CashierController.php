@@ -12,6 +12,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use App\Models\StockMovement;
+use App\Models\CashierShift;
+use Illuminate\Support\Facades\Auth;
 
 use Illuminate\Support\Facades\Storage;
 use Mpdf\Mpdf;
@@ -56,12 +58,22 @@ class CashierController extends Controller
         
         // تحسين الأداء: استخدام bulk operations بدلاً من عمليات فردية
         DB::transaction(function () use ($data, &$order) {
+            // الحصول على الوردية النشطة للمستخدم
+            $activeShift = CashierShift::getActiveShift(Auth::id());
+            
             // 1. إنشاء الطلب
-            $order = Order::create([
+            $orderData = [
                 'total' => $data['total_price'],
                 'payment_method' => $data['payment_method'],
                 'status' => 'completed',
-            ]);
+            ];
+            
+            // إضافة معرف الوردية إذا كانت موجودة
+            if ($activeShift) {
+                $orderData['cashier_shift_id'] = $activeShift->id;
+            }
+            
+            $order = Order::create($orderData);
 
             // 2. إنشاء عناصر الطلب بشكل جماعي
             $orderItems = [];

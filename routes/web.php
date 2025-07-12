@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\RawMaterialController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\ExpenseController;
+use App\Http\Controllers\CashierShiftController;
 
 Route::get('/', function () {
     return Inertia::render('Welcome', [
@@ -69,4 +70,16 @@ Route::middleware([
     Route::post('/expenses', [ExpenseController::class, 'store'])->name('expenses.store');
     Route::put('/expenses/{expense}', [ExpenseController::class, 'update'])->name('expenses.update');
     Route::delete('/expenses/{expense}', [ExpenseController::class, 'destroy'])->name('expenses.destroy');
+
+    // Cashier Shifts
+    Route::prefix('cashier-shifts')->group(function () {
+        Route::post('/start', [CashierShiftController::class, 'startShift'])->name('cashier.shifts.start');
+        Route::post('/close', [CashierShiftController::class, 'closeShift'])->name('cashier.shifts.close');
+        Route::post('/handover', [CashierShiftController::class, 'handOverShift'])->name('cashier.shifts.handover');
+        Route::put('/{shift}/update-cash', [CashierShiftController::class, 'updateCashAmount'])->name('cashier.shifts.update-cash');
+        Route::get('/current', [CashierShiftController::class, 'getCurrentShift'])->name('cashier.shifts.current');
+        Route::get('/details', [CashierShiftController::class, 'getShiftDetails'])->name('cashier.shifts.details');
+        Route::get('/history', [CashierShiftController::class, 'getShiftHistory'])->name('cashier.shifts.history');
+        Route::get('/stats', [CashierShiftController::class, 'getShiftStats'])->name('cashier.shifts.stats');
+    });
 });
