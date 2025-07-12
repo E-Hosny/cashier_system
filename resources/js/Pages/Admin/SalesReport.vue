@@ -8,20 +8,47 @@
     <div class="py-12" dir="rtl">
       <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
         <div class="bg-white overflow-hidden shadow-xl sm:rounded-lg p-6">
-          <!-- اختيار فترة التواريخ -->
-          <div class="mb-6 flex flex-col sm:flex-row items-stretch sm:items-center sm:justify-end gap-4">
-            <div class="flex flex-col gap-1">
-              <label class="text-gray-700 font-medium">📅 من (يوم أو بداية فترة):</label>
-              <input type="date" v-model="dateFrom" class="p-2 border rounded-lg" />
+          <!-- اختيار فترة التواريخ والتصفية -->
+          <div class="mb-6">
+            <!-- صف التواريخ -->
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center sm:justify-end gap-4 mb-4">
+              <div class="flex flex-col gap-1">
+                <label class="text-gray-700 font-medium">📅 من (يوم أو بداية فترة):</label>
+                <input type="date" v-model="dateFrom" class="p-2 border rounded-lg" />
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-gray-700 font-medium">إلى (نهاية الفترة - اختياري):</label>
+                <input type="date" v-model="dateTo" class="p-2 border rounded-lg" />
+              </div>
+              <button @click="fetchSales" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-lg mt-6 sm:mt-0">بحث</button>
             </div>
-            <div class="flex flex-col gap-1">
-              <label class="text-gray-700 font-medium">إلى (نهاية الفترة - اختياري):</label>
-              <input type="date" v-model="dateTo" class="p-2 border rounded-lg" />
+            
+            <!-- صف التصفية -->
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+              <div class="flex flex-col gap-1">
+                <label class="text-gray-700 font-medium">📂 الفئة (اختياري):</label>
+                <select v-model="selectedCategoryId" @change="onCategoryChange" class="p-2 border rounded-lg">
+                  <option value="">جميع الفئات</option>
+                  <option v-for="category in categories" :key="category.id" :value="category.id">
+                    {{ category.name }}
+                  </option>
+                </select>
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-gray-700 font-medium">📦 المنتج (اختياري):</label>
+                <select v-model="selectedProductId" class="p-2 border rounded-lg">
+                  <option value="">جميع المنتجات</option>
+                  <option v-for="product in filteredProducts" :key="product.id" :value="product.id">
+                    {{ product.name }}
+                  </option>
+                </select>
+              </div>
+              <button @click="clearFilters" class="bg-gray-500 hover:bg-gray-600 text-white font-bold px-4 py-2 rounded-lg mt-6 sm:mt-0">مسح الفلاتر</button>
             </div>
-            <button @click="fetchSales" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-lg mt-6 sm:mt-0">بحث</button>
           </div>
+          
           <div class="mb-2 text-sm text-gray-500 text-end">
-            يمكنك اختيار يوم واحد فقط أو تحديد فترة من - إلى.
+            يمكنك اختيار يوم واحد فقط أو تحديد فترة من - إلى، مع إمكانية تصفية النتائج حسب الفئة أو المنتج.
           </div>
 
           <!-- جدول المبيعات -->
@@ -30,6 +57,7 @@
               <thead class="bg-gray-100">
                 <tr class="text-gray-700 text-end">
                   <th class="p-4">المنتج</th>
+                  <th class="p-4">الفئة</th>
                   <th class="p-4">الحجم</th>
                   <th class="p-4">الكمية</th>
                   <th class="p-4">سعر الوحدة</th>
@@ -38,12 +66,13 @@
               </thead>
               <tbody>
                 <tr v-if="sales.length === 0">
-                    <td colspan="5" class="text-center p-6 text-gray-500">
-                        لا توجد بيانات مبيعات لهذا اليوم.
+                    <td colspan="6" class="text-center p-6 text-gray-500">
+                        لا توجد بيانات مبيعات للفترة المحددة.
                     </td>
                 </tr>
                 <tr v-for="sale in sales" :key="sale.product_id + '-' + (sale.size || 'no-size')" class="border-t text-end">
                   <td class="p-4 font-semibold" data-label="المنتج">{{ sale.product.name }}</td>
+                  <td class="p-4 text-gray-600" data-label="الفئة">{{ sale.product.category?.name || 'غير محدد' }}</td>
                   <td class="p-4" data-label="الحجم">{{ sizeToArabic(sale.size) }}</td>
                   <td class="p-4 text-blue-600 font-bold" data-label="الكمية">{{ sale.total_quantity }}</td>
                   <td class="p-4 text-green-600 font-bold" data-label="سعر الوحدة">{{ formatPrice(sale.unit_price) }}</td>
@@ -80,21 +109,49 @@ export default {
     date: String,
     date_from: String,
     date_to: String,
+    category_id: String,
+    product_id: String,
     totalSales: Number,
     totalPurchases: Number,
     totalExpenses: Number,
+    categories: Array,
+    products: Array,
   },
   data() {
     return {
       dateFrom: this.date_from || this.date, // تعيين التاريخ الافتراضي
       dateTo: this.date_to || '', // اجعل النهاية فارغة افتراضيًا
+      selectedCategoryId: this.category_id || '',
+      selectedProductId: this.product_id || '',
     };
+  },
+  computed: {
+    filteredProducts() {
+      if (!this.selectedCategoryId) {
+        return this.products;
+      }
+      return this.products.filter(product => product.category_id == this.selectedCategoryId);
+    }
   },
   methods: {
     fetchSales() {
-      const params = { date_from: this.dateFrom };
+      const params = { 
+        date_from: this.dateFrom,
+        category_id: this.selectedCategoryId,
+        product_id: this.selectedProductId
+      };
       if (this.dateTo) params.date_to = this.dateTo;
       Inertia.get(route("admin.sales.report"), params);
+    },
+    onCategoryChange() {
+      // إعادة تعيين المنتج المحدد عند تغيير الفئة
+      this.selectedProductId = '';
+      this.fetchSales();
+    },
+    clearFilters() {
+      this.selectedCategoryId = '';
+      this.selectedProductId = '';
+      this.fetchSales();
     },
     formatPrice(price) {
       return price ? Number(price).toFixed(2) : "0.00";
