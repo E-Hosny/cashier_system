@@ -13,7 +13,7 @@
       <!-- الفئات - ثابتة -->
       <div class="w-64 bg-gray-50 border-l border-gray-200 flex-shrink-0">
         <div class="p-4">
-          <h3 class="text-lg font-semibold text-gray-800 mb-4">📋 الفئات</h3>
+          <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">📋 الفئات</h3>
           <div class="space-y-2">
             <div
               class="cursor-pointer px-4 py-3 bg-blue-100 hover:bg-blue-200 rounded-lg text-center font-bold text-blue-800 shadow transition-colors"
@@ -90,7 +90,7 @@
       <!-- السلة - ثابتة -->
       <div class="w-80 bg-gray-100 border-r border-gray-200 flex-shrink-0 flex flex-col">
         <div class="p-4 border-b border-gray-200">
-          <h2 class="text-xl font-semibold text-end">🛒 السلة</h2>
+          <h2 class="text-xl font-semibold text-center">🛒 السلة</h2>
         </div>
         
         <!-- محتوى السلة - قابل للتمرير -->
