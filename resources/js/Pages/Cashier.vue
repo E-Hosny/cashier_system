@@ -10,13 +10,13 @@
 
     <!-- Main Content -->
     <div class="flex-1 flex overflow-hidden">
-      <!-- الفئات - ثابتة -->
+      <!-- الفئات - ثابتة مع إمكانية التمرير -->
       <div class="w-64 bg-gray-50 border-l border-gray-200 flex-shrink-0">
-        <div class="p-4">
-          <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">📋 الفئات</h3>
-          <div class="space-y-2">
+        <div class="p-3">
+          <h3 class="text-base font-semibold text-gray-800 mb-3 text-center">📋 الفئات</h3>
+          <div class="space-y-1.5 max-h-96 overflow-y-auto hover:overflow-y-scroll scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
             <div
-              class="cursor-pointer px-4 py-3 bg-blue-100 hover:bg-blue-200 rounded-lg text-center font-bold text-blue-800 shadow transition-colors"
+              class="cursor-pointer px-3 py-2 bg-blue-100 hover:bg-blue-200 rounded-lg text-center font-bold text-blue-800 shadow transition-colors text-sm"
               :class="{ 'bg-blue-300': selectedCategoryId === null }"
               @click="selectCategory(null)"
             >📋 كل المنتجات</div>
@@ -24,7 +24,7 @@
             <div
               v-for="cat in categories"
               :key="cat.id"
-              class="cursor-pointer px-4 py-3 bg-white hover:bg-gray-100 rounded-lg text-center font-semibold shadow transition-colors border border-gray-200"
+              class="cursor-pointer px-3 py-2 bg-white hover:bg-gray-100 rounded-lg text-center font-semibold shadow transition-colors border border-gray-200 text-sm"
               :class="{ 'bg-green-200 border-green-300': selectedCategoryId === cat.id }"
               @click="selectCategory(cat.id)"
             >{{ cat.name }}</div>
