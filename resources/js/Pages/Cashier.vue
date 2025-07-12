@@ -1,110 +1,140 @@
 <template>
-  <div class="max-w-[1600px] mx-auto p-4 sm:p-6" dir="rtl">
-    <div class="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4">
-      <h1 class="text-3xl font-extrabold text-gray-800 text-center sm:text-right">🍹 واجهة الكاشير</h1>
-      <img src="/images/mylogo.png" alt="Logo" class="w-32" />
+  <div class="h-screen flex flex-col" dir="rtl">
+    <!-- Header ثابت -->
+    <div class="flex-shrink-0 bg-white border-b border-gray-200 p-2 px-4">
+      <div class="flex justify-between items-center gap-2">
+        <h1 class="text-xl font-extrabold text-gray-800">🍹 واجهة الكاشير</h1>
+        <img src="/images/mylogo.png" alt="Logo" class="w-14" />
+      </div>
     </div>
 
-    <div class="flex flex-col lg:flex-row gap-6">
-      <!-- ✅ الفئات -->
-      <div class="w-full lg:w-1/5 order-3 lg:order-1">
-        <div class="space-y-3">
-          <div
-            class="cursor-pointer px-4 py-2 bg-blue-100 hover:bg-blue-200 rounded-lg text-center font-bold text-blue-800 shadow"
-            :class="{ 'bg-blue-300': selectedCategoryId === null }"
-            @click="selectCategory(null)"
-          >📋 كل المنتجات</div>
+    <!-- Main Content -->
+    <div class="flex-1 flex overflow-hidden">
+      <!-- الفئات - ثابتة مع إمكانية التمرير -->
+      <div class="w-64 bg-gray-50 border-l border-gray-200 flex-shrink-0 flex flex-col">
+        <div class="p-3 flex-shrink-0">
+          <h3 class="text-base font-semibold text-gray-800 mb-3 text-center">📋 الفئات</h3>
+        </div>
+        <div class="flex-1 overflow-y-auto hover:overflow-y-scroll scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 px-3 pb-3">
+          <div class="space-y-1">
+            <div
+              class="cursor-pointer px-3 py-2 bg-blue-100 hover:bg-blue-200 rounded-lg text-center font-bold text-blue-800 shadow transition-colors text-sm"
+              :class="{ 'bg-blue-300': selectedCategoryId === null }"
+              @click="selectCategory(null)"
+            >📋 كل المنتجات</div>
 
-          <div
-            v-for="cat in categories"
-            :key="cat.id"
-            class="cursor-pointer px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-center font-semibold shadow"
-            :class="{ 'bg-green-200': selectedCategoryId === cat.id }"
-            @click="selectCategory(cat.id)"
-          >{{ cat.name }}</div>
+            <div
+              v-for="cat in categories"
+              :key="cat.id"
+              class="cursor-pointer px-3 py-2 bg-white hover:bg-gray-100 rounded-lg text-center font-semibold shadow transition-colors border border-gray-200 text-sm"
+              :class="{ 'bg-green-200 border-green-300': selectedCategoryId === cat.id }"
+              @click="selectCategory(cat.id)"
+            >{{ cat.name }}</div>
+          </div>
         </div>
       </div>
 
-      <!-- ✅ المنتجات -->
-      <div class="w-full lg:w-3/5 order-1 lg:order-2">
-        <div class="mb-4">
-          <input v-model="searchQuery" type="text" placeholder="ابحث عن عصير..." class="w-full p-3 border border-gray-300 rounded-lg" />
+      <!-- المنتجات - قابلة للتمرير -->
+      <div class="flex-1 flex flex-col overflow-hidden">
+        <!-- شريط البحث ثابت -->
+        <div class="flex-shrink-0 p-4 bg-white border-b border-gray-200">
+          <input 
+            v-model="searchQuery" 
+            type="text" 
+            placeholder="ابحث عن عصير..." 
+            class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+          />
         </div>
 
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-4 gap-4 mb-6">
-          <div
-            v-for="product in filteredProducts"
-            :key="product.id"
-            class="bg-white rounded-lg shadow-lg overflow-hidden transform transition-all hover:scale-105 flex flex-col border border-gray-200 text-sm"
+        <!-- قائمة المنتجات - قابلة للتمرير -->
+        <div class="flex-1 overflow-y-auto p-4">
+          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
+            <div
+              v-for="product in filteredProducts"
+              :key="product.id"
+              class="bg-white rounded-lg shadow-lg overflow-hidden transform transition-all hover:scale-105 flex flex-col border border-gray-200 text-sm"
+            >
+              <!-- <div class="relative w-full h-32">
+                <img v-if="product.image" :src="`/storage/${product.image}`" alt="صورة المنتج" class="w-full h-full object-contain rounded-t-lg" />
+                <div v-else class="w-full h-full bg-gray-100 flex items-center justify-center rounded-t-lg">
+                  <span class="text-gray-400">🖼️</span>
+                </div>
+              </div> -->
+              <div class="p-3 flex-1 flex flex-col justify-between">
+                <h3 class="text-sm font-semibold text-gray-800 text-center leading-tight">{{ product.name }}</h3>
+                
+                <!-- Size Selection -->
+                <div v-if="hasVariants(product)" class="my-2 flex justify-center gap-1">
+                    <button 
+                      v-for="(variant, v_idx) in product.size_variants" 
+                      :key="variant.size"
+                      @click="selectVariant(product, v_idx)"
+                      :class="['px-2 py-1 rounded-full text-xs font-semibold', product.selectedVariantIndex === v_idx ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700']"
+                    >
+                      {{ translateSize(variant.size) }}
+                    </button>
+                </div>
+
+                <p class="text-center text-green-700 text-base font-bold mb-2">
+                  {{ getProductPrice(product) }}
+                </p>
+
+                <div class="mt-auto text-center">
+                  <input v-model.number="product.quantityToAdd" type="number" min="1" placeholder="العدد" class="p-2 border border-gray-300 rounded-lg text-center w-full text-sm" />
+                  <button @click="addToCart(product)" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg transition mt-2 w-full text-sm">إضافة للسلة</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- السلة - ثابتة -->
+      <div class="w-80 bg-gray-100 border-r border-gray-200 flex-shrink-0 flex flex-col">
+        <div class="p-4 border-b border-gray-200">
+          <h2 class="text-xl font-semibold text-center">🛒 السلة</h2>
+        </div>
+        
+        <!-- محتوى السلة - قابل للتمرير -->
+        <div class="flex-1 overflow-y-auto p-4">
+          <div v-if="cart.length === 0" class="text-center text-gray-500 py-8">
+              السلة فارغة حالياً.
+          </div>
+          <div v-for="(item, index) in cart" :key="item.cartItemId" class="flex flex-col sm:flex-row justify-between items-center mb-3 pb-3 border-b border-gray-200 gap-2">
+            <div class="text-right w-full sm:w-auto">
+              <span class="font-medium text-sm">{{ item.name }}</span>
+              <span v-if="item.size" class="text-xs text-gray-600 block">({{ translateSize(item.size) }})</span> 
+              <br>
+              <span class="text-green-600 font-bold">{{ item.price }} جنيه</span>
+            </div>
+            <div class="flex items-center gap-2 self-end sm:self-center">
+              <button @click="updateQuantity(index, -1)" :disabled="item.quantity <= 1" class="bg-yellow-500 text-white w-7 h-7 rounded-full transition disabled:opacity-50 text-sm">-</button>
+              <span class="text-gray-700 font-bold w-8 text-center text-sm">{{ item.quantity }}</span>
+              <button @click="updateQuantity(index, 1)" class="bg-yellow-500 text-white w-7 h-7 rounded-full transition text-sm">+</button>
+              <button @click="removeFromCart(index)" class="bg-red-500 text-white w-7 h-7 rounded-full transition mr-2 text-sm">×</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- أزرار الدفع - ثابتة -->
+        <div class="p-4 border-t border-gray-200 bg-white">
+          <div class="mb-4">
+            <p class="font-bold text-xl text-end">الإجمالي: {{ totalAmount }} جنيه</p>
+          </div>
+
+          <button 
+            @click="checkout" 
+            :disabled="cart.length === 0 || isCheckoutLoading" 
+            class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg transition disabled:bg-gray-400 flex items-center justify-center gap-2"
           >
-            <div class="relative w-full h-36">
-              <img v-if="product.image" :src="`/storage/${product.image}`" alt="صورة المنتج" class="w-full h-full object-contain rounded-t-lg" />
-            </div>
-            <div class="p-3 flex-1 flex flex-col justify-between">
-              <h3 class="text-base font-semibold text-gray-800 text-center">{{ product.name }}</h3>
-              
-              <!-- Size Selection -->
-              <div v-if="hasVariants(product)" class="my-2 flex justify-center gap-2">
-                  <button 
-                    v-for="(variant, v_idx) in product.size_variants" 
-                    :key="variant.size"
-                    @click="selectVariant(product, v_idx)"
-                    :class="['px-3 py-1 rounded-full text-xs font-semibold', product.selectedVariantIndex === v_idx ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700']"
-                  >
-                    {{ translateSize(variant.size) }}
-                  </button>
-              </div>
-
-              <p class="text-center text-green-700 text-lg font-bold mb-2">
-                {{ getProductPrice(product) }}
-              </p>
-
-              <div class="mt-auto text-center">
-                <input v-model.number="product.quantityToAdd" type="number" min="1" placeholder="العدد" class="p-2 border border-gray-300 rounded-lg text-center w-full" />
-                <button @click="addToCart(product)" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg transition mt-2 w-full">إضافة للسلة</button>
-              </div>
-            </div>
-          </div>
+            <svg v-if="isCheckoutLoading" class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            {{ isCheckoutLoading ? 'جاري إصدار الفاتورة...' : 'إصدار الفاتورة' }}
+          </button>
+          <button @click="clearCart" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-lg mt-2 transition">تصفير السلة 🗑️</button>
         </div>
-      </div>
-
-      <!-- ✅ السلة -->
-      <div class="w-full lg:w-1/5 bg-gray-100 p-4 rounded-lg shadow-md order-2 lg:order-3">
-        <h2 class="text-xl font-semibold text-end mb-4">🛒 السلة</h2>
-        <div v-if="cart.length === 0" class="text-center text-gray-500 py-8">
-            السلة فارغة حالياً.
-        </div>
-        <div v-for="(item, index) in cart" :key="item.cartItemId" class="flex flex-col sm:flex-row justify-between items-center mb-3 pb-3 border-b border-gray-200 gap-2">
-          <div class="text-right w-full sm:w-auto">
-            <span class="font-medium">{{ item.name }}</span>
-            <span class="text-xs text-gray-600">({{ translateSize(item.size) }})</span> 
-            <br>
-            <span class="text-green-600 font-bold">{{ item.price }} جنيه</span>
-          </div>
-          <div class="flex items-center gap-2 self-end sm:self-center">
-            <button @click="updateQuantity(index, -1)" :disabled="item.quantity <= 1" class="bg-yellow-500 text-white w-8 h-8 rounded-full transition disabled:opacity-50">-</button>
-            <span class="text-gray-700 font-bold w-8 text-center">{{ item.quantity }}</span>
-            <button @click="updateQuantity(index, 1)" class="bg-yellow-500 text-white w-8 h-8 rounded-full transition">+</button>
-            <button @click="removeFromCart(index)" class="bg-red-500 text-white w-8 h-8 rounded-full transition mr-2">x</button>
-          </div>
-        </div>
-
-        <div class="mt-4">
-          <p class="font-bold text-xl text-end">الإجمالي: {{ totalAmount }} جنيه</p>
-        </div>
-
-        <button 
-          @click="checkout" 
-          :disabled="cart.length === 0 || isCheckoutLoading" 
-          class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg mt-4 transition disabled:bg-gray-400 flex items-center justify-center gap-2"
-        >
-          <svg v-if="isCheckoutLoading" class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          {{ isCheckoutLoading ? 'جاري إصدار الفاتورة...' : 'إصدار الفاتورة' }}
-        </button>
-        <button @click="clearCart" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-lg mt-2 transition">تصفير السلة 🗑️</button>
       </div>
     </div>
 
