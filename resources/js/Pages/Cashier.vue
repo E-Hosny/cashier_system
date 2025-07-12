@@ -18,7 +18,7 @@
         <div class="flex-1 overflow-y-auto hover:overflow-y-scroll scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 px-3 pb-3">
           <div class="space-y-1">
             <div
-              class="cursor-pointer px-2 py-1.5 bg-blue-100 hover:bg-blue-200 rounded-lg text-center font-bold text-blue-800 shadow transition-colors text-xs"
+              class="cursor-pointer px-3 py-2 bg-blue-100 hover:bg-blue-200 rounded-lg text-center font-bold text-blue-800 shadow transition-colors text-sm"
               :class="{ 'bg-blue-300': selectedCategoryId === null }"
               @click="selectCategory(null)"
             >📋 كل المنتجات</div>
@@ -26,7 +26,7 @@
             <div
               v-for="cat in categories"
               :key="cat.id"
-              class="cursor-pointer px-2 py-1.5 bg-white hover:bg-gray-100 rounded-lg text-center font-semibold shadow transition-colors border border-gray-200 text-xs"
+              class="cursor-pointer px-3 py-2 bg-white hover:bg-gray-100 rounded-lg text-center font-semibold shadow transition-colors border border-gray-200 text-sm"
               :class="{ 'bg-green-200 border-green-300': selectedCategoryId === cat.id }"
               @click="selectCategory(cat.id)"
             >{{ cat.name }}</div>
