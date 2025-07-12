@@ -28,6 +28,10 @@ class ExpenseController extends Controller
         elseif ($request->filled('to')) {
             $query->where('expense_date', '<=', $request->to);
         }
+        // افتراضياً: عرض مصروفات اليوم الحالي
+        else {
+            $query->whereDate('expense_date', now()->toDateString());
+        }
 
         $expenses = $query->get();
         return Inertia::render('Expenses/Index', [

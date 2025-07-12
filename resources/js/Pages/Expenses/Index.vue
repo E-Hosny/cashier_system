@@ -10,18 +10,34 @@
           <form @submit.prevent="filterExpenses" class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
             <div>
               <label class="block text-gray-700 mb-1">يوم محدد</label>
-              <input v-model="filtersLocal.expense_date" type="date" class="input-style" />
+              <input 
+                v-model="filtersLocal.expense_date" 
+                type="date" 
+                class="input-style" 
+                @input="clearOtherFilters('expense_date')"
+              />
             </div>
             <div>
               <label class="block text-gray-700 mb-1">من تاريخ</label>
-              <input v-model="filtersLocal.from" type="date" class="input-style" />
+              <input 
+                v-model="filtersLocal.from" 
+                type="date" 
+                class="input-style" 
+                @input="clearOtherFilters('from')"
+              />
             </div>
             <div>
               <label class="block text-gray-700 mb-1">إلى تاريخ</label>
-              <input v-model="filtersLocal.to" type="date" class="input-style" />
+              <input 
+                v-model="filtersLocal.to" 
+                type="date" 
+                class="input-style" 
+                @input="clearOtherFilters('to')"
+              />
             </div>
-            <div class="flex items-end">
-              <button type="submit" class="btn-primary w-full">بحث</button>
+            <div class="flex items-end gap-2">
+              <button type="submit" class="btn-primary flex-1">بحث</button>
+              <button type="button" @click="clearFilters" class="btn-gray flex-1">مسح</button>
             </div>
           </form>
 
@@ -68,6 +84,31 @@
               </tbody>
             </table>
           </div>
+          
+          <!-- إجمالي المصروفات -->
+          <div v-if="expenses.length > 0" class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div class="flex justify-between items-center">
+              <span class="text-lg font-semibold text-blue-800">إجمالي المصروفات:</span>
+              <span class="text-2xl font-bold text-blue-600">{{ formatPrice(totalExpenses) }} جنيه</span>
+            </div>
+            <div class="mt-2 text-sm text-blue-600">
+              <span v-if="filtersLocal.expense_date && !filtersLocal.from && !filtersLocal.to">
+                ليوم {{ formatDate(filtersLocal.expense_date) }}
+              </span>
+              <span v-else-if="filtersLocal.from && filtersLocal.to">
+                للفترة من {{ formatDate(filtersLocal.from) }} إلى {{ formatDate(filtersLocal.to) }}
+              </span>
+              <span v-else-if="filtersLocal.from && !filtersLocal.to">
+                من {{ formatDate(filtersLocal.from) }}
+              </span>
+              <span v-else-if="filtersLocal.to && !filtersLocal.from">
+                إلى {{ formatDate(filtersLocal.to) }}
+              </span>
+              <span v-else>
+                ليوم {{ formatDate(new Date().toISOString().slice(0, 10)) }}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -100,7 +141,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
@@ -111,10 +152,22 @@ const props = defineProps({
 });
 
 const filtersLocal = ref({
-  expense_date: props.filters?.expense_date || '',
+  expense_date: props.filters?.expense_date || new Date().toISOString().slice(0, 10),
   from: props.filters?.from || '',
   to: props.filters?.to || '',
 });
+
+// مراقبة التغييرات في الحقول لتنظيف الحقول الأخرى
+function clearOtherFilters(field) {
+  if (field === 'expense_date' && filtersLocal.value.expense_date) {
+    // إذا تم اختيار يوم محدد، امسح الحقول الأخرى
+    filtersLocal.value.from = '';
+    filtersLocal.value.to = '';
+  } else if (field === 'from' || field === 'to') {
+    // إذا تم تحديد من أو إلى، امسح اليوم المحدد
+    filtersLocal.value.expense_date = '';
+  }
+}
 
 const form = ref({
   description: '',
@@ -126,13 +179,56 @@ const editingExpense = ref(null);
 const editForm = ref({ description: '', amount: '', expense_date: '' });
 
 function filterExpenses() {
-  // إذا تم اختيار يوم محدد، تجاهل الفترة
-  const data = {
-    expense_date: filtersLocal.value.expense_date,
-    from: filtersLocal.value.expense_date ? '' : filtersLocal.value.from,
-    to: filtersLocal.value.expense_date ? '' : filtersLocal.value.to,
-  };
+  // تحديد نوع الفلترة بناءً على الحقول المملوءة
+  let data = {};
+  
+  if (filtersLocal.value.expense_date) {
+    // إذا تم اختيار يوم محدد، استخدمه فقط
+    data = {
+      expense_date: filtersLocal.value.expense_date,
+      from: '',
+      to: ''
+    };
+  } else if (filtersLocal.value.from && filtersLocal.value.to) {
+    // إذا تم تحديد فترة من-إلى
+    data = {
+      expense_date: '',
+      from: filtersLocal.value.from,
+      to: filtersLocal.value.to
+    };
+  } else if (filtersLocal.value.from) {
+    // إذا تم تحديد من تاريخ فقط
+    data = {
+      expense_date: '',
+      from: filtersLocal.value.from,
+      to: ''
+    };
+  } else if (filtersLocal.value.to) {
+    // إذا تم تحديد إلى تاريخ فقط
+    data = {
+      expense_date: '',
+      from: '',
+      to: filtersLocal.value.to
+    };
+  } else {
+    // افتراضياً: اليوم الحالي
+    data = {
+      expense_date: new Date().toISOString().slice(0, 10),
+      from: '',
+      to: ''
+    };
+  }
+  
   router.get(route('expenses.index'), data, { preserveState: true, preserveScroll: true });
+}
+
+function clearFilters() {
+  filtersLocal.value = {
+    expense_date: new Date().toISOString().slice(0, 10),
+    from: '',
+    to: ''
+  };
+  filterExpenses();
 }
 
 function submitExpense() {
@@ -162,8 +258,23 @@ function deleteExpense(id) {
   }
 }
 
+// حساب إجمالي المصروفات
+const totalExpenses = computed(() => {
+  return props.expenses.reduce((total, expense) => total + Number(expense.amount), 0);
+});
+
 function formatPrice(price) {
   return price ? Number(price).toFixed(2) : '0.00';
+}
+
+function formatDate(dateString) {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  return date.toLocaleDateString('ar-EG', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
 }
 </script>
 
