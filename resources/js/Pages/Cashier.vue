@@ -1,10 +1,10 @@
 <template>
   <div class="h-screen flex flex-col" dir="rtl">
     <!-- Header ثابت -->
-    <div class="flex-shrink-0 bg-white border-b border-gray-200 p-4">
-      <div class="flex justify-between items-center">
-        <h1 class="text-2xl font-extrabold text-gray-800">🍹 واجهة الكاشير</h1>
-        <img src="/images/mylogo.png" alt="Logo" class="w-24" />
+    <div class="flex-shrink-0 bg-white border-b border-gray-200 p-2 px-4">
+      <div class="flex justify-between items-center gap-2">
+        <h1 class="text-xl font-extrabold text-gray-800">🍹 واجهة الكاشير</h1>
+        <img src="/images/mylogo.png" alt="Logo" class="w-14" />
       </div>
     </div>
 
