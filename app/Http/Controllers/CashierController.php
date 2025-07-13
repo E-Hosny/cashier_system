@@ -181,7 +181,9 @@ class CashierController extends Controller
 
     public function invoice($orderId)
     {
-        $order = Order::with('items.product')->findOrFail($orderId);
+        $order = Order::with('items.product')
+            ->select('id', 'total', 'created_at', 'invoice_number')
+            ->findOrFail($orderId);
     
         $mpdf = new Mpdf([
             'format' => [80, 297],
@@ -189,25 +191,20 @@ class CashierController extends Controller
             'mode' => 'utf-8',
         ]);
     
-        // $html = view('invoice', compact('order'))->render();
         $html = view('Invoice', compact('order'))->render();
-
         $mpdf->WriteHTML($html);
-        
         return $mpdf->Output("invoice_{$order->id}.pdf", 'I');
     }
 
-public function invoiceHtml($orderId)
-{
-    // تحسين الأداء: استخدام select محدد بدلاً من تحميل كل البيانات
-    $order = Order::select('id', 'total', 'created_at')
-        ->with(['items' => function($query) {
-            $query->select('order_id', 'product_name', 'quantity', 'price', 'size');
-        }])
-        ->findOrFail($orderId);
-    
-    return view('invoice-html', compact('order'));
-}
+    public function invoiceHtml($orderId)
+    {
+        $order = Order::select('id', 'total', 'created_at', 'invoice_number')
+            ->with(['items' => function($query) {
+                $query->select('order_id', 'product_name', 'quantity', 'price', 'size');
+            }])
+            ->findOrFail($orderId);
+        return view('invoice-html', compact('order'));
+    }
 
 
             
