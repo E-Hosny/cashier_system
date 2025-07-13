@@ -16,7 +16,8 @@ class Order extends Model
         'status',
         'payment_method',
         'tenant_id',
-        'cashier_shift_id'
+        'cashier_shift_id',
+        'invoice_number'
     ];
 
     public function items()

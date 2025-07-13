@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use App\Models\StockMovement;
 use App\Models\CashierShift;
+use App\Services\InvoiceNumberService;
 use Illuminate\Support\Facades\Auth;
 
 use Illuminate\Support\Facades\Storage;
@@ -66,6 +67,7 @@ class CashierController extends Controller
                 'total' => $data['total_price'],
                 'payment_method' => $data['payment_method'],
                 'status' => 'completed',
+                'invoice_number' => InvoiceNumberService::generateInvoiceNumber(),
             ];
             
             // إضافة معرف الوردية إذا كانت موجودة

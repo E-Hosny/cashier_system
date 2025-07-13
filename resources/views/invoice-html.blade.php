@@ -61,7 +61,7 @@
 <body onload="setTimeout(() => { window.print(); }, 200); window.onafterprint = () => window.parent.postMessage('close-iframe', '*')">
     <div class="header">
         <img src="{{ url('/images/mylogo.png') }}" alt="logo" class="logo">
-        <div class="invoice-title">فاتورة رقم #{{ $order->id }}</div>
+        <div class="invoice-title">فاتورة رقم #{{ $order->invoice_number ?? $order->id }}</div>
         <div class="invoice-date">التاريخ: {{ $order->created_at->format('Y-m-d H:i') }}</div>
     </div>
 
