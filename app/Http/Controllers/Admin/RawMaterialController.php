@@ -38,6 +38,11 @@ class RawMaterialController extends Controller
             'unit' => 'required|string|max:50',
             'stock' => 'required|numeric|min:0',
             'stock_alert_threshold' => 'nullable|numeric|min:0',
+            'purchase_unit' => 'required|string|max:20',
+            'purchase_quantity' => 'required|numeric|min:0.001',
+            'purchase_price' => 'required|numeric|min:0.01',
+            'consume_unit' => 'required|string|max:20',
+            'unit_consume_price' => 'required|numeric|min:0',
         ]);
 
         $data['type'] = 'raw';
@@ -74,6 +79,11 @@ class RawMaterialController extends Controller
             'unit' => 'required|string|max:50',
             'stock' => 'required|numeric|min:0',
             'stock_alert_threshold' => 'nullable|numeric|min:0',
+            'purchase_unit' => 'required|string|max:20',
+            'purchase_quantity' => 'required|numeric|min:0.001',
+            'purchase_price' => 'required|numeric|min:0.01',
+            'consume_unit' => 'required|string|max:20',
+            'unit_consume_price' => 'required|numeric|min:0',
         ]);
 
         $raw_material->update($data);

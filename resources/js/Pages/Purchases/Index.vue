@@ -13,8 +13,15 @@ const today = new Date().toISOString().slice(0, 10);
 const newPurchase = ref({
     description: '',
     quantity: '',
+    purchase_unit: '',
     total_amount: '',
     purchase_date: today
+});
+
+// وحدة الشراء المتاحة للمادة المختارة
+const filteredUnits = computed(() => {
+    const material = rawMaterials.value.find(m => m.name === newPurchase.value.description);
+    return material && material.purchase_unit ? [material.purchase_unit] : [];
 });
 
 // **حساب إجمالي المشتريات للفترة المحددة**
@@ -135,8 +142,17 @@ const submitPurchase = () => {
                                 </div>
                                 <div>
                                     <label class="block text-gray-700 font-semibold">الكمية:</label>
-                                    <input v-model="newPurchase.quantity" type="number"
-                                        class="w-full border-gray-300 rounded-md shadow-sm">
+                                    <div class="flex gap-2">
+                                        <input v-model="newPurchase.quantity" type="number" step="0.01" min="0.01"
+                                            class="w-full border-gray-300 rounded-md shadow-sm"
+                                            placeholder="مثال: 0.5 أو 1.25">
+                                        <select v-model="newPurchase.purchase_unit" class="border-gray-300 rounded-md shadow-sm">
+                                            <option v-for="unit in filteredUnits" :key="unit" :value="unit">
+                                                {{ unit }}
+                                            </option>
+                                            <option v-if="filteredUnits.length === 0" disabled value="">وحدة</option>
+                                        </select>
+                                    </div>
                                 </div>
                                 <div>
                                     <label class="block text-gray-700 font-semibold">المبلغ الإجمالي:</label>

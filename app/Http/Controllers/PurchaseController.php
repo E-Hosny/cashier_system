@@ -49,7 +49,7 @@ class PurchaseController extends Controller
         $request->validate([
             'supplier_name' => 'nullable|string|max:255',
             'description' => 'required|string|max:255',
-            'quantity' => 'nullable|integer|min:1',
+            'quantity' => 'nullable|numeric|min:0.001',
             'total_amount' => 'required|numeric|min:0',
             'purchase_date' => 'required|date',
         ]);
@@ -67,10 +67,24 @@ class PurchaseController extends Controller
         if ($request->quantity && $request->description) {
             $product = \App\Models\Product::where('name', $request->description)->first();
             if ($product) {
-                $product->increment('stock', $request->quantity);
+                // تحويل الكمية من وحدة الشراء إلى وحدة الاستهلاك
+                $purchaseUnit = $request->purchase_unit ?? $product->purchase_unit;
+                $consumeUnit = $product->consume_unit;
+                $conversionFactor = 1;
+                // دعم التحويلات الشائعة
+                if ($purchaseUnit && $consumeUnit) {
+                    $factors = [
+                        'لتر' => ['مللي' => 1000, 'لتر' => 1],
+                        'كجم' => ['جرام' => 1000, 'كجم' => 1],
+                        'قطعة' => ['قطعة' => 1],
+                    ];
+                    $conversionFactor = $factors[$purchaseUnit][$consumeUnit] ?? 1;
+                }
+                $quantityToAdd = $request->quantity * $conversionFactor;
+                $product->increment('stock', $quantityToAdd);
                 \App\Models\StockMovement::create([
                     'product_id' => $product->id,
-                    'quantity' => $request->quantity,
+                    'quantity' => $quantityToAdd,
                     'type' => 'purchase_addition',
                     'related_purchase_id' => $purchase->id,
                 ]);

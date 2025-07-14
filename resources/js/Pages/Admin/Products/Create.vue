@@ -65,6 +65,18 @@
                                 <label class="block text-gray-700 mb-1 text-sm">الكمية المستهلكة</label>
                                 <input v-model="ingredient.quantity_consumed" type="number" step="0.001" class="input-style" placeholder="الكمية" />
                             </div>
+                            <div class="w-1/4">
+                                <label class="block text-gray-700 mb-1 text-sm">الوحدة</label>
+                                <select v-model="ingredient.unit" class="input-style mb-1">
+                                    <option value="مللي">مللي</option>
+                                    <option value="لتر">لتر</option>
+                                    <option value="جرام">جرام</option>
+                                    <option value="كجم">كجم</option>
+                                    <option value="قطعة">قطعة</option>
+                                    <option value="custom">أخرى...</option>
+                                </select>
+                                <input v-if="ingredient.unit === 'custom'" v-model="ingredient.custom_unit" type="text" class="input-style mt-1" placeholder="أدخل وحدة مخصصة" />
+                            </div>
                             <div>
                                 <button @click="removeIngredient(variant, i_index)" type="button" class="btn-red h-12">🗑️</button>
                             </div>
@@ -115,7 +127,7 @@ export default {
             this.form.image = event.target.files[0];
         },
         addIngredient(variant) {
-            variant.ingredients.push({ raw_material_id: '', quantity_consumed: '' });
+            variant.ingredients.push({ raw_material_id: '', quantity_consumed: '', unit: 'مللي', custom_unit: '' });
         },
         removeIngredient(variant, index) {
             variant.ingredients.splice(index, 1);
@@ -156,8 +168,10 @@ export default {
                 formData.append(`size_variants[${v_index}][size]`, variant.size);
                 formData.append(`size_variants[${v_index}][price]`, variant.price);
                 variant.ingredients.forEach((ing, i_index) => {
+                    const unit = ing.unit === 'custom' ? ing.custom_unit : ing.unit;
                     formData.append(`size_variants[${v_index}][ingredients][${i_index}][raw_material_id]`, ing.raw_material_id);
                     formData.append(`size_variants[${v_index}][ingredients][${i_index}][quantity_consumed]`, ing.quantity_consumed);
+                    formData.append(`size_variants[${v_index}][ingredients][${i_index}][unit]`, unit);
                 });
             });
 

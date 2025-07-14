@@ -12,6 +12,7 @@
             <th class="p-4">اسم المادة</th>
             <th class="p-4">الكمية الحالية (المخزون)</th>
             <th class="p-4">وحدة القياس</th>
+            <th class="p-4">معلومات التسعير</th>
             <th class="p-4">حد التنبيه</th>
             <th class="p-4 text-center">الإجراءات</th>
           </tr>
@@ -19,8 +20,23 @@
         <tbody>
           <tr v-for="material in rawMaterials" :key="material.id" class="block sm:table-row border-t sm:border-t-0 border-gray-200 hover:bg-gray-50" :class="{'bg-red-100 hover:bg-red-200': isStockLow(material)}">
             <td class="p-4 block sm:table-cell" data-label="اسم المادة">{{ material.name }}</td>
-            <td class="p-4 block sm:table-cell font-mono font-bold" data-label="الكمية الحالية (المخزون)">{{ material.stock }}</td>
+            <td class="p-4 block sm:table-cell font-mono font-bold" data-label="الكمية الحالية (المخزون)">
+              {{ material.stock }} {{ material.consume_unit }}
+              <span v-if="material.purchase_unit && material.consume_unit && material.stock">
+                (
+                {{ (material.stock / ((material.purchase_unit === 'لتر' && material.consume_unit === 'مللي') ? 1000 : (material.purchase_unit === 'كجم' && material.consume_unit === 'جرام') ? 1000 : 1)).toFixed(2) }}
+                {{ material.purchase_unit }}
+                )
+              </span>
+            </td>
             <td class="p-4 block sm:table-cell" data-label="وحدة القياس">{{ material.unit }}</td>
+            <td class="p-4 block sm:table-cell" data-label="معلومات التسعير">
+              <div v-if="material.unit_consume_price" class="text-sm">
+                <div class="font-semibold text-green-700">{{ material.unit_consume_price }} جنيه / {{ material.consume_unit }}</div>
+                <div class="text-xs text-gray-600 mt-1">سعر وحدة الاستهلاك محسوب تلقائياً</div>
+              </div>
+              <div v-else class="text-gray-500 text-sm">لم يتم تحديد السعر</div>
+            </td>
             <td class="p-4 block sm:table-cell" data-label="حد التنبيه">{{ material.stock_alert_threshold || 'لم يحدد' }}</td>
             <td class="p-4 block sm:table-cell" data-label="الإجراءات">
               <div class="flex justify-center items-center gap-2">
@@ -63,10 +79,10 @@ export default {
   @apply bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition shadow-md;
 }
 .btn-yellow {
-  @apply bg-yellow-500 hover:bg-yellow-600 text-white font-bold px-4 py-2 rounded-lg transition;
+  @apply bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg transition;
 }
 .btn-red {
-  @apply bg-red-500 hover:bg-red-600 text-white font-bold px-4 py-2 rounded-lg transition;
+  @apply bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition;
 }
 
 /* Styles for responsive table */

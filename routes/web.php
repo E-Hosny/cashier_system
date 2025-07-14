@@ -36,6 +36,7 @@ Route::middleware([
     // Products
     Route::resource('products', ProductController::class, ['names' => 'admin.products'])->except(['show']);
     Route::get('/products/export', [ProductController::class, 'export'])->name('admin.products.export');
+    Route::get('/products/cost-analysis', [ProductController::class, 'costAnalysis'])->name('admin.products.cost-analysis');
 
     // Categories
     Route::get('/categories', [CategoryController::class, 'index'])->name('admin.categories.index');

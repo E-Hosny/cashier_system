@@ -3,6 +3,7 @@
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
       <h1 class="text-3xl font-bold text-gray-800">📦 إدارة المنتجات</h1>
       <div class="flex flex-col sm:flex-row gap-2 sm:gap-4">
+        <a :href="route('admin.products.cost-analysis')" class="btn-blue text-center">💰 تحليل التكلفة</a>
         <a :href="route('admin.products.export')" class="btn-green text-center">📊 تصدير Excel</a>
         <a :href="route('admin.products.create')" class="btn-primary text-center">➕ إضافة منتج جديد</a>
         <a :href="route('admin.categories.index')" class="btn-green text-center">📁 إدارة الفئات</a>
@@ -109,7 +110,11 @@
                         <div class="font-semibold text-blue-700 border-b pb-1 mb-2">مكونات حجم: {{ translateSize(size) }}</div>
                         <ul class="list-disc pr-5 space-y-1">
                           <li v-for="ingredient in ingredients" :key="ingredient.id" class="text-gray-600">
-                            {{ ingredient.name }} - <span class="font-semibold">{{ ingredient.pivot.quantity_consumed }} {{ ingredient.unit }}</span>
+                            {{ ingredient.name }} -
+                            <span class="font-semibold">
+                              {{ ingredient.pivot.quantity_consumed }}
+                              {{ ingredient.consume_unit || ingredient.pivot.unit || ingredient.unit || '' }}
+                            </span>
                           </li>
                         </ul>
                       </div>
@@ -209,6 +214,9 @@ export default {
 <style scoped>
 .btn-primary {
   @apply bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition shadow-md;
+}
+.btn-blue {
+  @apply bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition shadow-md;
 }
 .btn-green {
   @apply bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition shadow-md;

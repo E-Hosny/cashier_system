@@ -112,10 +112,12 @@ class ProductController extends Controller
         foreach ($request->size_variants as $variant) {
             if (!empty($variant['ingredients'])) {
                 $syncData = collect($variant['ingredients'])->mapWithKeys(function ($ingredient) use ($variant) {
+                    $unit = $ingredient['unit'] ?? null;
                     return [
                         $ingredient['raw_material_id'] => [
                             'quantity_consumed' => $ingredient['quantity_consumed'],
-                            'size' => $variant['size']
+                            'size' => $variant['size'],
+                            'unit' => $unit
                         ]
                     ];
                 });
@@ -159,10 +161,12 @@ class ProductController extends Controller
                 $syncData = collect($variant['ingredients'])->mapWithKeys(function ($ingredient) use ($variant) {
                     $ingredientId = $ingredient['id'] ?? $ingredient['raw_material_id'];
                     $quantity = $ingredient['quantity'] ?? $ingredient['quantity_consumed'];
+                    $unit = $ingredient['unit'] ?? null;
                     return [
                         $ingredientId => [
                             'quantity_consumed' => $quantity,
-                            'size' => $variant['size']
+                            'size' => $variant['size'],
+                            'unit' => $unit
                         ]
                     ];
                 });
@@ -186,5 +190,60 @@ class ProductController extends Controller
         }
         $product->delete();
         return redirect()->route('admin.products.index')->with('success', 'تم حذف المنتج بنجاح!');
+    }
+
+    public function costAnalysis()
+    {
+        $products = Product::where('type', 'finished')
+            ->with(['ingredients' => function ($query) {
+                $query->select('products.id', 'products.name', 'products.unit', 'products.purchase_unit', 'products.purchase_quantity', 'products.purchase_price', 'products.consume_unit', 'products.unit_consume_price');
+            }])
+            ->get();
+
+        // تأكد أن كل منتج لديه size_variants كمصفوفة وصفِّ فقط العناصر المعرفة والتي تحتوي على size
+        foreach ($products as $product) {
+            if (!is_array($product->size_variants)) {
+                $product->size_variants = [];
+            }
+            $product->size_variants = collect($product->size_variants)
+                ->filter(function($v) {
+                    return is_array($v) && isset($v['size']);
+                })
+                ->values()
+                ->toArray();
+        }
+
+        // حساب أسعار الوحدات للمكونات
+        foreach ($products as $product) {
+            foreach ($product->ingredients as $ingredient) {
+                $ingredient->unit_price = $ingredient->getUnitPrice($ingredient->unit);
+                if (!$ingredient->unit_price || $ingredient->unit_price == 0) {
+                    $ingredient->unit_price_warning = '⚠️ لم يتم تحديد سعر وحدة الاستهلاك';
+                }
+            }
+        }
+
+        // إضافة بيانات تحليل التكلفة لكل حجم
+        foreach ($products as $product) {
+            $sizeVariants = $product->size_variants;
+            foreach ($sizeVariants as $i => $variant) {
+                $size = $variant['size'];
+                // تكلفة المكونات لهذا الحجم
+                $ingredients_cost = $product->calculateIngredientsCost($size);
+                // هامش الربح بالريال
+                $profit_amount = $product->getProfitAmount($size);
+                // نسبة الربح بالمئة
+                $profit_margin = $product->getProfitMargin($size);
+                // أضفها للـ size_variant
+                $sizeVariants[$i]['ingredients_cost'] = round($ingredients_cost, 2);
+                $sizeVariants[$i]['profit_amount'] = round($profit_amount, 2);
+                $sizeVariants[$i]['profit_margin'] = round($profit_margin, 2);
+            }
+            $product->size_variants = $sizeVariants;
+        }
+
+        return Inertia::render('Admin/Products/CostAnalysis', [
+            'products' => $products,
+        ]);
     }
 }
