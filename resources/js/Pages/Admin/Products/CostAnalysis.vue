@@ -15,6 +15,7 @@
             <th class="p-4">تكلفة المواد الخام</th>
             <th class="p-4">هامش الربح</th>
             <th class="p-4">نسبة الربح</th>
+            <th class="p-4">تفاصيل المكونات</th>
             <th class="p-4 text-center">التفاصيل</th>
           </tr>
         </thead>
@@ -24,10 +25,40 @@
               <tr v-for="variant in (Array.isArray(product.size_variants) ? product.size_variants.filter(v => v && v.size) : [])" :key="`${product.id}-${variant.size}`" class="block sm:table-row border-t sm:border-t-0 border-gray-200 hover:bg-gray-50">
                 <td class="p-4 block sm:table-cell" data-label="اسم المنتج">{{ product.name }}</td>
                 <td class="p-4 block sm:table-cell" data-label="الحجم">{{ variant && variant.size ? translateSize(variant.size) : '' }}</td>
-                <td class="p-4 block sm:table-cell font-bold text-green-700" data-label="سعر البيع">{{ variant && variant.price ? variant.price : '' }} جنيه</td>
-                <td class="p-4 block sm:table-cell font-bold text-red-700" data-label="تكلفة المواد الخام">{{ variant && variant.size ? getCostPrice(product, variant.size) : '' }} جنيه</td>
-                <td class="p-4 block sm:table-cell font-bold" :class="variant && variant.size ? getProfitClass(product, variant.size) : ''" data-label="هامش الربح">{{ variant && variant.size ? getProfitAmount(product, variant.size) : '' }} جنيه</td>
-                <td class="p-4 block sm:table-cell font-bold" :class="variant && variant.size ? getProfitClass(product, variant.size) : ''" data-label="نسبة الربح">{{ variant && variant.size ? getProfitMargin(product, variant.size) : '' }}%</td>
+                <td class="p-4 block sm:table-cell font-bold text-green-700" data-label="سعر البيع">
+                  {{ variant && variant.price ? variant.price : '' }} جنيه
+                  <span v-if="getIngredientsForSize(product, variant.size).length === 0" title="بدون مكونات">🚫</span>
+                </td>
+                <td class="p-4 block sm:table-cell font-bold text-red-700" data-label="تكلفة المواد الخام">
+                  <span v-if="getIngredientsForSize(product, variant.size).length === 0">-</span>
+                  <span v-else>{{ getCostPrice(product, variant.size) }} جنيه</span>
+                </td>
+                <td class="p-4 block sm:table-cell font-bold" :class="variant && variant.size ? getProfitClass(product, variant.size) : ''" data-label="هامش الربح">
+                  <span v-if="getIngredientsForSize(product, variant.size).length === 0">-</span>
+                  <span v-else>{{ getProfitAmount(product, variant.size) }} جنيه</span>
+                </td>
+                <td class="p-4 block sm:table-cell font-bold" :class="variant && variant.size ? getProfitClass(product, variant.size) : ''" data-label="نسبة الربح">
+                  <span v-if="getIngredientsForSize(product, variant.size).length === 0">-</span>
+                  <span v-else>{{ getProfitMargin(product, variant.size) }}%</span>
+                </td>
+                <td class="p-4 block sm:table-cell" data-label="تفاصيل المكونات">
+                  <template v-if="getIngredientsForSize(product, variant.size).length > 0">
+                    <ul class="list-disc list-inside space-y-1">
+                      <li v-for="ingredient in getIngredientsForSize(product, variant.size)" :key="ingredient.id">
+                        <span class="font-semibold">{{ ingredient.name }}</span>:
+                        <span>{{ ingredient.pivot.quantity_consumed }}</span>
+                        <span>{{ ingredient.pivot.unit || ingredient.consume_unit || ingredient.unit }}</span>
+                        <span v-if="calculateIngredientCost(ingredient) && typeof calculateIngredientCost(ingredient) !== 'string'">
+                          ({{ calculateIngredientCost(ingredient) }} جنيه)
+                        </span>
+                        <span v-else class="text-red-600">⚠️</span>
+                      </li>
+                    </ul>
+                  </template>
+                  <template v-else>
+                    <span class="text-gray-400">🚫 بدون مكونات</span>
+                  </template>
+                </td>
                 <td class="p-4 block sm:table-cell" data-label="التفاصيل">
                   <button @click="variant && variant.size && toggleDetails(`${product.id}-${variant.size}`)" class="btn-blue text-sm">
                     {{ variant && variant.size && isExpanded(`${product.id}-${variant.size}`) ? 'إخفاء' : 'عرض' }} التفاصيل
@@ -43,7 +74,7 @@
                         <div v-for="ingredient in getIngredientsForSize(product, variant.size)" :key="ingredient.id" class="bg-white p-3 rounded-lg border">
                           <div class="font-semibold text-blue-700">{{ ingredient.name }}</div>
                           <div class="text-sm text-gray-600">
-                            الكمية: {{ ingredient.pivot.quantity_consumed }} {{ ingredient.pivot.unit || ingredient.unit }}
+                            الكمية: {{ ingredient.pivot.quantity_consumed }} {{ ingredient.pivot.unit || ingredient.consume_unit || ingredient.unit }}
                           </div>
                           <div class="text-sm text-gray-600">
                             سعر وحدة الاستهلاك: {{ ingredient.unit_consume_price || 'غير محدد' }} جنيه / {{ ingredient.consume_unit || ingredient.unit }}
@@ -54,8 +85,8 @@
                         </div>
                       </div>
                     </div>
-                    <div v-else class="text-gray-500">
-                      لا توجد مكونات محددة لهذا الحجم
+                    <div v-else class="text-red-600 font-bold">
+                      🚫 لم يتم إضافة مكونات لهذا المنتج بعد
                     </div>
                   </div>
                 </td>
@@ -67,29 +98,6 @@
           </tr>
         </tbody>
       </table>
-    </div>
-
-    <!-- ملخص عام -->
-    <div class="mt-8 bg-white shadow-lg rounded-xl p-6">
-      <h3 class="text-xl font-bold text-gray-800 mb-4">📊 ملخص عام</h3>
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div class="bg-blue-50 p-4 rounded-lg">
-          <div class="text-2xl font-bold text-blue-700">{{ getTotalRevenue() }}</div>
-          <div class="text-sm text-gray-600">إجمالي المبيعات</div>
-        </div>
-        <div class="bg-red-50 p-4 rounded-lg">
-          <div class="text-2xl font-bold text-red-700">{{ getTotalCost() }}</div>
-          <div class="text-sm text-gray-600">إجمالي التكلفة</div>
-        </div>
-        <div class="bg-green-50 p-4 rounded-lg">
-          <div class="text-2xl font-bold text-green-700">{{ getTotalProfit() }}</div>
-          <div class="text-sm text-gray-600">إجمالي الربح</div>
-        </div>
-        <div class="bg-yellow-50 p-4 rounded-lg">
-          <div class="text-2xl font-bold text-yellow-700">{{ getAverageProfitMargin() }}%</div>
-          <div class="text-sm text-gray-600">متوسط هامش الربح</div>
-        </div>
-      </div>
     </div>
   </div>
 </template>
