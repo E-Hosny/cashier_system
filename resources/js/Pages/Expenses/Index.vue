@@ -68,6 +68,7 @@
                   <th class="p-3">الوصف</th>
                   <th class="p-3">المبلغ</th>
                   <th class="p-3">التاريخ</th>
+                  <th class="p-3">الوقت</th>
                   <th class="p-3">الإجراءات</th>
                 </tr>
               </thead>
@@ -76,6 +77,7 @@
                   <td class="p-3">{{ expense.description }}</td>
                   <td class="p-3">{{ formatPrice(expense.amount) }} جنيه</td>
                   <td class="p-3">{{ expense.expense_date }}</td>
+                  <td class="p-3">{{ formatTime(expense.created_at) }}</td>
                   <td class="p-3">
                     <button @click="editExpense(expense)" class="btn-yellow text-xs">تعديل</button>
                     <button @click="deleteExpense(expense.id)" class="btn-red text-xs ml-2">حذف</button>
@@ -275,6 +277,12 @@ function formatDate(dateString) {
     month: 'long',
     day: 'numeric'
   });
+}
+
+function formatTime(dateString) {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  return date.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
 }
 </script>
 
