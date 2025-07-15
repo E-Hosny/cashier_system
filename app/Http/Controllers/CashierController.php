@@ -64,6 +64,7 @@ class CashierController extends Controller
             
             if ($result['success']) {
                 return response()->json([
+                    'success' => true,
                     'message' => $result['message'],
                     'offline_id' => $result['offline_id'],
                     'invoice_number' => $result['invoice_number'],
@@ -71,6 +72,7 @@ class CashierController extends Controller
                 ]);
             } else {
                 return response()->json([
+                    'success' => false,
                     'message' => $result['message'],
                     'is_offline' => true,
                 ], 500);
@@ -196,6 +198,7 @@ class CashierController extends Controller
         });
 
         return response()->json([
+            'success' => true,
             'message' => 'تم إنشاء الطلب بنجاح!',
             'order_id' => $order->id,
             'is_offline' => false,

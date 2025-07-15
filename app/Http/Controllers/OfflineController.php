@@ -167,18 +167,27 @@ class OfflineController extends Controller
      */
     public function printInvoice($offlineId)
     {
+        // محاولة العثور على الطلب في قاعدة البيانات أولاً
         $order = OfflineOrder::where('offline_id', $offlineId)
             ->where('user_id', Auth::id())
-            ->firstOrFail();
+            ->first();
 
-        // تحويل البيانات إلى نفس شكل البيانات المستخدمة في الفاتورة العادية
-        $orderData = [
-            'id' => $order->offline_id,
-            'invoice_number' => $order->invoice_number,
-            'created_at' => $order->created_at,
-            'total' => $order->total,
-            'items' => $order->items,
-        ];
+        if ($order) {
+            // الطلب موجود في قاعدة البيانات
+            $orderData = [
+                'id' => $order->offline_id,
+                'invoice_number' => $order->invoice_number,
+                'created_at' => $order->created_at,
+                'total' => $order->total,
+                'items' => $order->items,
+            ];
+        } else {
+            // الطلب محلي فقط - البحث في localStorage (سيتم التعامل معه من JavaScript)
+            return response()->json([
+                'success' => false,
+                'message' => 'الطلب غير موجود'
+            ], 404);
+        }
 
         return view('invoice-html', ['order' => (object) $orderData]);
     }
@@ -230,6 +239,45 @@ class OfflineController extends Controller
             'stats' => $stats,
             'recentOrders' => $recentOrders
         ]);
+    }
+
+    /**
+     * طباعة فاتورة طلب محلي (من localStorage)
+     */
+    public function printLocalInvoice(Request $request, $offlineId)
+    {
+        // الحصول على بيانات الطلب من JSON request
+        $requestData = $request->json()->all();
+        $orderDataJson = $requestData['order_data'] ?? null;
+        
+        if (!$orderDataJson) {
+            return response()->json([
+                'success' => false,
+                'message' => 'بيانات الطلب مطلوبة'
+            ], 400);
+        }
+
+        // تحويل JSON string إلى array
+        $orderData = json_decode($orderDataJson, true);
+        
+        if (!$orderData) {
+            return response()->json([
+                'success' => false,
+                'message' => 'بيانات الطلب غير صحيحة'
+            ], 400);
+        }
+
+        // تحويل البيانات إلى نفس شكل البيانات المستخدمة في الفاتورة العادية
+        $order = (object) [
+            'id' => $offlineId,
+            'invoice_number' => $orderData['invoice_number'],
+            'created_at' => \Carbon\Carbon::parse($orderData['created_at']),
+            'total' => $orderData['total'],
+            'items' => $orderData['items'],
+        ];
+
+        // إرجاع HTML بدلاً من JSON
+        return view('invoice-html', compact('order'));
     }
 
     /**

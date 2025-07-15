@@ -78,7 +78,7 @@
         <tbody>
             @foreach ($order->items as $item)
                 <tr>
-                    <td>{{ is_array($item) ? $item['product_name'] : $item->product_name }} ({{ is_array($item) ? ($item['size'] ?? '') : ($item->size ?? '') }})</td>
+                                    <td>{{ is_array($item) ? $item['product_name'] : $item->product_name }} ({{ is_array($item) ? ($item['size'] ?? '') : ($item->size ?? '') }})</td>
                     <td>{{ is_array($item) ? $item['quantity'] : $item->quantity }}</td>
                     <td>{{ number_format(is_array($item) ? $item['price'] : $item->price, 2) }}</td>
                     <td>{{ number_format((is_array($item) ? $item['quantity'] : $item->quantity) * (is_array($item) ? $item['price'] : $item->price), 2) }}</td>

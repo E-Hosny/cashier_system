@@ -72,6 +72,7 @@ Route::middleware([
         Route::get('/check-connection', [OfflineController::class, 'checkConnection'])->name('offline.check-connection');
         Route::get('/orders/{offlineId}', [OfflineController::class, 'show'])->name('offline.show');
         Route::get('/invoice/{offlineId}', [OfflineController::class, 'printInvoice'])->name('offline.invoice');
+        Route::post('/invoice-local/{offlineId}', [OfflineController::class, 'printLocalInvoice'])->name('offline.invoice-local');
         Route::get('/invoice-pdf/{offlineId}', [OfflineController::class, 'printInvoicePdf'])->name('offline.invoice-pdf');
         Route::get('/stats', [OfflineController::class, 'stats'])->name('offline.stats');
         Route::get('/export', [OfflineController::class, 'export'])->name('offline.export');
