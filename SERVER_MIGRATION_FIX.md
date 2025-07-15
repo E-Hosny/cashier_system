@@ -1,15 +1,21 @@
 # حل سريع لمشكلة الهجرة على السيرفر
 
-## المشكلة
+## المشكلة 1
 ```
 SQLSTATE[42S01]: Base table or view already exists: 1050 Table 'orders' already exists
 ```
 
+## المشكلة 2
+```
+SQLSTATE[42S21]: Column already exists: 1060 Duplicate column name 'cashier_shift_id'
+```
+
 ## الحل السريع
 
-### 1. حذف ملف الهجرة المكرر
+### 1. حذف ملفات الهجرة المكررة
 ```bash
 rm database/migrations/2025_01_15_000001_create_orders_table.php
+rm database/migrations/2025_01_15_000002_add_cashier_shift_id_to_orders_table.php
 ```
 
 ### 2. مسح الكاش
@@ -34,4 +40,4 @@ php artisan migrate:status
 - ✅ جميع الجداول موجودة ومحدثة
 
 ---
-**ملاحظة:** هذا الحل آمن لأن جدول `orders` موجود بالفعل في قاعدة البيانات. 
+**ملاحظة:** هذا الحل آمن لأن جدول `orders` وأعمدةه موجودة بالفعل في قاعدة البيانات. 
