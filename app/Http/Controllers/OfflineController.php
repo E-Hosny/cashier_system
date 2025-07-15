@@ -162,6 +162,56 @@ class OfflineController extends Controller
         ]);
     }
 
+    /**
+     * طباعة فاتورة طلب في وضع عدم الاتصال
+     */
+    public function printInvoice($offlineId)
+    {
+        $order = OfflineOrder::where('offline_id', $offlineId)
+            ->where('user_id', Auth::id())
+            ->firstOrFail();
+
+        // تحويل البيانات إلى نفس شكل البيانات المستخدمة في الفاتورة العادية
+        $orderData = [
+            'id' => $order->offline_id,
+            'invoice_number' => $order->invoice_number,
+            'created_at' => $order->created_at,
+            'total' => $order->total,
+            'items' => $order->items,
+        ];
+
+        return view('invoice-html', ['order' => (object) $orderData]);
+    }
+
+    /**
+     * طباعة فاتورة PDF لطلب في وضع عدم الاتصال
+     */
+    public function printInvoicePdf($offlineId)
+    {
+        $order = OfflineOrder::where('offline_id', $offlineId)
+            ->where('user_id', Auth::id())
+            ->firstOrFail();
+
+        // تحويل البيانات إلى نفس شكل البيانات المستخدمة في الفاتورة العادية
+        $orderData = [
+            'id' => $order->offline_id,
+            'invoice_number' => $order->invoice_number,
+            'created_at' => $order->created_at,
+            'total' => $order->total,
+            'items' => $order->items,
+        ];
+
+        $mpdf = new \Mpdf\Mpdf([
+            'format' => [80, 297],
+            'default_font' => 'Arial',
+            'mode' => 'utf-8',
+        ]);
+
+        $html = view('invoice-html', ['order' => (object) $orderData])->render();
+        $mpdf->WriteHTML($html);
+        return $mpdf->Output("invoice_{$order->offline_id}.pdf", 'I');
+    }
+
 
 
     /**

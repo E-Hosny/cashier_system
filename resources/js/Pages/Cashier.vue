@@ -608,54 +608,8 @@ export default {
           iframe.onload = () => {
             console.log('تم تحميل فاتورة الأوفلاين - الطباعة ستتم تلقائياً');
           };
-          // بناء صفوف المنتجات
-          let itemsHtml = '';
-          for (const item of this.cart) {
-            const sizeText = item.size ? '(' + item.size + ')' : '';
-            itemsHtml += '<tr><td>' + item.name + ' ' + sizeText + '</td><td>' + item.quantity + '</td><td>' + item.price + ' ريال</td><td>' + (item.quantity * item.price).toFixed(2) + ' ريال</td></tr>';
-          }
-          // بناء الفاتورة
-          const invoiceHtml = '<!DOCTYPE html>' +
-            '<html dir="rtl">' +
-            '<head>' +
-              '<meta charset="UTF-8">' +
-              '<title>فاتورة - ' + orderData.invoice_number + '</title>' +
-              '<style>' +
-                'body{font-family:Arial,sans-serif;margin:0;padding:20px}.header{text-align:center;margin-bottom:20px}.logo{width:80px;height:80px}.items-table{width:100%;border-collapse:collapse;margin-bottom:20px}.items-table th,.items-table td{border:1px solid #ddd;padding:8px;text-align:right}.total{font-weight:bold;font-size:18px;text-align:left}.footer{margin-top:30px;text-align:center;font-size:12px;color:#666}.offline-notice{background:#fff3cd;border:1px solid #ffeaa7;padding:5px;margin:10px 0;border-radius:4px;text-align:center;font-size:12px;color:#856404}@media print{body{margin:0}}' +
-              '</style>' +
-            '</head>' +
-            '<body>' +
-              '<div class="header">' +
-                '<img src="/images/mylogo.png" alt="Logo" class="logo">' +
-                '<h1>فاتورة مبيعات</h1>' +
-                '<p>رقم الفاتورة: ' + orderData.invoice_number + '</p>' +
-                '<p>التاريخ: ' + new Date().toLocaleDateString('ar-SA') + '</p>' +
-                '<p>الوقت: ' + new Date().toLocaleTimeString('ar-SA') + '</p>' +
-                '<div class="offline-notice">⚠️ تم إنشاء هذه الفاتورة في وضع عدم الاتصال</div>' +
-              '</div>' +
-              '<table class="items-table">' +
-                '<thead>' +
-                  '<tr>' +
-                    '<th>المنتج</th>' +
-                    '<th>الكمية</th>' +
-                    '<th>السعر</th>' +
-                    '<th>الإجمالي</th>' +
-                  '</tr>' +
-                '</thead>' +
-                '<tbody>' + itemsHtml + '</tbody>' +
-              '</table>' +
-              '<div class="total">' +
-                '<p>الإجمالي: ' + this.totalAmount + ' ريال</p>' +
-                '<p>طريقة الدفع: نقداً</p>' +
-              '</div>' +
-              '<div class="footer">' +
-                '<p>شكراً لزيارتكم</p>' +
-                '<p>سيتم مزامنة هذه الفاتورة عند عودة الاتصال</p>' +
-              '</div>' +
-              '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print()},500)}</scr' + 'ipt>' +
-            '</body>' +
-            '</html>';
-          iframe.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(invoiceHtml);
+          // استخدام نفس قالب الفاتورة الأصلي
+          iframe.src = `/offline/invoice/${orderData.offline_id}`;
         }
       });
     },
