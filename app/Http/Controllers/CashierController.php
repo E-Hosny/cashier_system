@@ -55,6 +55,28 @@ class CashierController extends Controller
             'items.*.size' => 'nullable|string',
         ]);
 
+        // التحقق من حالة الاتصال
+        $offlineService = new \App\Services\OfflineService();
+        
+        if (!$offlineService::isOnline()) {
+            // إنشاء طلب في وضع عدم الاتصال
+            $result = $offlineService::createOfflineOrder($data);
+            
+            if ($result['success']) {
+                return response()->json([
+                    'message' => $result['message'],
+                    'offline_id' => $result['offline_id'],
+                    'invoice_number' => $result['invoice_number'],
+                    'is_offline' => true,
+                ]);
+            } else {
+                return response()->json([
+                    'message' => $result['message'],
+                    'is_offline' => true,
+                ], 500);
+            }
+        }
+
         $order = null;
         
         // تحسين الأداء: استخدام bulk operations بدلاً من عمليات فردية
@@ -176,6 +198,7 @@ class CashierController extends Controller
         return response()->json([
             'message' => 'تم إنشاء الطلب بنجاح!',
             'order_id' => $order->id,
+            'is_offline' => false,
         ]);
     }
 

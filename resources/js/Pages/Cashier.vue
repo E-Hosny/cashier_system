@@ -2,29 +2,49 @@
   <div class="h-screen flex flex-col" dir="rtl">
     <!-- Header ثابت -->
     <div class="flex-shrink-0 bg-white border-b border-gray-200 p-2 px-4">
-      <div class="flex justify-between items-center gap-2">
-        <h1 class="text-xl font-extrabold text-gray-800">🍹 واجهة الكاشير</h1>
-        <div class="flex items-center gap-4">
-          <!-- زر إدارة الوردية -->
-          <div class="flex items-center gap-2">
+              <div class="flex justify-between items-center gap-2">
+          <h1 class="text-xl font-extrabold text-gray-800">🍹 واجهة الكاشير</h1>
+          <div class="flex items-center gap-4">
+            <!-- مؤشر حالة الاتصال -->
+            <div class="flex items-center gap-2">
+              <div :class="[
+                'w-3 h-3 rounded-full animate-pulse',
+                isOnline ? 'bg-green-500' : 'bg-red-500'
+              ]"></div>
+              <span class="text-sm font-medium">
+                {{ isOnline ? 'متصل' : 'غير متصل' }}
+              </span>
+            </div>
+            
+            <!-- زر إدارة الوردية -->
+            <div class="flex items-center gap-2">
+              <button 
+                v-if="!currentShift" 
+                @click="showShiftModal = true"
+                class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+              >
+                🕐 بدء وردية
+              </button>
+              <button 
+                v-else 
+                @click="showCloseShiftModal = true"
+                class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+              >
+                🔒 تقفيل الوردية
+              </button>
+            </div>
+            
+            <!-- زر إدارة الطلبات في وضع عدم الاتصال -->
             <button 
-              v-if="!currentShift" 
-              @click="showShiftModal = true"
-              class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+              @click="goToOfflineOrders"
+              class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
             >
-              🕐 بدء وردية
+              📱 الطلبات المحفوظة
             </button>
-            <button 
-              v-else 
-              @click="showCloseShiftModal = true"
-              class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
-            >
-              🔒 تقفيل الوردية
-            </button>
+            
+            <img src="/images/mylogo.png" alt="Logo" class="w-14" />
           </div>
-          <img src="/images/mylogo.png" alt="Logo" class="w-14" />
         </div>
-      </div>
     </div>
 
     <!-- Main Content -->
@@ -165,6 +185,17 @@
     >
       <div class="bg-white rounded-lg shadow-lg overflow-hidden w-[320px] h-[500px] p-2">
         <iframe id="invoice-frame" class="w-full h-full" frameborder="0"></iframe>
+      </div>
+    </div>
+
+    <!-- إشعار وضع عدم الاتصال -->
+    <div
+      v-if="showOfflineNotification"
+      class="fixed top-4 right-4 bg-yellow-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-pulse"
+    >
+      <div class="flex items-center gap-2">
+        <span>⚠️</span>
+        <span>تم حفظ الطلب في وضع عدم الاتصال</span>
       </div>
     </div>
 
@@ -328,6 +359,8 @@
 </template>
 
 <script>
+import OfflineManager from '@/offline-manager.js';
+
 export default {
   props: {
     products: Array,
@@ -360,6 +393,11 @@ export default {
       cashAmount: 0,
       shiftNotes: '',
       salesDetails: [],
+      
+      // متغيرات حالة الاتصال
+      isOnline: true,
+      connectionCheckInterval: null,
+      showOfflineNotification: false,
     };
   },
   computed: {
@@ -453,7 +491,7 @@ export default {
     clearCart() {
       this.cart = [];
     },
-    checkout() {
+    async checkout() {
       this.isCheckoutLoading = true;
       
       const checkoutData = {
@@ -468,15 +506,46 @@ export default {
         payment_method: 'cash'
       };
 
-      // تحسين الأداء: إرسال البيانات بشكل محسن
-      axios.post('/store-order', checkoutData, {
-        timeout: 10000, // timeout 10 ثوانٍ
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
+      try {
+        // فحص الاتصال قبل محاولة إنشاء الطلب
+        await this.checkConnection();
+        console.log('حالة الاتصال:', this.isOnline);
+        
+        // التحقق من حالة الاتصال أولاً
+        if (!this.isOnline) {
+          console.log('محاولة إنشاء طلب أوفلاين...');
+          // إذا كان غير متصل، أنشئ طلب أوفلاين مباشرة
+          const offlineResponse = await axios.post('/offline/orders', checkoutData);
+          console.log('استجابة طلب الأوفلاين:', offlineResponse.data);
+          if (offlineResponse.data.success) {
+            this.orderId = offlineResponse.data.offline_id;
+            this.clearCart();
+            // طباعة الفاتورة مباشرة بدون رسالة تأكيد - مثل الوضع العادي
+            this.printOfflineInvoice(offlineResponse.data);
+          } else {
+            alert('فشل في إنشاء الطلب في وضع عدم الاتصال: ' + offlineResponse.data.message);
+          }
+          return;
         }
-      })
-        .then(response => {
+
+        // إذا كان متصل، حاول إنشاء طلب عادي
+        const response = await axios.post('/store-order', checkoutData, {
+          timeout: 10000, // timeout 10 ثوانٍ
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        });
+
+        if (response.data.is_offline) {
+          // الطلب تم إنشاؤه في وضع عدم الاتصال
+          this.orderId = response.data.offline_id;
+          this.clearCart();
+          
+          // طباعة الفاتورة مباشرة بدون رسالة تأكيد - مثل الوضع العادي
+          this.printOfflineInvoice(response.data);
+        } else {
+          // الطلب تم إنشاؤه بشكل طبيعي
           this.orderId = response.data.order_id;
           this.clearCart();
           
@@ -484,14 +553,111 @@ export default {
           setTimeout(() => {
             this.printInvoice();
           }, 100);
-        })
-        .catch(error => {
-          console.error('خطأ أثناء إصدار الفاتورة:', error.response?.data || error.message);
-          alert('حدث خطأ: ' + (error.response?.data?.message || 'يرجى مراجعة البيانات'));
-        })
-        .finally(() => {
-          this.isCheckoutLoading = false;
+        }
+      } catch (error) {
+        console.error('خطأ أثناء إصدار الفاتورة:', error);
+        console.error('تفاصيل الخطأ:', {
+          code: error.code,
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status
         });
+        
+        // إذا كان الخطأ بسبب عدم الاتصال، حاول إنشاء طلب في وضع عدم الاتصال
+        if (error.code === 'NETWORK_ERROR' || error.message.includes('Network Error') || error.code === 'ERR_NETWORK' || error.code === 'NS_ERROR_OFFLINE' || error.code === 'ERR_INTERNET_DISCONNECTED') {
+          console.log('محاولة إنشاء طلب أوفلاين بعد فشل الطلب العادي...');
+          try {
+            const offlineResponse = await axios.post('/offline/orders', checkoutData);
+            console.log('استجابة طلب الأوفلاين (بعد فشل):', offlineResponse.data);
+            if (offlineResponse.data.success) {
+              this.orderId = offlineResponse.data.offline_id;
+              this.clearCart();
+              // طباعة الفاتورة مباشرة بدون رسالة تأكيد - مثل الوضع العادي
+              this.printOfflineInvoice(offlineResponse.data);
+            } else {
+              alert('فشل في إنشاء الطلب في وضع عدم الاتصال: ' + offlineResponse.data.message);
+            }
+          } catch (offlineError) {
+            console.error('خطأ في إنشاء طلب أوفلاين:', offlineError);
+            console.error('تفاصيل خطأ الأوفلاين:', {
+              code: offlineError.code,
+              message: offlineError.message,
+              response: offlineError.response?.data,
+              status: offlineError.response?.status
+            });
+            alert('حدث خطأ في إنشاء الطلب: ' + (offlineError.response?.data?.message || 'يرجى مراجعة البيانات'));
+          }
+        } else {
+          alert('حدث خطأ: ' + (error.response?.data?.message || 'يرجى مراجعة البيانات'));
+        }
+      } finally {
+        this.isCheckoutLoading = false;
+      }
+    },
+
+    // طباعة فاتورة في وضع عدم الاتصال
+    printOfflineInvoice(orderData) {
+      this.showOfflineNotification = true;
+      setTimeout(() => {
+        this.showOfflineNotification = false;
+      }, 3000);
+      this.iframeVisible = true;
+      this.$nextTick(() => {
+        const iframe = document.getElementById('invoice-frame');
+        if (iframe) {
+          iframe.onload = () => {
+            console.log('تم تحميل فاتورة الأوفلاين - الطباعة ستتم تلقائياً');
+          };
+          // بناء صفوف المنتجات
+          let itemsHtml = '';
+          for (const item of this.cart) {
+            const sizeText = item.size ? '(' + item.size + ')' : '';
+            itemsHtml += '<tr><td>' + item.name + ' ' + sizeText + '</td><td>' + item.quantity + '</td><td>' + item.price + ' ريال</td><td>' + (item.quantity * item.price).toFixed(2) + ' ريال</td></tr>';
+          }
+          // بناء الفاتورة
+          const invoiceHtml = '<!DOCTYPE html>' +
+            '<html dir="rtl">' +
+            '<head>' +
+              '<meta charset="UTF-8">' +
+              '<title>فاتورة - ' + orderData.invoice_number + '</title>' +
+              '<style>' +
+                'body{font-family:Arial,sans-serif;margin:0;padding:20px}.header{text-align:center;margin-bottom:20px}.logo{width:80px;height:80px}.items-table{width:100%;border-collapse:collapse;margin-bottom:20px}.items-table th,.items-table td{border:1px solid #ddd;padding:8px;text-align:right}.total{font-weight:bold;font-size:18px;text-align:left}.footer{margin-top:30px;text-align:center;font-size:12px;color:#666}.offline-notice{background:#fff3cd;border:1px solid #ffeaa7;padding:5px;margin:10px 0;border-radius:4px;text-align:center;font-size:12px;color:#856404}@media print{body{margin:0}}' +
+              '</style>' +
+            '</head>' +
+            '<body>' +
+              '<div class="header">' +
+                '<img src="/images/mylogo.png" alt="Logo" class="logo">' +
+                '<h1>فاتورة مبيعات</h1>' +
+                '<p>رقم الفاتورة: ' + orderData.invoice_number + '</p>' +
+                '<p>التاريخ: ' + new Date().toLocaleDateString('ar-SA') + '</p>' +
+                '<p>الوقت: ' + new Date().toLocaleTimeString('ar-SA') + '</p>' +
+                '<div class="offline-notice">⚠️ تم إنشاء هذه الفاتورة في وضع عدم الاتصال</div>' +
+              '</div>' +
+              '<table class="items-table">' +
+                '<thead>' +
+                  '<tr>' +
+                    '<th>المنتج</th>' +
+                    '<th>الكمية</th>' +
+                    '<th>السعر</th>' +
+                    '<th>الإجمالي</th>' +
+                  '</tr>' +
+                '</thead>' +
+                '<tbody>' + itemsHtml + '</tbody>' +
+              '</table>' +
+              '<div class="total">' +
+                '<p>الإجمالي: ' + this.totalAmount + ' ريال</p>' +
+                '<p>طريقة الدفع: نقداً</p>' +
+              '</div>' +
+              '<div class="footer">' +
+                '<p>شكراً لزيارتكم</p>' +
+                '<p>سيتم مزامنة هذه الفاتورة عند عودة الاتصال</p>' +
+              '</div>' +
+              '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print()},500)}</scr' + 'ipt>' +
+            '</body>' +
+            '</html>';
+          iframe.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(invoiceHtml);
+        }
+      });
     },
     printInvoice() {
       this.iframeVisible = true;
@@ -638,6 +804,92 @@ export default {
       if (difference < 0) return 'text-red-600 font-bold';
       return 'text-gray-600 font-bold';
     },
+
+    // الانتقال إلى صفحة الطلبات في وضع عدم الاتصال
+    goToOfflineOrders() {
+      this.$inertia.visit('/offline');
+    },
+
+    // التحقق من حالة الاتصال
+    async checkConnection() {
+      try {
+        const response = await axios.get('/offline/check-connection', {
+          timeout: 5000 // timeout 5 ثوانٍ
+        });
+        const wasOffline = !this.isOnline;
+        this.isOnline = response.data.isOnline;
+        
+        // إذا كان متصل الآن وكان غير متصل سابقاً، قم بالمزامنة التلقائية
+        if (this.isOnline && wasOffline) {
+          console.log('تم استعادة الاتصال - بدء المزامنة التلقائية...');
+          await this.autoSyncOfflineOrders();
+        }
+      } catch (error) {
+        console.log('خطأ في فحص الاتصال:', error.message);
+        this.isOnline = false;
+      }
+    },
+
+    // المزامنة التلقائية للطلبات في وضع عدم الاتصال
+    async autoSyncOfflineOrders() {
+      try {
+        console.log('بدء المزامنة التلقائية...');
+        const response = await axios.post('/offline/sync');
+        
+        if (response.data.success) {
+          const syncedCount = response.data.synced_count || 0;
+          if (syncedCount > 0) {
+            // عرض إشعار للمستخدم
+            this.showNotification(`تم مزامنة ${syncedCount} طلب تلقائياً بنجاح!`, 'success');
+          }
+        } else {
+          console.error('فشل في المزامنة التلقائية:', response.data.message);
+        }
+      } catch (error) {
+        console.error('خطأ في المزامنة التلقائية:', error);
+      }
+    },
+
+    // عرض إشعار للمستخدم
+    showNotification(message, type = 'info') {
+      // إنشاء عنصر الإشعار
+      const notification = document.createElement('div');
+      notification.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-sm transition-all duration-300 ${
+        type === 'success' ? 'bg-green-500 text-white' : 
+        type === 'error' ? 'bg-red-500 text-white' : 
+        'bg-blue-500 text-white'
+      }`;
+      notification.innerHTML = `
+        <div class="flex items-center justify-between">
+          <span>${message}</span>
+          <button onclick="this.parentElement.parentElement.remove()" class="ml-2 text-white hover:text-gray-200">×</button>
+        </div>
+      `;
+      
+      document.body.appendChild(notification);
+      
+      // إزالة الإشعار تلقائياً بعد 5 ثوانٍ
+      setTimeout(() => {
+        if (notification.parentElement) {
+          notification.remove();
+        }
+      }, 5000);
+    },
+
+    // بدء فحص الاتصال الدوري
+    startConnectionCheck() {
+      this.connectionCheckInterval = setInterval(() => {
+        this.checkConnection();
+      }, 10000); // فحص كل 10 ثوانٍ
+    },
+
+    // إيقاف فحص الاتصال
+    stopConnectionCheck() {
+      if (this.connectionCheckInterval) {
+        clearInterval(this.connectionCheckInterval);
+        this.connectionCheckInterval = null;
+      }
+    },
   },
   mounted() {
     this.initializeProducts();
@@ -649,10 +901,15 @@ export default {
     
     // الحصول على الوردية الحالية
     this.getCurrentShift();
+    
+    // بدء فحص الاتصال
+    this.checkConnection();
+    this.startConnectionCheck();
   },
   beforeDestroy() {
     document.removeEventListener('keydown', this.handleEscape);
     window.removeEventListener('message', this.handleIframeMessage);
+    this.stopConnectionCheck();
   },
   watch: {
       products() {
