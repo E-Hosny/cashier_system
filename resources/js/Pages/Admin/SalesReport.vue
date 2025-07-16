@@ -95,7 +95,12 @@
           <!-- إجمالي المصروفات مع رابط -->
           <div v-if="sales.length > 0" class="mt-2 text-lg font-bold text-center bg-gray-100 p-3 rounded-lg cursor-pointer hover:bg-gray-200 transition-colors" @click="goToExpenses">
             💸 إجمالي المصروفات: {{ formatPrice(totalExpenses) }}
-            <span class="text-sm text-blue-600 block mt-1">اضغط هنا لعرض تفاصيل المصروفات</span>
+            <span class="text-sm text-blue-600 block mt-1">
+              اضغط هنا لعرض تفاصيل المصروفات 
+              <span v-if="getSelectedDateText()" class="text-gray-600">
+                ({{ getSelectedDateText() }})
+              </span>
+            </span>
           </div>
         </div>
       </div>
@@ -166,11 +171,52 @@ export default {
       const map = { small: 'صغير', medium: 'وسط', large: 'كبير' };
       return map[size] || size;
     },
-    // دالة الانتقال لصفحة المصروفات مع التاريخ الحالي
+    // دالة الانتقال لصفحة المصروفات مع التاريخ المحدد
     goToExpenses() {
-      const today = new Date().toISOString().slice(0, 10);
-      Inertia.get(route('expenses.index'), {
-        expense_date: today
+      let expenseParams = {};
+      
+      // تحديد نوع التاريخ المحدد
+      if (this.dateFrom && !this.dateTo) {
+        // إذا تم تحديد يوم واحد فقط
+        expenseParams = {
+          expense_date: this.dateFrom
+        };
+      } else if (this.dateFrom && this.dateTo) {
+        // إذا تم تحديد فترة من-إلى
+        expenseParams = {
+          from: this.dateFrom,
+          to: this.dateTo
+        };
+      } else {
+        // افتراضياً: اليوم الحالي
+        expenseParams = {
+          expense_date: new Date().toISOString().slice(0, 10)
+        };
+      }
+      
+      Inertia.get(route('expenses.index'), expenseParams);
+    },
+    // دالة لعرض نص التاريخ المحدد
+    getSelectedDateText() {
+      if (this.dateFrom && !this.dateTo) {
+        // يوم واحد
+        return this.formatDateForDisplay(this.dateFrom);
+      } else if (this.dateFrom && this.dateTo) {
+        // فترة
+        return `من ${this.formatDateForDisplay(this.dateFrom)} إلى ${this.formatDateForDisplay(this.dateTo)}`;
+      } else {
+        // اليوم الحالي
+        return this.formatDateForDisplay(new Date().toISOString().slice(0, 10));
+      }
+    },
+    // دالة تنسيق التاريخ للعرض
+    formatDateForDisplay(dateString) {
+      if (!dateString) return '';
+      const date = new Date(dateString);
+      return date.toLocaleDateString('ar-EG', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
       });
     }
   },
