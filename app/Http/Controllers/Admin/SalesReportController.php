@@ -26,12 +26,15 @@ class SalesReportController extends Controller
             if ($dateTo) {
                 // فترة من - إلى
                 $query->whereBetween('created_at', [
-                    Carbon::parse($dateFrom)->startOfDay(),
-                    Carbon::parse($dateTo)->endOfDay()
+                    Carbon::parse($dateFrom)->setTime(7, 0, 0), // بداية من الساعة 7 صباحاً
+                    Carbon::parse($dateTo)->setTime(7, 0, 0)    // إلى الساعة 7 صباحاً من اليوم التالي
                 ]);
             } else {
-                // يوم واحد فقط
-                $query->whereDate('created_at', $dateFrom);
+                // يوم واحد فقط - من الساعة 7 صباحاً إلى الساعة 7 صباحاً من اليوم التالي
+                $query->whereBetween('created_at', [
+                    Carbon::parse($dateFrom)->setTime(7, 0, 0), // بداية من الساعة 7 صباحاً
+                    Carbon::parse($dateFrom)->addDay()->setTime(7, 0, 0) // إلى الساعة 7 صباحاً من اليوم التالي
+                ]);
             }
         })
         ->with(['product.category']);
@@ -60,13 +63,16 @@ class SalesReportController extends Controller
                 Carbon::parse($dateTo)->toDateString()
             ])->sum('total_amount');
 
-            $totalExpenses = \App\Models\Expense::whereBetween('expense_date', [
-                Carbon::parse($dateFrom)->toDateString(),
-                Carbon::parse($dateTo)->toDateString()
+            $totalExpenses = \App\Models\Expense::whereBetween('created_at', [
+                Carbon::parse($dateFrom)->setTime(7, 0, 0), // بداية من الساعة 7 صباحاً
+                Carbon::parse($dateTo)->setTime(7, 0, 0)    // إلى الساعة 7 صباحاً من اليوم التالي
             ])->sum('amount');
         } else {
             $totalPurchases = \App\Models\Purchase::whereDate('purchase_date', $dateFrom)->sum('total_amount');
-            $totalExpenses = \App\Models\Expense::whereDate('expense_date', $dateFrom)->sum('amount');
+            $totalExpenses = \App\Models\Expense::whereBetween('created_at', [
+                Carbon::parse($dateFrom)->setTime(7, 0, 0), // بداية من الساعة 7 صباحاً
+                Carbon::parse($dateFrom)->addDay()->setTime(7, 0, 0) // إلى الساعة 7 صباحاً من اليوم التالي
+            ])->sum('amount');
         }
 
         $totalSales = $sales->sum('total_price');

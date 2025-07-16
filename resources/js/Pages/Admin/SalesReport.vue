@@ -49,6 +49,7 @@
           
           <div class="mb-2 text-sm text-gray-500 text-end">
             يمكنك اختيار يوم واحد فقط أو تحديد فترة من - إلى، مع إمكانية تصفية النتائج حسب الفئة أو المنتج.
+            <span class="text-blue-600 font-medium">⚠️ ملاحظة: المبيعات تُحسب من الساعة 7:00 صباحاً إلى الساعة 7:00 صباحاً من اليوم التالي</span>
           </div>
 
           <!-- جدول المبيعات -->
@@ -129,7 +130,7 @@ export default {
   },
   data() {
     return {
-      dateFrom: this.date_from || this.date, // تعيين التاريخ الافتراضي
+      dateFrom: this.date_from || this.date || this.getTodayDate(), // تعيين التاريخ الافتراضي
       dateTo: this.date_to || '', // اجعل النهاية فارغة افتراضيًا
       selectedCategoryId: this.category_id || '',
       selectedProductId: this.product_id || '',
@@ -143,7 +144,17 @@ export default {
       return this.products.filter(product => product.category_id == this.selectedCategoryId);
     }
   },
+  mounted() {
+    // إذا لم يكن هناك تاريخ محدد، قم بجلب البيانات للتاريخ الحالي
+    if (!this.date_from && !this.date && !this.date_to) {
+      this.fetchSales();
+    }
+  },
   methods: {
+    // دالة للحصول على تاريخ اليوم الحالي
+    getTodayDate() {
+      return new Date().toISOString().slice(0, 10);
+    },
     fetchSales() {
       const params = { 
         date_from: this.dateFrom,

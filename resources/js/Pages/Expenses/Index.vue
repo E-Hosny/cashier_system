@@ -41,6 +41,11 @@
             </div>
           </form>
 
+          <!-- ملاحظة توضيحية -->
+          <div class="mb-4 text-sm text-blue-600 bg-blue-50 p-3 rounded-lg">
+            ⚠️ ملاحظة: المصروفات تُحسب من الساعة 7:00 صباحاً إلى الساعة 7:00 صباحاً من اليوم التالي
+          </div>
+
           <h3 class="text-lg font-bold mb-4">إضافة مصروف جديد</h3>
           <form @submit.prevent="submitExpense" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <div>
@@ -95,19 +100,19 @@
             </div>
             <div class="mt-2 text-sm text-blue-600">
               <span v-if="filtersLocal.expense_date && !filtersLocal.from && !filtersLocal.to">
-                ليوم {{ formatDate(filtersLocal.expense_date) }}
+                ليوم {{ formatDate(filtersLocal.expense_date) }} (من الساعة 7:00 صباحاً إلى الساعة 7:00 صباحاً من اليوم التالي)
               </span>
               <span v-else-if="filtersLocal.from && filtersLocal.to">
-                للفترة من {{ formatDate(filtersLocal.from) }} إلى {{ formatDate(filtersLocal.to) }}
+                للفترة من {{ formatDate(filtersLocal.from) }} إلى {{ formatDate(filtersLocal.to) }} (من الساعة 7:00 صباحاً إلى الساعة 7:00 صباحاً من اليوم التالي)
               </span>
               <span v-else-if="filtersLocal.from && !filtersLocal.to">
-                من {{ formatDate(filtersLocal.from) }}
+                من {{ formatDate(filtersLocal.from) }} (من الساعة 7:00 صباحاً)
               </span>
               <span v-else-if="filtersLocal.to && !filtersLocal.from">
-                إلى {{ formatDate(filtersLocal.to) }}
+                إلى {{ formatDate(filtersLocal.to) }} (إلى الساعة 7:00 صباحاً من اليوم التالي)
               </span>
               <span v-else>
-                ليوم {{ formatDate(new Date().toISOString().slice(0, 10)) }}
+                ليوم {{ formatDate(new Date().toISOString().slice(0, 10)) }} (من الساعة 7:00 صباحاً إلى الساعة 7:00 صباحاً من الغد)
               </span>
             </div>
           </div>
@@ -143,13 +148,14 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
 const page = usePage();
 const props = defineProps({
   expenses: Array,
+  totalExpenses: Number,
   filters: Object,
 });
 
@@ -157,6 +163,13 @@ const filtersLocal = ref({
   expense_date: props.filters?.expense_date || new Date().toISOString().slice(0, 10),
   from: props.filters?.from || '',
   to: props.filters?.to || '',
+});
+
+// تحميل البيانات تلقائياً عند فتح الصفحة
+onMounted(() => {
+  if (!props.filters?.expense_date && !props.filters?.from && !props.filters?.to) {
+    filterExpenses();
+  }
 });
 
 // مراقبة التغييرات في الحقول لتنظيف الحقول الأخرى
@@ -259,11 +272,6 @@ function deleteExpense(id) {
     router.delete(route('expenses.destroy', id));
   }
 }
-
-// حساب إجمالي المصروفات
-const totalExpenses = computed(() => {
-  return props.expenses.reduce((total, expense) => total + Number(expense.amount), 0);
-});
 
 function formatPrice(price) {
   return price ? Number(price).toFixed(2) : '0.00';
