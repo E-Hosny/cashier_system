@@ -2,29 +2,49 @@
   <div class="h-screen flex flex-col" dir="rtl">
     <!-- Header ثابت -->
     <div class="flex-shrink-0 bg-white border-b border-gray-200 p-2 px-4">
-      <div class="flex justify-between items-center gap-2">
-        <h1 class="text-xl font-extrabold text-gray-800">🍹 واجهة الكاشير</h1>
-        <div class="flex items-center gap-4">
-          <!-- زر إدارة الوردية -->
-          <div class="flex items-center gap-2">
+              <div class="flex justify-between items-center gap-2">
+          <h1 class="text-xl font-extrabold text-gray-800">🍹 واجهة الكاشير</h1>
+          <div class="flex items-center gap-4">
+            <!-- مؤشر حالة الاتصال -->
+            <div class="flex items-center gap-2">
+              <div :class="[
+                'w-3 h-3 rounded-full animate-pulse',
+                isOnline ? 'bg-green-500' : 'bg-red-500'
+              ]"></div>
+              <span class="text-sm font-medium">
+                {{ isOnline ? 'متصل' : 'غير متصل' }}
+              </span>
+            </div>
+            
+            <!-- زر إدارة الوردية -->
+            <div class="flex items-center gap-2">
+              <button 
+                v-if="!currentShift" 
+                @click="showShiftModal = true"
+                class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+              >
+                🕐 بدء وردية
+              </button>
+              <button 
+                v-else 
+                @click="showCloseShiftModal = true"
+                class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+              >
+                🔒 تقفيل الوردية
+              </button>
+            </div>
+            
+            <!-- زر إدارة الطلبات في وضع عدم الاتصال -->
             <button 
-              v-if="!currentShift" 
-              @click="showShiftModal = true"
-              class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+              @click="goToOfflineOrders"
+              class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
             >
-              🕐 بدء وردية
+              📱 الطلبات المحفوظة
             </button>
-            <button 
-              v-else 
-              @click="showCloseShiftModal = true"
-              class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
-            >
-              🔒 تقفيل الوردية
-            </button>
+            
+            <img src="/images/mylogo.png" alt="Logo" class="w-14" />
           </div>
-          <img src="/images/mylogo.png" alt="Logo" class="w-14" />
         </div>
-      </div>
     </div>
 
     <!-- Main Content -->
@@ -167,6 +187,8 @@
         <iframe id="invoice-frame" class="w-full h-full" frameborder="0"></iframe>
       </div>
     </div>
+
+
 
     <!-- نافذة بدء الوردية -->
     <div
@@ -328,6 +350,8 @@
 </template>
 
 <script>
+import OfflineManager from '@/offline-manager.js';
+
 export default {
   props: {
     products: Array,
@@ -360,6 +384,10 @@ export default {
       cashAmount: 0,
       shiftNotes: '',
       salesDetails: [],
+      
+      // متغيرات حالة الاتصال
+      isOnline: true,
+      connectionCheckInterval: null,
     };
   },
   computed: {
@@ -419,7 +447,7 @@ export default {
                     product_id: product.id,
                     name: product.name,
                     size: variant.size,
-                    price: variant.price,
+                    price: parseFloat(variant.price) || 0,
                     quantity: quantity
                 });
             }
@@ -435,7 +463,7 @@ export default {
                     product_id: product.id,
                     name: product.name,
                     size: null,
-                    price: product.price || 0,
+                    price: parseFloat(product.price) || 0,
                     quantity: quantity
                 });
             }
@@ -453,46 +481,298 @@ export default {
     clearCart() {
       this.cart = [];
     },
-    checkout() {
+    async checkout() {
       this.isCheckoutLoading = true;
       
       const checkoutData = {
         items: this.cart.map(item => ({
           product_id: item.product_id,
           product_name: item.name,
-          quantity: item.quantity,
-          price: item.price,
+          quantity: parseInt(item.quantity) || 0,
+          price: parseFloat(item.price) || 0,
           size: item.size
         })),
-        total_price: this.totalAmount,
+        total_price: parseFloat(this.totalAmount) || 0,
         payment_method: 'cash'
       };
 
-      // تحسين الأداء: إرسال البيانات بشكل محسن
-      axios.post('/store-order', checkoutData, {
-        timeout: 10000, // timeout 10 ثوانٍ
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
+      try {
+        // فحص شامل لحالة الاتصال
+        const connectionStatus = await this.comprehensiveConnectionCheck();
+        console.log('حالة الاتصال الشاملة:', connectionStatus);
+        
+        if (!connectionStatus.isOnline) {
+          console.log('عدم الاتصال مكتشف - إنشاء طلب أوفلاين محلي...');
+          console.log('سبب عدم الاتصال:', connectionStatus.reason);
+          
+          // تحديث حالة الاتصال
+          this.isOnline = false;
+          
+          // إنشاء طلب أوفلاين محلي
+          const offlineOrder = this.createLocalOfflineOrder(checkoutData);
+          if (offlineOrder) {
+            this.orderId = offlineOrder.offline_id;
+            this.clearCart();
+            // طباعة الفاتورة مباشرة بدون رسالة تأكيد - مثل الوضع العادي
+            this.printLocalOfflineInvoice(offlineOrder);
+            
+
+          } else {
+            alert('فشل في إنشاء الطلب في وضع عدم الاتصال');
+          }
+          return;
         }
-      })
-        .then(response => {
+
+        // إذا كان متصل، حاول إنشاء طلب عادي
+        console.log('محاولة إنشاء طلب عادي...');
+        const response = await axios.post('/store-order', checkoutData, {
+          timeout: 10000, // timeout 10 ثوانٍ
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        });
+
+        if (response.data.success) {
           this.orderId = response.data.order_id;
           this.clearCart();
-          
-          // تحسين الأداء: تقليل وقت الانتظار قبل الطباعة
-          setTimeout(() => {
-            this.printInvoice();
-          }, 100);
-        })
-        .catch(error => {
-          console.error('خطأ أثناء إصدار الفاتورة:', error.response?.data || error.message);
-          alert('حدث خطأ: ' + (error.response?.data?.message || 'يرجى مراجعة البيانات'));
-        })
-        .finally(() => {
-          this.isCheckoutLoading = false;
+          this.printInvoice();
+        } else {
+          alert('فشل في إنشاء الطلب: ' + response.data.message);
+        }
+      } catch (error) {
+        console.error('خطأ أثناء إصدار الفاتورة:', error);
+        console.error('تفاصيل الخطأ:', {
+          code: error.code,
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status
         });
+        
+        // فحص ما إذا كان الخطأ بسبب انقطاع الشبكة
+        if (this.isNetworkError(error)) {
+          console.log('خطأ شبكة مكتشف - محاولة إنشاء طلب أوفلاين محلي...');
+          console.log('تفاصيل خطأ الشبكة:', {
+            name: error.name,
+            message: error.message,
+            code: error.code
+          });
+          
+          try {
+            // تحديث حالة الاتصال
+            this.isOnline = false;
+            
+            // إنشاء طلب أوفلاين محلي بدون الحاجة للاتصال بالخادم
+            const offlineOrder = this.createLocalOfflineOrder(checkoutData);
+            if (offlineOrder) {
+              this.orderId = offlineOrder.offline_id;
+              this.clearCart();
+              // طباعة الفاتورة مباشرة بدون رسالة تأكيد - مثل الوضع العادي
+              this.printLocalOfflineInvoice(offlineOrder);
+              
+
+            } else {
+              alert('فشل في إنشاء الطلب في وضع عدم الاتصال');
+            }
+          } catch (offlineError) {
+            console.error('خطأ في إنشاء طلب أوفلاين محلي:', offlineError);
+            alert('انقطع الاتصال بالإنترنت ولا يمكن إنشاء الطلب. يرجى التحقق من الاتصال والمحاولة مرة أخرى.');
+          }
+        } else {
+          alert('حدث خطأ: ' + (error.response?.data?.message || 'يرجى مراجعة البيانات'));
+        }
+      } finally {
+        this.isCheckoutLoading = false;
+      }
     },
+
+    // إنشاء طلب أوفلاين محلي بدون الحاجة للاتصال بالخادم
+    createLocalOfflineOrder(checkoutData) {
+      try {
+        // إنشاء معرف فريد للطلب
+        const offlineId = 'OFF_' + new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + '_' + Math.random().toString(36).substr(2, 8);
+        
+        // إنشاء رقم الفاتورة
+        const invoiceNumber = this.generateLocalInvoiceNumber();
+        
+        // إنشاء الطلب المحلي
+        const offlineOrder = {
+          offline_id: offlineId,
+          invoice_number: invoiceNumber,
+          total: checkoutData.total_price,
+          payment_method: checkoutData.payment_method,
+          items: checkoutData.items,
+          created_at: new Date().toISOString(),
+          status: 'pending_sync'
+        };
+        
+        // حفظ الطلب في localStorage
+        this.saveLocalOfflineOrder(offlineOrder);
+        
+        console.log('تم إنشاء طلب أوفلاين محلي:', offlineOrder);
+        
+        return offlineOrder;
+      } catch (error) {
+        console.error('خطأ في إنشاء طلب أوفلاين محلي:', error);
+        return null;
+      }
+    },
+
+    // إنشاء رقم فاتورة محلي
+    generateLocalInvoiceNumber() {
+      const today = new Date();
+      const dateStr = today.getFullYear().toString().slice(-2) + 
+                     (today.getMonth() + 1).toString().padStart(2, '0') + 
+                     today.getDate().toString().padStart(2, '0');
+      
+      // الحصول على آخر رقم فاتورة محلي
+      const lastInvoice = localStorage.getItem('last_local_invoice_number');
+      let sequence = 1;
+      
+      if (lastInvoice && lastInvoice.startsWith(dateStr)) {
+        sequence = parseInt(lastInvoice.slice(-3)) + 1;
+      }
+      
+      const invoiceNumber = dateStr + '-' + sequence.toString().padStart(3, '0');
+      localStorage.setItem('last_local_invoice_number', invoiceNumber);
+      
+      return invoiceNumber;
+    },
+
+    // حفظ طلب أوفلاين محلي
+    saveLocalOfflineOrder(offlineOrder) {
+      try {
+        const offlineOrders = JSON.parse(localStorage.getItem('local_offline_orders') || '[]');
+        offlineOrders.push(offlineOrder);
+        localStorage.setItem('local_offline_orders', JSON.stringify(offlineOrders));
+        
+        console.log('تم حفظ طلب أوفلاين محلي في localStorage');
+      } catch (error) {
+        console.error('خطأ في حفظ طلب أوفلاين محلي:', error);
+      }
+    },
+
+    // طباعة فاتورة أوفلاين محلية
+    printLocalOfflineInvoice(offlineOrder) {
+      // إنشاء الفاتورة محلياً بدون الحاجة لإرسال طلب إلى الخادم
+      this.iframeVisible = true;
+
+      this.$nextTick(() => {
+        const iframe = document.getElementById('invoice-frame');
+        if (iframe) {
+          iframe.onload = () => {
+            // الطباعة التلقائية ستتم من داخل الفاتورة HTML
+            console.log('تم تحميل الفاتورة المحلية - الطباعة ستتم تلقائياً');
+          };
+
+          // إنشاء HTML الفاتورة محلياً
+          const html = this.generateLocalInvoiceHtml(offlineOrder);
+          iframe.srcdoc = html;
+        }
+      });
+    },
+
+    // إنشاء HTML الفاتورة محلياً
+    generateLocalInvoiceHtml(offlineOrder) {
+      const itemsHtml = offlineOrder.items.map(item => `
+        <tr>
+          <td>${item.product_name} ${item.size ? `(${item.size})` : ''}</td>
+          <td>${item.quantity}</td>
+          <td>${parseFloat(item.price).toFixed(2)}</td>
+          <td>${(parseFloat(item.quantity) * parseFloat(item.price)).toFixed(2)}</td>
+        </tr>
+      `).join('');
+
+      const currentDate = new Date(offlineOrder.created_at).toLocaleString('ar-EG');
+      
+      return `
+        <!DOCTYPE html>
+        <html lang="ar" dir="rtl">
+        <head>
+          <meta charset="UTF-8">
+          <title>فاتورة</title>
+          <style>
+            body { 
+              font-family: Arial, sans-serif; 
+              direction: rtl; 
+              padding: 10px; 
+              margin: 0;
+              font-size: 16px;
+            }
+            table { 
+              width: 100%; 
+              border-collapse: collapse; 
+              margin-top: 15px; 
+              font-size: 15px;
+            }
+            th, td { 
+              border: 1px solid #000; 
+              padding: 10px; 
+              text-align: right; 
+            }
+            th { 
+              background: #eee; 
+              font-weight: bold;
+              font-size: 16px;
+            }
+            .total { 
+              margin-top: 15px; 
+              font-weight: bold; 
+              font-size: 18px; 
+              text-align: center;
+            }
+            .logo {
+              width: 150px;
+              height: auto;
+              display: block;
+              margin: 0 auto 10px;
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 15px;
+            }
+            .invoice-title {
+              font-size: 22px;
+              font-weight: bold;
+              margin: 5px 0;
+            }
+            .invoice-date {
+              font-size: 16px;
+              color: #666;
+            }
+            @media print {
+              body { margin: 0; }
+              .no-print { display: none; }
+            }
+          </style>
+        </head>
+        <body onload="setTimeout(() => { window.print(); }, 200); window.onafterprint = () => window.parent.postMessage('close-iframe', '*')">
+          <div class="header">
+            <div class="invoice-title">فاتورة رقم #${offlineOrder.invoice_number}</div>
+            <div class="invoice-date">التاريخ: ${currentDate}</div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>المنتج</th>
+                <th>الكمية</th>
+                <th>السعر</th>
+                <th>الإجمالي</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsHtml}
+            </tbody>
+          </table>
+
+          <div class="total">الإجمالي الكلي: ${parseFloat(offlineOrder.total).toFixed(2)} جنيه</div>
+        </body>
+        </html>
+      `;
+    },
+
+
     printInvoice() {
       this.iframeVisible = true;
 
@@ -638,6 +918,295 @@ export default {
       if (difference < 0) return 'text-red-600 font-bold';
       return 'text-gray-600 font-bold';
     },
+
+    // الانتقال إلى صفحة الطلبات في وضع عدم الاتصال
+    goToOfflineOrders() {
+      this.$inertia.visit('/offline');
+    },
+
+    // التحقق من حالة الاتصال
+    async checkConnection() {
+      try {
+        // استخدام الفحص الشامل للاتصال
+        const connectionStatus = await this.comprehensiveConnectionCheck();
+        const wasOffline = !this.isOnline;
+        
+        this.isOnline = connectionStatus.isOnline;
+        
+        // إذا كان متصل الآن وكان غير متصل سابقاً، قم بالمزامنة التلقائية
+        if (this.isOnline && wasOffline) {
+          console.log('تم استعادة الاتصال - بدء المزامنة التلقائية...');
+          await this.autoSyncOfflineOrders();
+        }
+        
+        // تسجيل سبب عدم الاتصال إذا كان هناك مشكلة
+        if (!this.isOnline && connectionStatus.reason) {
+          console.log('سبب عدم الاتصال:', connectionStatus.reason);
+        }
+      } catch (error) {
+        console.log('خطأ في فحص الاتصال:', error.message);
+        this.isOnline = false;
+      }
+    },
+
+    // المزامنة التلقائية للطلبات في وضع عدم الاتصال
+    async autoSyncOfflineOrders() {
+      try {
+        console.log('بدء المزامنة التلقائية...');
+        
+        // مزامنة الطلبات المحلية أولاً
+        await this.syncLocalOfflineOrders();
+        
+        // ثم مزامنة الطلبات من الخادم
+        const response = await axios.post('/offline/sync');
+        
+        if (response.data.success) {
+          const syncedCount = response.data.synced_count || 0;
+          if (syncedCount > 0) {
+            // عرض إشعار للمستخدم
+            this.showNotification(`تم مزامنة ${syncedCount} طلب تلقائياً بنجاح!`, 'success');
+          }
+        } else {
+          console.error('فشل في المزامنة التلقائية:', response.data.message);
+        }
+      } catch (error) {
+        console.error('خطأ في المزامنة التلقائية:', error);
+      }
+    },
+
+    // مزامنة الطلبات المحلية
+    async syncLocalOfflineOrders() {
+      try {
+        const localOrders = JSON.parse(localStorage.getItem('local_offline_orders') || '[]');
+        
+        if (localOrders.length === 0) {
+          console.log('لا توجد طلبات محلية للمزامنة');
+          return;
+        }
+        
+        console.log(`مزامنة ${localOrders.length} طلب محلي...`);
+        
+        for (const order of localOrders) {
+          try {
+            // إرسال الطلب إلى الخادم
+            const response = await axios.post('/offline/orders', {
+              total_price: order.total,
+              payment_method: order.payment_method,
+              items: order.items
+            });
+            
+            if (response.data.success) {
+              console.log('تم مزامنة الطلب المحلي:', order.offline_id);
+            } else {
+              console.error('فشل في مزامنة الطلب المحلي:', order.offline_id);
+            }
+          } catch (error) {
+            console.error('خطأ في مزامنة الطلب المحلي:', order.offline_id, error);
+          }
+        }
+        
+        // مسح الطلبات المحلية بعد المزامنة
+        localStorage.removeItem('local_offline_orders');
+        console.log('تم مسح الطلبات المحلية بعد المزامنة');
+        
+      } catch (error) {
+        console.error('خطأ في مزامنة الطلبات المحلية:', error);
+      }
+    },
+
+    // عرض إشعار للمستخدم
+    showNotification(message, type = 'info') {
+      // إنشاء عنصر الإشعار
+      const notification = document.createElement('div');
+      notification.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-sm transition-all duration-300 ${
+        type === 'success' ? 'bg-green-500 text-white' : 
+        type === 'error' ? 'bg-red-500 text-white' : 
+        'bg-blue-500 text-white'
+      }`;
+      notification.innerHTML = `
+        <div class="flex items-center justify-between">
+          <span>${message}</span>
+          <button onclick="this.parentElement.parentElement.remove()" class="ml-2 text-white hover:text-gray-200">×</button>
+        </div>
+      `;
+      
+      document.body.appendChild(notification);
+      
+      // إزالة الإشعار تلقائياً بعد 5 ثوانٍ
+      setTimeout(() => {
+        if (notification.parentElement) {
+          notification.remove();
+        }
+      }, 5000);
+    },
+
+    // بدء فحص الاتصال الدوري
+    startConnectionCheck() {
+      this.connectionCheckInterval = setInterval(() => {
+        this.checkConnection();
+      }, 10000); // فحص كل 10 ثوانٍ
+    },
+
+    // إيقاف فحص الاتصال
+    stopConnectionCheck() {
+      if (this.connectionCheckInterval) {
+        clearInterval(this.connectionCheckInterval);
+        this.connectionCheckInterval = null;
+      }
+    },
+
+    // فحص شامل لحالة الاتصال - يحل مشكلة Network Offline
+    async comprehensiveConnectionCheck() {
+      const result = {
+        isOnline: false,
+        reason: '',
+        details: {}
+      };
+
+      try {
+        // 1. فحص حالة المتصفح الأساسية أولاً
+        if (!navigator.onLine) {
+          result.reason = 'navigator.onLine = false';
+          console.log('المتصفح يبلغ عن عدم الاتصال');
+          return result;
+        }
+
+        // 2. فحص إضافي لحالة الاتصال قبل إرسال الطلب
+        if (!window.navigator.connection && !navigator.onLine) {
+          result.reason = 'browser_offline';
+          console.log('المتصفح في وضع عدم الاتصال');
+          return result;
+        }
+
+        // 3. محاولة فحص الاتصال بالخادم مع timeout قصير جداً
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 1500); // timeout قصير جداً
+          
+          const response = await fetch('/offline/check-connection', {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'X-Requested-With': 'XMLHttpRequest',
+              'Cache-Control': 'no-cache'
+            },
+            signal: controller.signal
+          });
+          
+          clearTimeout(timeoutId);
+          
+          if (response.ok) {
+            const data = await response.json();
+            result.isOnline = data.isOnline;
+            result.details.serverResponse = data;
+            result.reason = 'server_ok';
+          } else {
+            result.reason = `server_error_${response.status}`;
+            result.details.status = response.status;
+          }
+        } catch (fetchError) {
+          // إذا فشل fetch، فهذا يعني عدم الاتصال
+          console.log('فشل في إرسال طلب fetch:', fetchError.name, fetchError.message);
+          
+          // تحديد سبب الفشل بدقة
+          if (fetchError.name === 'AbortError') {
+            result.reason = 'timeout';
+          } else if (fetchError.code === 'NS_ERROR_OFFLINE') {
+            result.reason = 'ns_error_offline';
+          } else if (fetchError.code === 'ERR_NETWORK') {
+            result.reason = 'err_network';
+          } else if (fetchError.code === 'ERR_INTERNET_DISCONNECTED') {
+            result.reason = 'err_internet_disconnected';
+          } else if (fetchError.message.includes('Network Error')) {
+            result.reason = 'network_error';
+          } else if (fetchError.message.includes('Failed to fetch')) {
+            result.reason = 'failed_to_fetch';
+          } else {
+            result.reason = 'fetch_failed';
+          }
+          
+          result.details.error = {
+            name: fetchError.name,
+            message: fetchError.message,
+            code: fetchError.code
+          };
+        }
+      } catch (error) {
+        console.log('خطأ عام في الفحص الشامل للاتصال:', error.name, error.message);
+        result.reason = 'general_error';
+        result.details.error = {
+          name: error.name,
+          message: error.message,
+          code: error.code
+        };
+      }
+
+      console.log('نتيجة الفحص الشامل:', result);
+      return result;
+    },
+
+    // فحص سريع للاتصال بدون timeout طويل
+    async quickConnectionCheck() {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000); // timeout قصير 2 ثانية
+        
+        const response = await fetch('/offline/check-connection', {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Cache-Control': 'no-cache'
+          },
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const data = await response.json();
+          return data.isOnline;
+        }
+        return false;
+      } catch (error) {
+        console.log('فشل في الفحص السريع للاتصال:', error.message);
+        return false;
+      }
+    },
+
+    // فحص ما إذا كان الخطأ خطأ شبكة
+    isNetworkError(error) {
+      // فحص حالة المتصفح أولاً
+      if (!navigator.onLine) {
+        return true;
+      }
+      
+      // فحص أنواع الأخطاء المختلفة
+      return error.code === 'NETWORK_ERROR' || 
+             error.message.includes('Network Error') || 
+             error.code === 'ERR_NETWORK' || 
+             error.code === 'NS_ERROR_OFFLINE' || 
+             error.code === 'ERR_INTERNET_DISCONNECTED' ||
+             error.name === 'AbortError' ||
+             error.message.includes('Failed to fetch') ||
+             error.message.includes('Network request failed') ||
+             error.message.includes('ERR_CONNECTION_REFUSED') ||
+             error.message.includes('ERR_NAME_NOT_RESOLVED') ||
+             error.message.includes('ERR_INTERNET_DISCONNECTED') ||
+             error.message.includes('ERR_NETWORK_CHANGED') ||
+             error.message.includes('ERR_NETWORK_ACCESS_DENIED') ||
+             error.message.includes('ERR_CONNECTION_TIMED_OUT') ||
+             error.message.includes('ERR_CONNECTION_RESET') ||
+             error.message.includes('ERR_CONNECTION_ABORTED') ||
+             error.message.includes('ERR_CONNECTION_CLOSED') ||
+             error.message.includes('ERR_CONNECTION_FAILED') ||
+             error.message.includes('ERR_CONNECTION_REFUSED') ||
+             error.message.includes('ERR_CONNECTION_RESET') ||
+             error.message.includes('ERR_CONNECTION_TIMED_OUT') ||
+             error.message.includes('ERR_CONNECTION_ABORTED') ||
+             error.message.includes('ERR_CONNECTION_CLOSED') ||
+             error.message.includes('ERR_CONNECTION_FAILED');
+    },
   },
   mounted() {
     this.initializeProducts();
@@ -649,10 +1218,17 @@ export default {
     
     // الحصول على الوردية الحالية
     this.getCurrentShift();
+    
+    // بدء فحص الاتصال
+    this.checkConnection();
+    this.startConnectionCheck();
+    
+
   },
   beforeDestroy() {
     document.removeEventListener('keydown', this.handleEscape);
     window.removeEventListener('message', this.handleIframeMessage);
+    this.stopConnectionCheck();
   },
   watch: {
       products() {

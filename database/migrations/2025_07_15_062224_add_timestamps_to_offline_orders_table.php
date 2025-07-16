@@ -11,10 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('orders', function (Blueprint $table) {
-            $table->id();
-            $table->decimal('total', 10, 2);
-            $table->timestamps();
+        Schema::table('offline_orders', function (Blueprint $table) {
+            $table->timestamp('updated_at')->nullable();
         });
     }
 
@@ -23,6 +21,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('orders');
+        Schema::table('offline_orders', function (Blueprint $table) {
+            $table->dropColumn('updated_at');
+        });
     }
 };

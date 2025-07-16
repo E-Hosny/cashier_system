@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\RawMaterialController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\ExpenseController;
+use App\Http\Controllers\OfflineController;
 use App\Http\Controllers\CashierShiftController;
 
 Route::get('/', function () {
@@ -58,6 +59,24 @@ Route::middleware([
     Route::post('/store-order', [CashierController::class, 'store'])->name('cashier.store');
     Route::get('/invoice/{orderId}', [CashierController::class, 'invoice'])->name('invoice.show');
     Route::get('/invoice-html/{orderId}', [CashierController::class, 'invoiceHtml']);
+
+    // Offline Operations
+    Route::prefix('offline')->group(function () {
+        Route::get('/', [OfflineController::class, 'index'])->name('offline.index');
+        Route::post('/orders', [OfflineController::class, 'store'])->name('offline.store');
+        Route::post('/sync', [OfflineController::class, 'sync'])->name('offline.sync');
+        Route::post('/retry', [OfflineController::class, 'retry'])->name('offline.retry');
+        Route::post('/cleanup', [OfflineController::class, 'cleanup'])->name('offline.cleanup');
+        Route::post('/load-data', [OfflineController::class, 'loadData'])->name('offline.load-data');
+        Route::get('/cached-data', [OfflineController::class, 'getCachedData'])->name('offline.cached-data');
+        Route::get('/check-connection', [OfflineController::class, 'checkConnection'])->name('offline.check-connection');
+        Route::get('/orders/{offlineId}', [OfflineController::class, 'show'])->name('offline.show');
+        Route::get('/invoice/{offlineId}', [OfflineController::class, 'printInvoice'])->name('offline.invoice');
+        Route::post('/invoice-local/{offlineId}', [OfflineController::class, 'printLocalInvoice'])->name('offline.invoice-local');
+        Route::get('/invoice-pdf/{offlineId}', [OfflineController::class, 'printInvoicePdf'])->name('offline.invoice-pdf');
+        Route::get('/stats', [OfflineController::class, 'stats'])->name('offline.stats');
+        Route::get('/export', [OfflineController::class, 'export'])->name('offline.export');
+    });
 
     // Sales Report
     Route::get('/sales-report', [SalesReportController::class, 'index'])->name('admin.sales.report');
