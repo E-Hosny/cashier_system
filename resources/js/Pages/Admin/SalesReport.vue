@@ -86,11 +86,16 @@
           <div v-if="sales.length > 0" class="mt-6 text-xl font-bold text-center bg-gray-200 p-4 rounded-lg">
             💵 إجمالي المبيعات: {{ formatPrice(totalSales) }}
           </div>
-          <div v-if="sales.length > 0" class="mt-2 text-lg font-bold text-center bg-gray-100 p-3 rounded-lg">
+          
+          <!-- خانة المشتريات معلقة مؤقتاً -->
+          <!-- <div v-if="sales.length > 0" class="mt-2 text-lg font-bold text-center bg-gray-100 p-3 rounded-lg">
             🛒 إجمالي المشتريات: {{ formatPrice(totalPurchases) }}
-          </div>
-          <div v-if="sales.length > 0" class="mt-2 text-lg font-bold text-center bg-gray-100 p-3 rounded-lg">
+          </div> -->
+          
+          <!-- إجمالي المصروفات مع رابط -->
+          <div v-if="sales.length > 0" class="mt-2 text-lg font-bold text-center bg-gray-100 p-3 rounded-lg cursor-pointer hover:bg-gray-200 transition-colors" @click="goToExpenses">
             💸 إجمالي المصروفات: {{ formatPrice(totalExpenses) }}
+            <span class="text-sm text-blue-600 block mt-1">اضغط هنا لعرض تفاصيل المصروفات</span>
           </div>
         </div>
       </div>
@@ -160,6 +165,13 @@ export default {
       if (!size) return 'غير محدد';
       const map = { small: 'صغير', medium: 'وسط', large: 'كبير' };
       return map[size] || size;
+    },
+    // دالة الانتقال لصفحة المصروفات مع التاريخ الحالي
+    goToExpenses() {
+      const today = new Date().toISOString().slice(0, 10);
+      Inertia.get(route('expenses.index'), {
+        expense_date: today
+      });
     }
   },
 };
