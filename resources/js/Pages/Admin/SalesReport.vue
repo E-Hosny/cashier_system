@@ -50,6 +50,8 @@
           <div class="mb-2 text-sm text-gray-500 text-end">
             يمكنك اختيار يوم واحد فقط أو تحديد فترة من - إلى، مع إمكانية تصفية النتائج حسب الفئة أو المنتج.
             <span class="text-blue-600 font-medium">⚠️ ملاحظة: المبيعات تُحسب من الساعة 7:00 صباحاً إلى الساعة 7:00 صباحاً من اليوم التالي</span>
+            <br>
+            <span class="text-green-600 font-medium">🕐 تلقائي: إذا دخلت قبل الساعة 7 صباحاً، ستظهر مبيعات اليوم السابق. إذا دخلت بعد الساعة 7 صباحاً، ستظهر مبيعات اليوم الحالي.</span>
           </div>
 
           <!-- جدول المبيعات -->
@@ -86,6 +88,9 @@
           <!-- إجمالي المبيعات -->
           <div v-if="sales.length > 0" class="mt-6 text-xl font-bold text-center bg-gray-200 p-4 rounded-lg">
             💵 إجمالي المبيعات: {{ formatPrice(totalSales) }}
+            <div class="text-sm text-gray-600 mt-1">
+              ({{ getTimeRangeText() }})
+            </div>
           </div>
           
           <!-- خانة المشتريات معلقة مؤقتاً -->
@@ -130,7 +135,7 @@ export default {
   },
   data() {
     return {
-      dateFrom: this.date_from || this.date || this.getTodayDate(), // تعيين التاريخ الافتراضي
+      dateFrom: this.date_from || this.date || '', // سنقوم بتعيين التاريخ الصحيح في mounted
       dateTo: this.date_to || '', // اجعل النهاية فارغة افتراضيًا
       selectedCategoryId: this.category_id || '',
       selectedProductId: this.product_id || '',
@@ -145,15 +150,45 @@ export default {
     }
   },
   mounted() {
-    // إذا لم يكن هناك تاريخ محدد، قم بجلب البيانات للتاريخ الحالي
+    console.log('تم تحميل الصفحة');
+    console.log('date_from:', this.date_from);
+    console.log('date:', this.date);
+    console.log('date_to:', this.date_to);
+    
+    // إذا لم يكن هناك تاريخ محدد، قم بجلب البيانات للتاريخ الصحيح
     if (!this.date_from && !this.date && !this.date_to) {
+      // تحديث التاريخ الافتراضي بناءً على الوقت الحالي
+      this.dateFrom = this.getTodayDate();
+      console.log('التاريخ المحدد في mounted:', this.dateFrom);
       this.fetchSales();
+    } else {
+      console.log('تم تمرير تاريخ من الخادم:', this.dateFrom);
     }
   },
   methods: {
-    // دالة للحصول على تاريخ اليوم الحالي
+    // دالة للحصول على تاريخ اليوم الحالي مع مراعاة الساعة 7 صباحاً
     getTodayDate() {
-      return new Date().toISOString().slice(0, 10);
+      const now = new Date();
+      const currentHour = now.getHours();
+      
+      console.log('الوقت الحالي:', now.toLocaleString('ar-EG'));
+      console.log('الساعة الحالية:', currentHour);
+      
+      // إذا كان الوقت قبل الساعة 7 صباحاً، نعرض مبيعات اليوم السابق
+      // إذا كان الوقت بعد الساعة 7 صباحاً، نعرض مبيعات اليوم الحالي
+      if (currentHour < 7) {
+        // قبل الساعة 7 صباحاً - نعرض مبيعات اليوم السابق من 7 صباحاً إلى 7 صباحاً اليوم الحالي
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const result = yesterday.toISOString().slice(0, 10);
+        console.log('قبل الساعة 7 - التاريخ المحدد:', result);
+        return result;
+      } else {
+        // بعد الساعة 7 صباحاً - نعرض مبيعات اليوم الحالي من 7 صباحاً إلى 7 صباحاً للوم التالي
+        const result = now.toISOString().slice(0, 10);
+        console.log('بعد الساعة 7 - التاريخ المحدد:', result);
+        return result;
+      }
     },
     fetchSales() {
       const params = { 
@@ -172,6 +207,8 @@ export default {
     clearFilters() {
       this.selectedCategoryId = '';
       this.selectedProductId = '';
+      this.dateFrom = this.getTodayDate(); // إعادة تعيين التاريخ الصحيح
+      this.dateTo = '';
       this.fetchSales();
     },
     formatPrice(price) {
@@ -199,9 +236,9 @@ export default {
           to: this.dateTo
         };
       } else {
-        // افتراضياً: اليوم الحالي
+        // افتراضياً: التاريخ الصحيح بناءً على الوقت الحالي
         expenseParams = {
-          expense_date: new Date().toISOString().slice(0, 10)
+          expense_date: this.getTodayDate()
         };
       }
       
@@ -216,8 +253,8 @@ export default {
         // فترة
         return `من ${this.formatDateForDisplay(this.dateFrom)} إلى ${this.formatDateForDisplay(this.dateTo)}`;
       } else {
-        // اليوم الحالي
-        return this.formatDateForDisplay(new Date().toISOString().slice(0, 10));
+        // التاريخ الصحيح بناءً على الوقت الحالي
+        return this.formatDateForDisplay(this.getTodayDate());
       }
     },
     // دالة تنسيق التاريخ للعرض
@@ -229,6 +266,24 @@ export default {
         month: 'short',
         day: 'numeric'
       });
+    },
+    // دالة لعرض الفترة الزمنية المحددة
+    getTimeRangeText() {
+      if (this.dateFrom && !this.dateTo) {
+        // يوم واحد - من 7 صباحاً إلى 7 صباحاً للوم التالي
+        const nextDay = new Date(this.dateFrom);
+        nextDay.setDate(nextDay.getDate() + 1);
+        return `من الساعة 7:00 صباحاً ${this.formatDateForDisplay(this.dateFrom)} إلى الساعة 7:00 صباحاً ${this.formatDateForDisplay(nextDay.toISOString().slice(0, 10))}`;
+      } else if (this.dateFrom && this.dateTo) {
+        // فترة - من 7 صباحاً اليوم الأول إلى 7 صباحاً اليوم الأخير
+        return `من الساعة 7:00 صباحاً ${this.formatDateForDisplay(this.dateFrom)} إلى الساعة 7:00 صباحاً ${this.formatDateForDisplay(this.dateTo)}`;
+      } else {
+        // اليوم الحالي
+        const today = this.getTodayDate();
+        const nextDay = new Date(today);
+        nextDay.setDate(nextDay.getDate() + 1);
+        return `من الساعة 7:00 صباحاً ${this.formatDateForDisplay(today)} إلى الساعة 7:00 صباحاً ${this.formatDateForDisplay(nextDay.toISOString().slice(0, 10))}`;
+      }
     }
   },
 };

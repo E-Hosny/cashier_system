@@ -15,11 +15,27 @@ class SalesReportController extends Controller
 {
     public function index(Request $request)
     {
-        // الحصول على فترة التواريخ من المستخدم أو تعيين اليوم الحالي كافتراضي
-        $dateFrom = $request->input('date_from', Carbon::today()->toDateString());
+        // الحصول على فترة التواريخ من المستخدم أو تعيين التاريخ الصحيح بناءً على الوقت الحالي
+        $now = Carbon::now();
+        $currentHour = $now->hour;
+        
+        // تحديد التاريخ الافتراضي بناءً على الوقت الحالي
+        if ($currentHour < 7) {
+            // قبل الساعة 7 صباحاً - نعرض مبيعات اليوم السابق
+            $defaultDate = $now->subDay()->toDateString();
+            \Log::info("قبل الساعة 7 - التاريخ الافتراضي: {$defaultDate}, الوقت الحالي: {$now->toDateTimeString()}");
+        } else {
+            // بعد الساعة 7 صباحاً - نعرض مبيعات اليوم الحالي
+            $defaultDate = $now->toDateString();
+            \Log::info("بعد الساعة 7 - التاريخ الافتراضي: {$defaultDate}, الوقت الحالي: {$now->toDateTimeString()}");
+        }
+        
+        $dateFrom = $request->input('date_from', $defaultDate);
         $dateTo = $request->input('date_to', null);
         $categoryId = $request->input('category_id', null);
         $productId = $request->input('product_id', null);
+        
+        \Log::info("التاريخ النهائي المستخدم: {$dateFrom}, date_from من الطلب: " . $request->input('date_from', 'غير محدد'));
 
         // بناء استعلام المبيعات
         $salesQuery = OrderItem::whereHas('order', function ($query) use ($dateFrom, $dateTo) {
