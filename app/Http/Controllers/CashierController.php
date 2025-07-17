@@ -232,6 +232,24 @@ class CashierController extends Controller
         return view('invoice-html', compact('order'));
     }
 
+    public function invoicesToday()
+    {
+        $now = now();
+        $start = $now->copy()->hour < 7 ? $now->copy()->subDay()->setTime(7,0,0) : $now->copy()->setTime(7,0,0);
+        $end = $start->copy()->addDay();
+
+        $orders = Order::with(['items'])
+            ->whereBetween('created_at', [$start, $end])
+            ->orderBy('created_at', 'asc')
+            ->get();
+
+        return Inertia::render('Invoices', [
+            'orders' => $orders,
+            'start' => $start->toDateTimeString(),
+            'end' => $end->toDateTimeString(),
+        ]);
+    }
+
 
             
 }

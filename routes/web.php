@@ -59,6 +59,7 @@ Route::middleware([
     Route::post('/store-order', [CashierController::class, 'store'])->name('cashier.store');
     Route::get('/invoice/{orderId}', [CashierController::class, 'invoice'])->name('invoice.show');
     Route::get('/invoice-html/{orderId}', [CashierController::class, 'invoiceHtml']);
+    Route::get('/invoices', [CashierController::class, 'invoicesToday'])->name('invoices.today');
 
     // Offline Operations
     Route::prefix('offline')->group(function () {
