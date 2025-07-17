@@ -88,9 +88,6 @@
           <!-- إجمالي المبيعات -->
           <div v-if="sales.length > 0" class="mt-6 text-xl font-bold text-center bg-gray-200 p-4 rounded-lg">
             💵 إجمالي المبيعات: {{ formatPrice(totalSales) }}
-            <div class="text-sm text-gray-600 mt-1">
-              ({{ getTimeRangeText() }})
-            </div>
           </div>
           
           <!-- خانة المشتريات معلقة مؤقتاً -->
