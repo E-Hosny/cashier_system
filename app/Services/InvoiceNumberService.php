@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Order;
+use App\Models\OfflineOrder;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -18,11 +19,12 @@ class InvoiceNumberService
     {
         $today = Carbon::today();
         
-        // الحصول على عدد الفواتير لهذا اليوم
+        // الحصول على عدد الفواتير لهذا اليوم من كلا الجدولين
         $todayOrdersCount = Order::whereDate('created_at', $today)->count();
+        $todayOfflineOrdersCount = OfflineOrder::whereDate('created_at', $today)->count();
         
-        // تحديد الرقم التسلسلي لهذا اليوم
-        $dailySequence = $todayOrdersCount + 1;
+        // تحديد الرقم التسلسلي لهذا اليوم (مجموع الطلبات العادية والأوفلاين)
+        $dailySequence = $todayOrdersCount + $todayOfflineOrdersCount + 1;
         
         // إنشاء رقم الفاتورة بالتنسيق الجديد: YYMMDD-XXX
         $invoiceNumber = self::generateSimpleInvoiceNumber($dailySequence, $today);
