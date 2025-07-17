@@ -457,4 +457,7 @@ class OfflineManager {
 }
 
 // تصدير الكلاس للاستخدام العام
-window.OfflineManager = OfflineManager; 
+window.OfflineManager = OfflineManager;
+
+// تصدير افتراضي للاستخدام مع import
+export default OfflineManager; 
