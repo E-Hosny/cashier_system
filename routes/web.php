@@ -10,6 +10,7 @@ use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\RawMaterialController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Admin\EmployeeController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\OfflineController;
 use App\Http\Controllers\CashierShiftController;
@@ -52,6 +53,14 @@ Route::middleware([
     Route::middleware(['admin'])->group(function () {
         Route::resource('users', UserController::class, ['as' => 'admin'])->except(['show']);
         Route::post('/users/{user}/reset-password', [UserController::class, 'resetPassword'])->name('admin.users.reset-password');
+    });
+
+    // Employees Management (admin only)
+    Route::middleware(['admin'])->group(function () {
+        Route::resource('employees', EmployeeController::class, ['as' => 'admin'])->except(['show']);
+        Route::post('/employees/{employee}/checkin', [EmployeeController::class, 'checkin'])->name('admin.employees.checkin');
+        Route::post('/employees/{employee}/checkout', [EmployeeController::class, 'checkout'])->name('admin.employees.checkout');
+        Route::get('/employees/{employee}/report', [EmployeeController::class, 'report'])->name('admin.employees.report');
     });
 
     // Cashier & Invoices

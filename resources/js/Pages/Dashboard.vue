@@ -71,6 +71,17 @@ const canViewReports = computed(() => page.props.canViewReports);
                         </div>
                     </a>
 
+                    <!-- Card 6: الموظفين -->
+                    <a v-if="canViewReports" href="/employees" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
+                        <div class="flex flex-col items-center">
+                            <div class="text-orange-500 text-4xl mb-4">
+                                👥
+                            </div>
+                            <h3 class="text-lg font-semibold text-gray-700">الموظفين</h3>
+                            <p class="text-sm text-gray-500">إدارة الحضور والانصراف</p>
+                        </div>
+                    </a>
+
                     <!-- Card 6: الفواتير -->
                     <a href="/invoices" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
                         <div class="flex flex-col items-center">
