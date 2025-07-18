@@ -72,7 +72,7 @@ class SalesReportController extends Controller
             ->groupBy('product_id', 'size')
             ->get();
 
-        // حساب إجمالي المشتريات والمصروفات
+        // حساب إجمالي المشتريات والمصروفات والرواتب
         if ($dateTo) {
             $totalPurchases = \App\Models\Purchase::whereBetween('purchase_date', [
                 Carbon::parse($dateFrom)->toDateString(),
@@ -83,12 +83,22 @@ class SalesReportController extends Controller
                 Carbon::parse($dateFrom)->setTime(7, 0, 0), // بداية من الساعة 7 صباحاً
                 Carbon::parse($dateTo)->setTime(7, 0, 0)    // إلى الساعة 7 صباحاً من اليوم التالي
             ])->sum('amount');
+
+            // حساب إجمالي الرواتب للموظفين في الفترة المحددة
+            $totalSalaries = \App\Models\Employee::where('is_active', true)->get()->sum(function($employee) use ($dateFrom, $dateTo) {
+                return $employee->getTotalAmountForPeriod($dateFrom, $dateTo);
+            });
         } else {
             $totalPurchases = \App\Models\Purchase::whereDate('purchase_date', $dateFrom)->sum('total_amount');
             $totalExpenses = \App\Models\Expense::whereBetween('created_at', [
                 Carbon::parse($dateFrom)->setTime(7, 0, 0), // بداية من الساعة 7 صباحاً
                 Carbon::parse($dateFrom)->addDay()->setTime(7, 0, 0) // إلى الساعة 7 صباحاً من اليوم التالي
             ])->sum('amount');
+
+            // حساب إجمالي الرواتب للموظفين في اليوم المحدد
+            $totalSalaries = \App\Models\Employee::where('is_active', true)->get()->sum(function($employee) use ($dateFrom) {
+                return $employee->getTotalAmountForPeriod($dateFrom, $dateFrom);
+            });
         }
 
         $totalSales = $sales->sum('total_price');
@@ -112,6 +122,7 @@ class SalesReportController extends Controller
             'totalSales' => $totalSales,
             'totalPurchases' => $totalPurchases,
             'totalExpenses' => $totalExpenses,
+            'totalSalaries' => $totalSalaries,
             'categories' => $categories,
             'products' => $products,
         ]);

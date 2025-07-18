@@ -105,6 +105,17 @@
               </span>
             </span>
           </div>
+
+          <!-- إجمالي الرواتب مع رابط -->
+          <div v-if="sales.length > 0" class="mt-2 text-lg font-bold text-center bg-orange-100 p-3 rounded-lg cursor-pointer hover:bg-orange-200 transition-colors" @click="goToEmployees">
+            👥 إجمالي الرواتب: {{ formatPrice(totalSalaries) }}
+            <span class="text-sm text-blue-600 block mt-1">
+              اضغط هنا لعرض تفاصيل الموظفين 
+              <span v-if="getSelectedDateText()" class="text-gray-600">
+                ({{ getSelectedDateText() }})
+              </span>
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -127,6 +138,7 @@ export default {
     totalSales: Number,
     totalPurchases: Number,
     totalExpenses: Number,
+    totalSalaries: Number,
     categories: Array,
     products: Array,
   },
@@ -240,6 +252,12 @@ export default {
       }
       
       Inertia.get(route('expenses.index'), expenseParams);
+    },
+
+    // دالة الانتقال لصفحة الموظفين مع التاريخ المحدد
+    goToEmployees() {
+      // الانتقال إلى صفحة الموظفين (لا تحتاج لمعاملات تاريخ لأنها تعرض اليوم الحالي)
+      Inertia.get(route('admin.employees.index'));
     },
     // دالة لعرض نص التاريخ المحدد
     getSelectedDateText() {

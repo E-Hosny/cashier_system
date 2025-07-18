@@ -173,4 +173,46 @@ class Employee extends Model
         $hours = $this->getHoursForPeriod($startDate, $endDate);
         return $hours * $this->hourly_rate;
     }
+
+    /**
+     * الحصول على إجمالي المبلغ المستحق لفترة محددة (مع مراعاة الفترات الزمنية 7 صباحاً - 7 صباحاً)
+     */
+    public function getTotalAmountForPeriod($startDate, $endDate = null)
+    {
+        if ($endDate === null) {
+            $endDate = $startDate;
+        }
+
+        // إذا كان نفس اليوم، نستخدم منطق الفترة الزمنية (7 صباحاً إلى 7 صباحاً للوم التالي)
+        if ($startDate === $endDate) {
+            $startDateTime = Carbon::parse($startDate)->setTime(7, 0, 0);
+            $endDateTime = Carbon::parse($startDate)->addDay()->setTime(7, 0, 0);
+        } else {
+            // إذا كانت فترة، نستخدم من 7 صباحاً اليوم الأول إلى 7 صباحاً اليوم الأخير
+            $startDateTime = Carbon::parse($startDate)->setTime(7, 0, 0);
+            $endDateTime = Carbon::parse($endDate)->addDay()->setTime(7, 0, 0);
+        }
+
+        // البحث عن سجلات الحضور في الفترة المحددة
+        $attendances = $this->attendanceRecords()
+            ->whereBetween('checkin_time', [$startDateTime, $endDateTime])
+            ->whereNotNull('checkout_time')
+            ->get();
+
+        $totalHours = 0;
+
+        foreach ($attendances as $attendance) {
+            $checkinTime = Carbon::parse($attendance->checkin_time);
+            $checkoutTime = Carbon::parse($attendance->checkout_time);
+
+            // التأكد من أن وقت الانصراف لا يتجاوز نهاية الفترة
+            if ($checkoutTime > $endDateTime) {
+                $checkoutTime = $endDateTime;
+            }
+
+            $totalHours += $checkinTime->diffInHours($checkoutTime, true);
+        }
+
+        return $totalHours * $this->hourly_rate;
+    }
 } 
