@@ -43,7 +43,7 @@
 
           <!-- ملاحظة توضيحية -->
           <div class="mb-4 text-sm text-blue-600 bg-blue-50 p-3 rounded-lg">
-            ⚠️ ملاحظة: المصروفات تُحسب من الساعة 7:00 صباحاً إلى الساعة 7:00 صباحاً من اليوم التالي
+            ℹ️ ملاحظة: يتم عرض المصروفات حسب تاريخ المصروف المحدد
           </div>
 
           <h3 class="text-lg font-bold mb-4">إضافة مصروف جديد</h3>
@@ -100,19 +100,19 @@
             </div>
             <div class="mt-2 text-sm text-blue-600">
               <span v-if="filtersLocal.expense_date && !filtersLocal.from && !filtersLocal.to">
-                ليوم {{ formatDate(filtersLocal.expense_date) }} (من الساعة 7:00 صباحاً إلى الساعة 7:00 صباحاً من اليوم التالي)
+                ليوم {{ formatDate(filtersLocal.expense_date) }}
               </span>
               <span v-else-if="filtersLocal.from && filtersLocal.to">
-                للفترة من {{ formatDate(filtersLocal.from) }} إلى {{ formatDate(filtersLocal.to) }} (من الساعة 7:00 صباحاً إلى الساعة 7:00 صباحاً من اليوم التالي)
+                للفترة من {{ formatDate(filtersLocal.from) }} إلى {{ formatDate(filtersLocal.to) }}
               </span>
               <span v-else-if="filtersLocal.from && !filtersLocal.to">
-                من {{ formatDate(filtersLocal.from) }} (من الساعة 7:00 صباحاً)
+                من {{ formatDate(filtersLocal.from) }}
               </span>
               <span v-else-if="filtersLocal.to && !filtersLocal.from">
-                إلى {{ formatDate(filtersLocal.to) }} (إلى الساعة 7:00 صباحاً من اليوم التالي)
+                إلى {{ formatDate(filtersLocal.to) }}
               </span>
               <span v-else>
-                ليوم {{ formatDate(new Date().toISOString().slice(0, 10)) }} (من الساعة 7:00 صباحاً إلى الساعة 7:00 صباحاً من الغد)
+                ليوم {{ formatDate(new Date().toISOString().slice(0, 10)) }}
               </span>
             </div>
           </div>

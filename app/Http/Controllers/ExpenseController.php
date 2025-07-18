@@ -13,34 +13,25 @@ class ExpenseController extends Controller
     {
         $query = Expense::orderBy('created_at', 'desc');
 
-        // فلترة حسب يوم محدد - من الساعة 7 صباحاً إلى الساعة 7 صباحاً من اليوم التالي
+        // فلترة حسب يوم محدد - عرض جميع مصروفات اليوم المحدد
         if ($request->filled('expense_date')) {
-            $query->whereBetween('created_at', [
-                Carbon::parse($request->expense_date)->setTime(7, 0, 0), // بداية من الساعة 7 صباحاً
-                Carbon::parse($request->expense_date)->addDay()->setTime(7, 0, 0) // إلى الساعة 7 صباحاً من اليوم التالي
-            ]);
+            $query->whereDate('expense_date', $request->expense_date);
         }
         // فلترة حسب فترة زمنية
         elseif ($request->filled('from') && $request->filled('to')) {
-            $query->whereBetween('created_at', [
-                Carbon::parse($request->from)->setTime(7, 0, 0), // بداية من الساعة 7 صباحاً
-                Carbon::parse($request->to)->setTime(7, 0, 0)    // إلى الساعة 7 صباحاً من اليوم التالي
-            ]);
+            $query->whereBetween('expense_date', [$request->from, $request->to]);
         }
         // فلترة من تاريخ فقط
         elseif ($request->filled('from')) {
-            $query->where('created_at', '>=', Carbon::parse($request->from)->setTime(7, 0, 0));
+            $query->where('expense_date', '>=', $request->from);
         }
         // فلترة إلى تاريخ فقط
         elseif ($request->filled('to')) {
-            $query->where('created_at', '<=', Carbon::parse($request->to)->setTime(7, 0, 0));
+            $query->where('expense_date', '<=', $request->to);
         }
-        // افتراضياً: عرض مصروفات اليوم الحالي من الساعة 7 صباحاً إلى الساعة 7 صباحاً من الغد
+        // افتراضياً: عرض مصروفات اليوم الحالي
         else {
-            $query->whereBetween('created_at', [
-                Carbon::today()->setTime(7, 0, 0), // بداية من الساعة 7 صباحاً
-                Carbon::tomorrow()->setTime(7, 0, 0) // إلى الساعة 7 صباحاً من الغد
-            ]);
+            $query->whereDate('expense_date', Carbon::today());
         }
 
         $expenses = $query->get();
