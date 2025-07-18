@@ -17,17 +17,21 @@ class ExpenseController extends Controller
         if ($request->filled('expense_date')) {
             $query->whereDate('expense_date', $request->expense_date);
         }
-        // فلترة حسب فترة زمنية
+        // فلترة حسب فترة زمنية - تطبيق منطق 7 صباحاً - 7 صباحاً
         elseif ($request->filled('from') && $request->filled('to')) {
-            $query->whereBetween('expense_date', [$request->from, $request->to]);
+            $startDate = Carbon::parse($request->from)->setTime(7, 0, 0);
+            $endDate = Carbon::parse($request->to)->setTime(7, 0, 0);
+            $query->whereBetween('created_at', [$startDate, $endDate]);
         }
         // فلترة من تاريخ فقط
         elseif ($request->filled('from')) {
-            $query->where('expense_date', '>=', $request->from);
+            $startDate = Carbon::parse($request->from)->setTime(7, 0, 0);
+            $query->where('created_at', '>=', $startDate);
         }
         // فلترة إلى تاريخ فقط
         elseif ($request->filled('to')) {
-            $query->where('expense_date', '<=', $request->to);
+            $endDate = Carbon::parse($request->to)->setTime(7, 0, 0);
+            $query->where('created_at', '<=', $endDate);
         }
         // افتراضياً: عرض مصروفات الفترة الحالية (من 7 صباحاً إلى 7 صباحاً للوم التالي)
         else {
