@@ -29,9 +29,25 @@ class ExpenseController extends Controller
         elseif ($request->filled('to')) {
             $query->where('expense_date', '<=', $request->to);
         }
-        // افتراضياً: عرض مصروفات اليوم الحالي
+        // افتراضياً: عرض مصروفات الفترة الحالية (من 7 صباحاً إلى 7 صباحاً للوم التالي)
         else {
-            $query->whereDate('expense_date', Carbon::today());
+            $now = Carbon::now();
+            $currentHour = $now->hour;
+            
+            // تحديد التاريخ الصحيح بناءً على الوقت الحالي
+            if ($currentHour < 7) {
+                // قبل الساعة 7 صباحاً - نعرض مصروفات من 7 صباحاً اليوم السابق إلى 7 صباحاً اليوم الحالي
+                $startDate = $now->copy()->subDay()->setTime(7, 0, 0);
+                $endDate = $now->copy()->setTime(7, 0, 0);
+                $defaultDate = $now->copy()->subDay()->toDateString();
+            } else {
+                // بعد الساعة 7 صباحاً - نعرض مصروفات من 7 صباحاً اليوم الحالي إلى 7 صباحاً للوم التالي
+                $startDate = $now->copy()->setTime(7, 0, 0);
+                $endDate = $now->copy()->addDay()->setTime(7, 0, 0);
+                $defaultDate = $now->toDateString();
+            }
+            
+            $query->whereBetween('created_at', [$startDate, $endDate]);
         }
 
         $expenses = $query->get();
@@ -39,11 +55,23 @@ class ExpenseController extends Controller
         // حساب إجمالي المصروفات
         $totalExpenses = $expenses->sum('amount');
         
+        // تحديد التاريخ الافتراضي للعرض في الواجهة
+        $defaultExpenseDate = null;
+        if (!$request->filled('expense_date') && !$request->filled('from') && !$request->filled('to')) {
+            $now = Carbon::now();
+            $currentHour = $now->hour;
+            if ($currentHour < 7) {
+                $defaultExpenseDate = $now->copy()->subDay()->toDateString();
+            } else {
+                $defaultExpenseDate = $now->toDateString();
+            }
+        }
+        
         return Inertia::render('Expenses/Index', [
             'expenses' => $expenses,
             'totalExpenses' => $totalExpenses,
             'filters' => [
-                'expense_date' => $request->expense_date,
+                'expense_date' => $request->expense_date ?? $defaultExpenseDate,
                 'from' => $request->from,
                 'to' => $request->to,
             ],
