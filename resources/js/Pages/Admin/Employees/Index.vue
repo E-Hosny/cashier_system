@@ -10,16 +10,22 @@
       <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
         <div class="bg-white overflow-hidden shadow-xl sm:rounded-lg p-6">
           <!-- رأس الصفحة -->
-          <div class="mb-6">
-            <h3 class="text-lg font-semibold text-gray-900">قائمة الموظفين</h3>
-            <p class="text-sm text-gray-600">إدارة حضور وانصراف الموظفين</p>
+          <div class="mb-6 flex justify-between items-center">
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900">قائمة الموظفين</h3>
+              <p class="text-sm text-gray-600">إدارة حضور وانصراف الموظفين</p>
+            </div>
+            <div>
+              <Link
+                :href="route('admin.employees.create')"
+                class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition duration-200"
+              >
+                ➕ إضافة موظف جديد
+              </Link>
+            </div>
           </div>
 
-          <!-- عرض الفترة الزمنية الحالية -->
-          <div class="bg-indigo-50 p-4 rounded-lg mb-6">
-            <div class="text-indigo-800 text-sm font-medium">⏰ الفترة الزمنية الحالية:</div>
-            <div class="text-indigo-600 text-lg">{{ currentPeriodText }}</div>
-          </div>
+
 
           <!-- إحصائيات سريعة -->
           <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
@@ -107,7 +113,7 @@
                     {{ formatPrice(employee.today_amount) }}
                   </td>
                   <td class="p-4">
-                    <div class="flex gap-2">
+                    <div class="flex gap-2 flex-wrap">
                       <!-- زر الحضور -->
                       <button
                         v-if="!employee.is_present"
@@ -127,6 +133,16 @@
                       >
                         🚪 انصراف
                       </button>
+
+                      <!-- زر التعديل -->
+                      <Link
+                        :href="route('admin.employees.edit', employee.id)"
+                        class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm font-medium"
+                      >
+                        ✏️ تعديل
+                      </Link>
+
+
                     </div>
                   </td>
                 </tr>
@@ -134,17 +150,7 @@
             </table>
           </div>
 
-          <!-- ملاحظات -->
-          <div class="mt-6 p-4 bg-gray-50 rounded-lg">
-            <h4 class="font-semibold text-gray-800 mb-2">📋 ملاحظات:</h4>
-            <ul class="text-sm text-gray-600 space-y-1">
-              <li>• اضغط على زر "حضور" لتسجيل دخول الموظف للعمل</li>
-              <li>• اضغط على زر "انصراف" لتسجيل خروج الموظف من العمل</li>
-              <li>• يمكن للموظف الحضور والانصراف عدة مرات في اليوم</li>
-              <li>• يتم حساب الساعات والمبلغ تلقائياً من جميع الجلسات</li>
-              <li>• يعرض الجدول جميع سجلات الحضور والانصراف لليوم الحالي</li>
-            </ul>
-          </div>
+
         </div>
       </div>
     </div>
@@ -153,9 +159,13 @@
 
 <script>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import { Link } from '@inertiajs/vue3';
 
 export default {
   layout: AppLayout,
+  components: {
+    Link,
+  },
   props: {
     employees: Array,
     totalTodayAmount: Number,
@@ -291,6 +301,7 @@ export default {
       }
     },
 
-      },
+
+  },
   };
 </script> 
