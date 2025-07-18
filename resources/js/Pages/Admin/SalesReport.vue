@@ -234,9 +234,15 @@ export default {
       
       // تحديد نوع التاريخ المحدد
       if (this.dateFrom && !this.dateTo) {
-        // إذا تم تحديد يوم واحد فقط
+        // إذا تم تحديد يوم واحد فقط - نستخدم منطق الفترة الزمنية
+        // بدلاً من expense_date، نستخدم from و to لتطبيق منطق 7 صباحاً - 7 صباحاً
+        const startDate = new Date(this.dateFrom);
+        const endDate = new Date(this.dateFrom);
+        endDate.setDate(endDate.getDate() + 1);
+        
         expenseParams = {
-          expense_date: this.dateFrom
+          from: startDate.toISOString().slice(0, 10),
+          to: endDate.toISOString().slice(0, 10)
         };
       } else if (this.dateFrom && this.dateTo) {
         // إذا تم تحديد فترة من-إلى
@@ -246,8 +252,14 @@ export default {
         };
       } else {
         // افتراضياً: التاريخ الصحيح بناءً على الوقت الحالي
+        const today = this.getTodayDate();
+        const startDate = new Date(today);
+        const endDate = new Date(today);
+        endDate.setDate(endDate.getDate() + 1);
+        
         expenseParams = {
-          expense_date: this.getTodayDate()
+          from: startDate.toISOString().slice(0, 10),
+          to: endDate.toISOString().slice(0, 10)
         };
       }
       
