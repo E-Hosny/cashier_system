@@ -5,6 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 
 const page = usePage();
 const canViewReports = computed(() => page.props.canViewReports);
+const canManageAttendance = computed(() => page.props.auth.user?.roles?.includes('admin') || page.props.auth.user?.roles?.includes('cashier'));
 </script>
 
 <template>
@@ -72,7 +73,7 @@ const canViewReports = computed(() => page.props.canViewReports);
                     </a>
 
                     <!-- Card 6: الموظفين -->
-                    <a v-if="canViewReports" href="/employees" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
+                    <a v-if="canManageAttendance" href="/employees" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
                         <div class="flex flex-col items-center">
                             <div class="text-orange-500 text-4xl mb-4">
                                 👥

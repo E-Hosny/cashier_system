@@ -55,8 +55,8 @@ Route::middleware([
         Route::post('/users/{user}/reset-password', [UserController::class, 'resetPassword'])->name('admin.users.reset-password');
     });
 
-    // Employees Management (admin only)
-    Route::middleware(['admin'])->group(function () {
+    // Employees Management (admin and cashier with attendance permission)
+    Route::middleware(['employee.attendance'])->group(function () {
         Route::resource('employees', EmployeeController::class, ['as' => 'admin'])->except(['show']);
         Route::post('/employees/{employee}/checkin', [EmployeeController::class, 'checkin'])->name('admin.employees.checkin');
         Route::post('/employees/{employee}/checkout', [EmployeeController::class, 'checkout'])->name('admin.employees.checkout');

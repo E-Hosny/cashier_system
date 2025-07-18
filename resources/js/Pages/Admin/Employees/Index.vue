@@ -2,7 +2,7 @@
   <AppLayout title="إدارة الموظفين">
     <template #header>
       <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-        👥 إدارة الموظفين - الحضور والانصراف
+        👥 {{ isAdmin ? 'إدارة الموظفين' : 'الحضور والانصراف' }}
       </h2>
     </template>
 
@@ -12,10 +12,10 @@
           <!-- رأس الصفحة -->
           <div class="mb-6 flex justify-between items-center">
             <div>
-              <h3 class="text-lg font-semibold text-gray-900">قائمة الموظفين</h3>
-              <p class="text-sm text-gray-600">إدارة حضور وانصراف الموظفين</p>
+              <h3 class="text-lg font-semibold text-gray-900">{{ isAdmin ? 'قائمة الموظفين' : 'الحضور والانصراف' }}</h3>
+              <p class="text-sm text-gray-600">{{ isAdmin ? 'إدارة حضور وانصراف الموظفين' : 'تسجيل حضور وانصراف الموظفين' }}</p>
             </div>
-            <div>
+            <div v-if="isAdmin">
               <Link
                 :href="route('admin.employees.create')"
                 class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition duration-200"
@@ -136,6 +136,7 @@
 
                       <!-- زر التعديل -->
                       <Link
+                        v-if="isAdmin"
                         :href="route('admin.employees.edit', employee.id)"
                         class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm font-medium"
                       >
@@ -159,7 +160,7 @@
 
 <script>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Link } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 
 export default {
   layout: AppLayout,
@@ -177,7 +178,10 @@ export default {
       loading: false,
     };
   },
-  computed: {
+    computed: {
+    isAdmin() {
+      return this.$page.props.auth.user?.roles?.includes('admin');
+    },
     presentEmployees() {
       return this.employees.filter(emp => emp.is_present);
     },
