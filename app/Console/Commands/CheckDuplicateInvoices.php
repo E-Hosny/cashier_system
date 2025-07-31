@@ -6,17 +6,20 @@ use App\Models\Order;
 use App\Models\OfflineOrder;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use App\Services\InvoiceNumberService;
 
 class CheckDuplicateInvoices extends Command
 {
-    protected $signature = 'invoices:check-duplicates';
-    protected $description = 'فحص الفواتير المكررة في النظام';
+    protected $signature = 'invoices:check-duplicates {--fix : إصلاح الفواتير المكررة تلقائياً}';
+    protected $description = 'فحص وإصلاح الفواتير المكررة في النظام';
 
     public function handle()
     {
         $this->info('=== فحص الفواتير المكررة ===');
         $this->newLine();
 
+        $shouldFix = $this->option('fix');
+        
         // فحص الفواتير العادية
         $this->info('1. فحص الفواتير العادية:');
         $duplicates = Order::select('invoice_number', 'created_at', DB::raw('COUNT(*) as count'))
@@ -26,10 +29,15 @@ class CheckDuplicateInvoices extends Command
             ->get();
 
         if ($duplicates->isEmpty()) {
-            $this->info('لا توجد فواتير مكررة في الجدول العادي');
+            $this->info('✅ لا توجد فواتير مكررة في الجدول العادي');
         } else {
+            $this->warn("❌ تم العثور على " . $duplicates->count() . " فواتير مكررة:");
             foreach ($duplicates as $dup) {
                 $this->warn("رقم الفاتورة: {$dup->invoice_number} | التاريخ: {$dup->created_at} | العدد: {$dup->count}");
+            }
+            
+            if ($shouldFix) {
+                $this->fixDuplicateOrders($duplicates);
             }
         }
 
@@ -44,63 +52,71 @@ class CheckDuplicateInvoices extends Command
             ->get();
 
         if ($offlineDuplicates->isEmpty()) {
-            $this->info('لا توجد فواتير مكررة في الجدول الأوفلاين');
+            $this->info('✅ لا توجد فواتير مكررة في الجدول الأوفلاين');
         } else {
+            $this->warn("❌ تم العثور على " . $offlineDuplicates->count() . " فواتير مكررة:");
             foreach ($offlineDuplicates as $dup) {
                 $this->warn("رقم الفاتورة: {$dup->invoice_number} | التاريخ: {$dup->created_at} | العدد: {$dup->count}");
             }
-        }
-
-        $this->newLine();
-
-        // فحص جميع الفواتير
-        $this->info('3 فحص جميع الفواتير (عادية + أوفلاين):');
-        
-        $allInvoices = collect();
-        
-        // جمع الفواتير العادية
-        $orders = Order::select('invoice_number', 'created_at')
-            ->whereNotNull('invoice_number')
-            ->get();
-        $allInvoices = $allInvoices->merge($orders);
-        
-        // جمع الفواتير الأوفلاين
-        $offlineOrders = OfflineOrder::select('invoice_number', 'created_at')
-            ->whereNotNull('invoice_number')
-            ->get();
-        $allInvoices = $allInvoices->merge($offlineOrders);
-        
-        // تجميع حسب رقم الفاتورة
-        $groupedInvoices = $allInvoices->groupBy('invoice_number')
-            ->filter(function ($group) {
-                return $group->count() > 1;
-            });
-
-        if ($groupedInvoices->isEmpty()) {
-            $this->info('لا توجد فواتير مكررة في النظام');
-        } else {
-            foreach ($groupedInvoices as $invoiceNumber => $orders) {
-                $this->error("رقم الفاتورة: {$invoiceNumber} | العدد: {$orders->count()}");
-                foreach ($orders as $order) {
-                    $this->line("  - التاريخ: {$order->created_at}");
-                }
+            
+            if ($shouldFix) {
+                $this->fixDuplicateOfflineOrders($offlineDuplicates);
             }
         }
 
         $this->newLine();
-
-        // إحصائيات عامة
-        $this->info('4.إحصائيات عامة:');      $totalOrders = Order::count();
-        $totalOfflineOrders = OfflineOrder::count();
-        $ordersWithInvoice = Order::whereNotNull('invoice_number')->count();
-        $offlineOrdersWithInvoice = OfflineOrder::whereNotNull('invoice_number')->count();
-
-        $this->line("إجمالي الطلبات العادية: {$totalOrders}");
-        $this->line("إجمالي الطلبات الأوفلاين: {$totalOfflineOrders}");
-        $this->line("الطلبات العادية مع أرقام فواتير: {$ordersWithInvoice}");
-        $this->line("الطلبات الأوفلاين مع أرقام فواتير: {$offlineOrdersWithInvoice}");
-
-        $this->newLine();
-        $this->info('تم الانتهاء من الفحص');
+        $this->info('=== انتهى الفحص ===');
+    }
+    
+    /**
+     * إصلاح الفواتير المكررة في جدول الطلبات العادية
+     */
+    private function fixDuplicateOrders($duplicates)
+    {
+        $this->info('🔧 إصلاح الفواتير المكررة في الجدول العادي...');
+        
+        foreach ($duplicates as $duplicate) {
+            $orders = Order::where('invoice_number', $duplicate->invoice_number)
+                ->orderBy('created_at', 'asc')
+                ->get();
+            
+            // الاحتفاظ بالطلب الأول وتغيير باقي الطلبات
+            $firstOrder = $orders->first();
+            $otherOrders = $orders->skip(1);
+            
+            foreach ($otherOrders as $order) {
+                $newInvoiceNumber = InvoiceNumberService::generateInvoiceNumber();
+                $order->update(['invoice_number' => $newInvoiceNumber]);
+                $this->info("تم تغيير رقم فاتورة الطلب {$order->id} إلى: {$newInvoiceNumber}");
+            }
+        }
+        
+        $this->info('✅ تم إصلاح الفواتير المكررة في الجدول العادي');
+    }
+    
+    /**
+     * إصلاح الفواتير المكررة في جدول الطلبات الأوفلاين
+     */
+    private function fixDuplicateOfflineOrders($duplicates)
+    {
+        $this->info('🔧 إصلاح الفواتير المكررة في الجدول الأوفلاين...');
+        
+        foreach ($duplicates as $duplicate) {
+            $orders = OfflineOrder::where('invoice_number', $duplicate->invoice_number)
+                ->orderBy('created_at', 'asc')
+                ->get();
+            
+            // الاحتفاظ بالطلب الأول وتغيير باقي الطلبات
+            $firstOrder = $orders->first();
+            $otherOrders = $orders->skip(1);
+            
+            foreach ($otherOrders as $order) {
+                $newInvoiceNumber = InvoiceNumberService::generateInvoiceNumber();
+                $order->update(['invoice_number' => $newInvoiceNumber]);
+                $this->info("تم تغيير رقم فاتورة الطلب الأوفلاين {$order->id} إلى: {$newInvoiceNumber}");
+            }
+        }
+        
+        $this->info('✅ تم إصلاح الفواتير المكررة في الجدول الأوفلاين');
     }
 } 

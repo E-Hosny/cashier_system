@@ -19,7 +19,7 @@ return new class extends Migration
             $table->decimal('total', 12, 2);
             $table->string('payment_method');
             $table->string('status')->default('pending_sync')->comment('pending_sync, synced, failed');
-            $table->string('invoice_number')->nullable();
+            $table->string('invoice_number')->nullable()->unique()->comment('رقم الفاتورة الفريد');
             $table->json('items')->comment('تفاصيل عناصر الطلب');
             $table->json('stock_movements')->nullable()->comment('حركات المخزون المرتبطة');
             $table->text('sync_error')->nullable()->comment('رسالة الخطأ في حالة فشل المزامنة');

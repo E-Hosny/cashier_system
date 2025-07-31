@@ -482,7 +482,16 @@ export default {
       this.cart = [];
     },
     async checkout() {
+      // منع الضغط المتكرر
+      if (this.isCheckoutLoading) {
+        console.log('طلب معلق قيد المعالجة...');
+        return;
+      }
+      
       this.isCheckoutLoading = true;
+      
+      // إنشاء معرف فريد للطلب
+      const requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
       
       const checkoutData = {
         items: this.cart.map(item => ({
@@ -529,7 +538,8 @@ export default {
           timeout: 10000, // timeout 10 ثوانٍ
           headers: {
             'Content-Type': 'application/json',
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            'X-Request-ID': requestId // إضافة معرف فريد للطلب
           }
         });
 
@@ -538,6 +548,16 @@ export default {
           this.clearCart();
           this.printInvoice();
         } else {
+          // التحقق من وجود طلب مكرر
+          if (response.data.duplicate) {
+            console.log('تم اكتشاف طلب مكرر، انتظار...');
+            // انتظار قليل ثم إعادة المحاولة
+            setTimeout(() => {
+              this.isCheckoutLoading = false;
+              this.checkout();
+            }, 2000);
+            return;
+          }
           alert('فشل في إنشاء الطلب: ' + response.data.message);
         }
       } catch (error) {
@@ -548,6 +568,16 @@ export default {
           response: error.response?.data,
           status: error.response?.status
         });
+        
+        // التحقق من وجود طلب مكرر في الاستجابة
+        if (error.response?.data?.duplicate) {
+          console.log('تم اكتشاف طلب مكرر، انتظار...');
+          setTimeout(() => {
+            this.isCheckoutLoading = false;
+            this.checkout();
+          }, 2000);
+          return;
+        }
         
         // فحص ما إذا كان الخطأ بسبب انقطاع الشبكة
         if (this.isNetworkError(error)) {

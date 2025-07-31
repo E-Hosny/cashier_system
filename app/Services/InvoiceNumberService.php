@@ -17,19 +17,44 @@ class InvoiceNumberService
      */
     public static function generateInvoiceNumber($tenantId = null): string
     {
-        $today = Carbon::today();
+        $maxAttempts = 10; // عدد المحاولات الأقصى
+        $attempt = 0;
         
-        // الحصول على عدد الفواتير لهذا اليوم من كلا الجدولين
-        $todayOrdersCount = Order::whereDate('created_at', $today)->count();
-        $todayOfflineOrdersCount = OfflineOrder::whereDate('created_at', $today)->count();
+        do {
+            $attempt++;
+            $today = Carbon::today();
+            
+            // الحصول على عدد الفواتير لهذا اليوم من كلا الجدولين
+            $todayOrdersCount = Order::whereDate('created_at', $today)->count();
+            $todayOfflineOrdersCount = OfflineOrder::whereDate('created_at', $today)->count();
+            
+            // تحديد الرقم التسلسلي لهذا اليوم (مجموع الطلبات العادية والأوفلاين)
+            $dailySequence = $todayOrdersCount + $todayOfflineOrdersCount + $attempt;
+            
+            // إنشاء رقم الفاتورة بالتنسيق الجديد: YYMMDD-XXX
+            $invoiceNumber = self::generateSimpleInvoiceNumber($dailySequence, $today);
+            
+            // التحقق من عدم وجود الرقم في كلا الجدولين
+            $existsInOrders = Order::where('invoice_number', $invoiceNumber)->exists();
+            $existsInOfflineOrders = OfflineOrder::where('invoice_number', $invoiceNumber)->exists();
+            
+            if (!$existsInOrders && !$existsInOfflineOrders) {
+                return $invoiceNumber;
+            }
+            
+            // إذا وصلنا إلى الحد الأقصى للمحاولات، استخدم timestamp فريد
+            if ($attempt >= $maxAttempts) {
+                $timestamp = time();
+                $random = mt_rand(1000, 9999);
+                return $today->format('ymd') . '-' . $timestamp . '-' . $random;
+            }
+            
+        } while ($attempt < $maxAttempts);
         
-        // تحديد الرقم التسلسلي لهذا اليوم (مجموع الطلبات العادية والأوفلاين)
-        $dailySequence = $todayOrdersCount + $todayOfflineOrdersCount + 1;
-        
-        // إنشاء رقم الفاتورة بالتنسيق الجديد: YYMMDD-XXX
-        $invoiceNumber = self::generateSimpleInvoiceNumber($dailySequence, $today);
-        
-        return $invoiceNumber;
+        // في حالة فشل جميع المحاولات، استخدم timestamp فريد
+        $timestamp = time();
+        $random = mt_rand(1000, 9999);
+        return Carbon::today()->format('ymd') . '-' . $timestamp . '-' . $random;
     }
     
     /**
