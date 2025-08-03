@@ -15,12 +15,18 @@
               <h3 class="text-lg font-semibold text-gray-900">{{ isAdmin ? 'قائمة الموظفين' : 'الحضور والانصراف' }}</h3>
               <p class="text-sm text-gray-600">{{ isAdmin ? 'إدارة حضور وانصراف الموظفين' : 'تسجيل حضور وانصراف الموظفين' }}</p>
             </div>
-            <div v-if="isAdmin">
+            <div v-if="isAdmin" class="flex gap-2">
               <Link
                 :href="route('admin.employees.create')"
                 class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition duration-200"
               >
                 ➕ إضافة موظف جديد
+              </Link>
+              <Link
+                :href="route('admin.employees.salary-calculator')"
+                class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition duration-200"
+              >
+                💰 حاسبة الرواتب
               </Link>
             </div>
           </div>

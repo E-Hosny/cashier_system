@@ -61,6 +61,8 @@ Route::middleware([
         Route::post('/employees/{employee}/checkin', [EmployeeController::class, 'checkin'])->name('admin.employees.checkin');
         Route::post('/employees/{employee}/checkout', [EmployeeController::class, 'checkout'])->name('admin.employees.checkout');
         Route::get('/employees/{employee}/report', [EmployeeController::class, 'report'])->name('admin.employees.report');
+        Route::get('/employees/salary-calculator', [EmployeeController::class, 'salaryCalculator'])->name('admin.employees.salary-calculator');
+        Route::post('/employees/{employee}/calculate-salary', [EmployeeController::class, 'calculateSalary'])->name('admin.employees.calculate-salary');
     });
 
     // Cashier & Invoices

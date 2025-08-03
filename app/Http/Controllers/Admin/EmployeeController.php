@@ -216,4 +216,125 @@ class EmployeeController extends Controller
             'totalAmount' => $totalAmount,
         ]);
     }
+
+    /**
+     * عرض صفحة حاسبة الرواتب
+     */
+    public function salaryCalculator()
+    {
+        $employees = Employee::where('is_active', true)->get();
+
+        return Inertia::render('Admin/Employees/SalaryCalculator', [
+            'employees' => $employees,
+        ]);
+    }
+
+    /**
+     * حساب راتب موظف لفترة محددة (من 7 صباحاً إلى 7 صباحاً للوم التالي)
+     */
+    public function calculateSalary(Employee $employee, Request $request)
+    {
+        $request->validate([
+            'date_from' => 'required|date',
+            'date_to' => 'required|date|after_or_equal:date_from',
+        ]);
+
+        $dateFrom = $request->input('date_from');
+        $dateTo = $request->input('date_to');
+
+        // تحويل التواريخ إلى فترات زمنية (7 صباحاً إلى 7 صباحاً للوم التالي)
+        $startDateTime = Carbon::parse($dateFrom)->setTime(7, 0, 0);
+        $endDateTime = Carbon::parse($dateTo)->addDay()->setTime(7, 0, 0);
+
+        // البحث عن سجلات الحضور في الفترة المحددة
+        $attendances = $employee->attendanceRecords()
+            ->whereBetween('checkin_time', [$startDateTime, $endDateTime])
+            ->whereNotNull('checkout_time')
+            ->orderBy('checkin_time', 'asc')
+            ->get();
+
+        $totalHours = 0;
+        $totalAmount = 0;
+        $dailyDetails = [];
+
+        // تجميع البيانات حسب اليوم
+        $currentDate = Carbon::parse($dateFrom);
+        $endDate = Carbon::parse($dateTo);
+
+        while ($currentDate <= $endDate) {
+            $dayStart = $currentDate->copy()->setTime(7, 0, 0);
+            $dayEnd = $currentDate->copy()->addDay()->setTime(7, 0, 0);
+
+            // البحث عن سجلات الحضور لهذا اليوم
+            $dayAttendances = $attendances->filter(function ($attendance) use ($dayStart, $dayEnd) {
+                $checkinTime = Carbon::parse($attendance->checkin_time);
+                return $checkinTime >= $dayStart && $checkinTime < $dayEnd;
+            });
+
+            $dayHours = 0;
+            $dayAmount = 0;
+            $dayRecords = [];
+
+            foreach ($dayAttendances as $attendance) {
+                $checkinTime = Carbon::parse($attendance->checkin_time);
+                $checkoutTime = Carbon::parse($attendance->checkout_time);
+
+                // التأكد من أن وقت الانصراف لا يتجاوز نهاية اليوم
+                if ($checkoutTime > $dayEnd) {
+                    $checkoutTime = $dayEnd;
+                }
+
+                $hours = $checkinTime->diffInHours($checkoutTime, true);
+                $amount = $hours * $employee->hourly_rate;
+
+                $dayHours += $hours;
+                $dayAmount += $amount;
+
+                $dayRecords[] = [
+                    'checkin_time' => $checkinTime->format('H:i'),
+                    'checkout_time' => $checkoutTime->format('H:i'),
+                    'hours' => round($hours, 2),
+                    'amount' => round($amount, 2),
+                ];
+            }
+
+            $totalHours += $dayHours;
+            $totalAmount += $dayAmount;
+
+            $dailyDetails[] = [
+                'date' => $currentDate->format('Y-m-d'),
+                'date_arabic' => $currentDate->format('d/m/Y'),
+                'day_name' => $currentDate->locale('ar')->dayName,
+                'hours' => round($dayHours, 2),
+                'amount' => round($dayAmount, 2),
+                'records' => $dayRecords,
+                'has_records' => count($dayRecords) > 0,
+            ];
+
+            $currentDate->addDay();
+        }
+
+        return response()->json([
+            'success' => true,
+            'employee' => [
+                'id' => $employee->id,
+                'name' => $employee->name,
+                'hourly_rate' => $employee->hourly_rate,
+                'position' => $employee->position,
+            ],
+            'period' => [
+                'date_from' => $dateFrom,
+                'date_to' => $dateTo,
+                'date_from_arabic' => Carbon::parse($dateFrom)->format('d/m/Y'),
+                'date_to_arabic' => Carbon::parse($dateTo)->format('d/m/Y'),
+            ],
+            'summary' => [
+                'total_hours' => round($totalHours, 2),
+                'total_amount' => round($totalAmount, 2),
+                'days_count' => count($dailyDetails),
+                'days_with_records' => count(array_filter($dailyDetails, fn($day) => $day['has_records'])),
+            ],
+            'daily_details' => $dailyDetails,
+        ]);
+    }
 } 
