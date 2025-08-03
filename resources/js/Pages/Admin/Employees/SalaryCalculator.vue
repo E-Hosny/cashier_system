@@ -113,6 +113,11 @@
                   <div class="font-semibold text-green-900">{{ salaryData.summary.days_with_records }} من {{ salaryData.summary.days_count }} يوم</div>
                 </div>
               </div>
+              <div class="mt-4 p-3 bg-blue-50 rounded-lg">
+                <p class="text-sm text-blue-700">
+                  <strong>ملاحظة:</strong> يتم حساب الساعات من الساعة 7:00 صباحاً إلى الساعة 7:00 صباحاً للوم التالي
+                </p>
+              </div>
             </div>
 
             <!-- تفاصيل كل يوم -->
@@ -146,9 +151,10 @@
                             <span class="mx-1">-</span>
                             <span class="text-red-600">{{ record.checkout_time }}</span>
                             <span class="mx-2">({{ record.hours }} ساعة)</span>
+                            <span v-if="!record.is_completed" class="text-orange-600 text-xs">قيد العمل</span>
                           </div>
                         </div>
-                        <span v-else class="text-gray-400 text-sm">لا يوجد حضور</span>
+                        <span v-else class="text-gray-400 text-sm">لا يوجد حضور في هذا اليوم</span>
                       </td>
                     </tr>
                   </tbody>
@@ -168,6 +174,15 @@
                   <div class="text-3xl font-bold text-purple-600">{{ formatPrice(salaryData.summary.total_amount) }}</div>
                   <div class="text-sm text-purple-700">إجمالي المبلغ المستحق</div>
                 </div>
+              </div>
+            </div>
+
+            <!-- معلومات التشخيص (للإدارة فقط) -->
+            <div v-if="isAdmin" class="bg-gray-50 p-4 rounded-lg mt-4">
+              <h5 class="text-sm font-semibold text-gray-700 mb-2">معلومات التشخيص:</h5>
+              <div class="text-xs text-gray-600 space-y-1">
+                <div>إجمالي سجلات الحضور الموجودة: {{ salaryData.debug_info?.total_attendances_found || 0 }}</div>
+                <div>فترة البحث: {{ salaryData.debug_info?.period_start }} - {{ salaryData.debug_info?.period_end }}</div>
               </div>
             </div>
           </div>

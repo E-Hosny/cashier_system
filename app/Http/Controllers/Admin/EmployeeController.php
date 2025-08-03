@@ -246,10 +246,9 @@ class EmployeeController extends Controller
         $startDateTime = Carbon::parse($dateFrom)->setTime(7, 0, 0);
         $endDateTime = Carbon::parse($dateTo)->addDay()->setTime(7, 0, 0);
 
-        // البحث عن سجلات الحضور في الفترة المحددة
+        // البحث عن سجلات الحضور في الفترة المحددة (جميع السجلات)
         $attendances = $employee->attendanceRecords()
             ->whereBetween('checkin_time', [$startDateTime, $endDateTime])
-            ->whereNotNull('checkout_time')
             ->orderBy('checkin_time', 'asc')
             ->get();
 
@@ -269,7 +268,7 @@ class EmployeeController extends Controller
             $dayAttendances = $attendances->filter(function ($attendance) use ($dayStart, $dayEnd) {
                 $checkinTime = Carbon::parse($attendance->checkin_time);
                 return $checkinTime >= $dayStart && $checkinTime < $dayEnd;
-            });
+            })->sortBy('checkin_time'); // ترتيب السجلات حسب وقت الحضور
 
             $dayHours = 0;
             $dayAmount = 0;
@@ -277,15 +276,40 @@ class EmployeeController extends Controller
 
             foreach ($dayAttendances as $attendance) {
                 $checkinTime = Carbon::parse($attendance->checkin_time);
-                $checkoutTime = Carbon::parse($attendance->checkout_time);
+                
+                // تحديد وقت الانصراف
+                if ($attendance->checkout_time) {
+                    $checkoutTime = Carbon::parse($attendance->checkout_time);
+                } else {
+                    // إذا لم يكن هناك وقت انصراف، نستخدم الوقت الحالي أو نهاية اليوم
+                    $checkoutTime = Carbon::now();
+                    if ($checkoutTime > $dayEnd) {
+                        $checkoutTime = $dayEnd;
+                    }
+                }
 
                 // التأكد من أن وقت الانصراف لا يتجاوز نهاية اليوم
                 if ($checkoutTime > $dayEnd) {
                     $checkoutTime = $dayEnd;
                 }
 
+                // التأكد من أن وقت الحضور لا يسبق بداية اليوم
+                if ($checkinTime < $dayStart) {
+                    $checkinTime = $dayStart;
+                }
+
+                // التأكد من أن وقت الحضور لا يتجاوز وقت الانصراف
+                if ($checkinTime >= $checkoutTime) {
+                    continue; // تخطي هذا السجل إذا كان وقت الحضور بعد أو يساوي وقت الانصراف
+                }
+
                 $hours = $checkinTime->diffInHours($checkoutTime, true);
                 $amount = $hours * $employee->hourly_rate;
+
+                // تجاهل السجلات التي لا تحتوي على ساعات عمل
+                if ($hours <= 0) {
+                    continue;
+                }
 
                 $dayHours += $hours;
                 $dayAmount += $amount;
@@ -295,6 +319,7 @@ class EmployeeController extends Controller
                     'checkout_time' => $checkoutTime->format('H:i'),
                     'hours' => round($hours, 2),
                     'amount' => round($amount, 2),
+                    'is_completed' => $attendance->checkout_time !== null,
                 ];
             }
 
@@ -335,6 +360,11 @@ class EmployeeController extends Controller
                 'days_with_records' => count(array_filter($dailyDetails, fn($day) => $day['has_records'])),
             ],
             'daily_details' => $dailyDetails,
+            'debug_info' => [
+                'total_attendances_found' => $attendances->count(),
+                'period_start' => $startDateTime->format('Y-m-d H:i:s'),
+                'period_end' => $endDateTime->format('Y-m-d H:i:s'),
+            ],
         ]);
     }
 } 
