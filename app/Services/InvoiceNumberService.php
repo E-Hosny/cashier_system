@@ -4,57 +4,116 @@ namespace App\Services;
 
 use App\Models\Order;
 use App\Models\OfflineOrder;
+use App\Models\InvoiceSequence;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class InvoiceNumberService
 {
     /**
-     * توليد رقم فاتورة جديد
+     * توليد رقم فاتورة جديد بتسلسل صحيح بدون فجوات
      * 
      * @param int $tenantId
      * @return string
      */
     public static function generateInvoiceNumber($tenantId = null): string
     {
-        $maxAttempts = 10; // عدد المحاولات الأقصى
-        $attempt = 0;
+        // التحقق من قفل نظام الفواتير أثناء المزامنة
+        $invoiceSystemLockKey = "invoice_numbering_system_lock";
         
-        do {
-            $attempt++;
-            $today = Carbon::today();
+        if (\Illuminate\Support\Facades\Cache::has($invoiceSystemLockKey)) {
+            // إذا كان النظام مقفل للمزامنة، انتظار قصير ثم المحاولة مرة أخرى
+            $attempts = 0;
+            $maxAttempts = 10; // انتظار 10 ثوان كحد أقصى
             
-            // الحصول على عدد الفواتير لهذا اليوم من كلا الجدولين
-            $todayOrdersCount = Order::whereDate('created_at', $today)->count();
-            $todayOfflineOrdersCount = OfflineOrder::whereDate('created_at', $today)->count();
-            
-            // تحديد الرقم التسلسلي لهذا اليوم (مجموع الطلبات العادية والأوفلاين)
-            $dailySequence = $todayOrdersCount + $todayOfflineOrdersCount + $attempt;
-            
-            // إنشاء رقم الفاتورة بالتنسيق الجديد: YYMMDD-XXX
-            $invoiceNumber = self::generateSimpleInvoiceNumber($dailySequence, $today);
-            
-            // التحقق من عدم وجود الرقم في كلا الجدولين
-            $existsInOrders = Order::where('invoice_number', $invoiceNumber)->exists();
-            $existsInOfflineOrders = OfflineOrder::where('invoice_number', $invoiceNumber)->exists();
-            
-            if (!$existsInOrders && !$existsInOfflineOrders) {
-                return $invoiceNumber;
+            while (\Illuminate\Support\Facades\Cache::has($invoiceSystemLockKey) && $attempts < $maxAttempts) {
+                sleep(1);
+                $attempts++;
             }
             
-            // إذا وصلنا إلى الحد الأقصى للمحاولات، استخدم timestamp فريد
-            if ($attempt >= $maxAttempts) {
-                $timestamp = time();
-                $random = mt_rand(1000, 9999);
-                return $today->format('ymd') . '-' . $timestamp . '-' . $random;
+            // إذا لم يتم تحرير القفل، استخدم آلية طوارئ
+            if (\Illuminate\Support\Facades\Cache::has($invoiceSystemLockKey)) {
+                return self::generateEmergencyInvoiceNumber();
             }
-            
-        } while ($attempt < $maxAttempts);
+        }
         
-        // في حالة فشل جميع المحاولات، استخدم timestamp فريد
+        $today = Carbon::today();
+        $dateCode = $today->format('ymd'); // مثال: 250806 لـ 6 أغسطس 2025
+        
+        // الحصول على الرقم التسلسلي التالي باستخدام النظام الآمن
+        $nextSequence = InvoiceSequence::getNextSequence($dateCode);
+        
+        // إنشاء رقم الفاتورة بالتنسيق: YYMMDD-XXX
+        $invoiceNumber = $dateCode . '-' . str_pad($nextSequence, 3, '0', STR_PAD_LEFT);
+        
+        return $invoiceNumber;
+    }
+    
+    /**
+     * توليد رقم فاتورة طوارئ في حالة قفل النظام
+     * 
+     * @return string
+     */
+    private static function generateEmergencyInvoiceNumber(): string
+    {
+        $today = Carbon::today();
+        $dateCode = $today->format('ymd');
         $timestamp = time();
         $random = mt_rand(1000, 9999);
-        return Carbon::today()->format('ymd') . '-' . $timestamp . '-' . $random;
+        
+        // تنسيق طوارئ: YYMMDD-EMG-TIMESTAMP-RANDOM
+        return $dateCode . '-EMG-' . $timestamp . '-' . $random;
+    }
+    
+    /**
+     * الحصول على أعلى رقم تسلسلي لهذا اليوم من كلا الجدولين
+     * 
+     * @param string $dateCode
+     * @return int
+     */
+    private static function getMaxSequenceForToday(string $dateCode): int
+    {
+        // البحث عن أعلى رقم تسلسلي في جدول orders
+        $ordersQuery = Order::whereNotNull('invoice_number')
+            ->where('invoice_number', 'LIKE', $dateCode . '-%')
+            ->where('invoice_number', 'REGEXP', '^[0-9]{6}-[0-9]{3}$') // فقط الأرقام العادية
+            ->lockForUpdate()
+            ->pluck('invoice_number');
+        
+        $maxFromOrders = $ordersQuery
+            ->map(function($invoiceNumber) {
+                $parts = explode('-', $invoiceNumber);
+                return isset($parts[1]) && is_numeric($parts[1]) ? (int)$parts[1] : 0;
+            })
+            ->max() ?? 0;
+        
+        // البحث عن أعلى رقم تسلسلي في جدول offline_orders  
+        $offlineOrdersQuery = OfflineOrder::whereNotNull('invoice_number')
+            ->where('invoice_number', 'LIKE', $dateCode . '-%')
+            ->where('invoice_number', 'REGEXP', '^[0-9]{6}-[0-9]{3}$') // فقط الأرقام العادية
+            ->lockForUpdate()
+            ->pluck('invoice_number');
+            
+        $maxFromOfflineOrders = $offlineOrdersQuery
+            ->map(function($invoiceNumber) {
+                $parts = explode('-', $invoiceNumber);
+                return isset($parts[1]) && is_numeric($parts[1]) ? (int)$parts[1] : 0;
+            })
+            ->max() ?? 0;
+        
+        return max($maxFromOrders, $maxFromOfflineOrders);
+    }
+    
+    /**
+     * التحقق من وجود رقم الفاتورة
+     * 
+     * @param string $invoiceNumber
+     * @return bool
+     */
+    private static function invoiceNumberExists(string $invoiceNumber): bool
+    {
+        return Order::where('invoice_number', $invoiceNumber)->exists() || 
+               OfflineOrder::where('invoice_number', $invoiceNumber)->exists();
     }
     
     /**

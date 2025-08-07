@@ -63,7 +63,7 @@ class OfflineOrder extends Model
      */
     public static function getPendingSync($userId = null)
     {
-        $query = static::where('status', 'pending_sync');
+        $query = static::whereIn('status', ['pending_sync', 'failed']);
         
         if ($userId) {
             $query->where('user_id', $userId);
@@ -99,6 +99,9 @@ class OfflineOrder extends Model
             $this->sync_error = null;
         } elseif ($status === 'failed') {
             $this->sync_error = $error;
+        } elseif ($status === 'syncing') {
+            // تسجيل بداية عملية المزامنة
+            $this->sync_error = null;
         }
         
         return $this->save();

@@ -168,7 +168,7 @@ class OfflineService
     }
 
     /**
-     * مزامنة الطلبات في وضع عدم الاتصال
+     * مزامنة الطلبات في وضع عدم الاتصال - محسنة ومحمية من التضارب
      */
     public static function syncOfflineOrders()
     {
@@ -180,49 +180,227 @@ class OfflineService
         }
 
         $userId = Auth::id();
-        $pendingOrders = OfflineOrder::getPendingSync($userId);
-        $syncedCount = 0;
-        $failedCount = 0;
-        $errors = [];
+        
+        // التحقق من وجود مزامنة جارية
+        $syncLockKey = "sync_offline_orders_{$userId}";
+        if (\Illuminate\Support\Facades\Cache::has($syncLockKey)) {
+            return [
+                'success' => false,
+                'message' => 'عملية مزامنة جارية بالفعل، يرجى الانتظار'
+            ];
+        }
+        
+        // قفل شامل لنظام ترقيم الفواتير أثناء المزامنة
+        $invoiceSystemLockKey = "invoice_numbering_system_lock";
+        $invoiceSystemLocked = false;
+        
+        try {
+            // قفل عملية المزامنة لمدة 10 دقائق
+            \Illuminate\Support\Facades\Cache::put($syncLockKey, true, 600);
+            
+            $pendingOrders = OfflineOrder::getPendingSync($userId);
+            
+            if ($pendingOrders->isEmpty()) {
+                return [
+                    'success' => true,
+                    'synced_count' => 0,
+                    'failed_count' => 0,
+                    'skipped_count' => 0,
+                    'message' => 'لا توجد طلبات معلقة للمزامنة'
+                ];
+            }
+            
+            // قفل نظام ترقيم الفواتير لمنع التضارب مع الطلبات الجديدة
+            if (!self::lockInvoiceNumberingSystem($invoiceSystemLockKey)) {
+                return [
+                    'success' => false,
+                    'message' => 'نظام الفواتير مشغول، يرجى المحاولة لاحقاً'
+                ];
+            }
+            $invoiceSystemLocked = true;
+            
+            $syncedCount = 0;
+            $failedCount = 0;
+            $errors = [];
+            $skippedCount = 0;
+            $renumberedCount = 0;
 
-        foreach ($pendingOrders as $offlineOrder) {
-            try {
-                DB::transaction(function () use ($offlineOrder) {
-                    // تحويل الطلب إلى طلب عادي
-                    $order = $offlineOrder->convertToOrder();
+            foreach ($pendingOrders as $offlineOrder) {
+                try {
+                    // التحقق من حالة الطلب مرة أخرى (تجنب race conditions)
+                    $offlineOrder->refresh();
                     
-                    // إنشاء عناصر الطلب
-                    $offlineOrder->createOrderItems($order->id);
+                    if ($offlineOrder->status !== 'pending_sync' && $offlineOrder->status !== 'failed') {
+                        Log::info("تم تخطي الطلب {$offlineOrder->offline_id} - الحالة: {$offlineOrder->status}");
+                        $skippedCount++;
+                        continue;
+                    }
                     
-                    // إنشاء حركات المخزون
-                    $offlineOrder->createStockMovements($order->id);
+                    // التحقق من وجود طلب مزامن مسبقاً بنفس رقم الفاتورة
+                    $existingOrder = Order::where('invoice_number', $offlineOrder->invoice_number)->first();
+                    if ($existingOrder) {
+                        Log::warning("الطلب {$offlineOrder->offline_id} مزامن مسبقاً - رقم الفاتورة: {$offlineOrder->invoice_number}");
+                        $offlineOrder->updateSyncStatus('synced');
+                        $skippedCount++;
+                        continue;
+                    }
                     
-                    // تحديث المخزون
-                    self::updateStockFromMovements($offlineOrder->stock_movements);
+                    // تحديث حالة الطلب إلى "قيد المزامنة"
+                    $offlineOrder->updateSyncStatus('syncing');
                     
-                    // تحديث حالة المزامنة
-                    $offlineOrder->updateSyncStatus('synced');
-                });
+                    DB::transaction(function () use ($offlineOrder, &$renumberedCount) {
+                        // التحقق من تضارب رقم الفاتورة مع الأرقام المولدة حديثاً
+                        $currentInvoiceNumber = $offlineOrder->invoice_number;
+                        $needsRenumbering = self::checkInvoiceNumberConflict($currentInvoiceNumber);
+                        
+                        if ($needsRenumbering) {
+                            // إعادة ترقيم الفاتورة لتجنب التضارب
+                            $newInvoiceNumber = \App\Services\InvoiceNumberService::generateInvoiceNumber();
+                            
+                            Log::info("إعادة ترقيم الطلب {$offlineOrder->offline_id} من {$currentInvoiceNumber} إلى {$newInvoiceNumber}");
+                            
+                            // تحديث رقم الفاتورة في الطلب الأوفلاين
+                            $offlineOrder->update(['invoice_number' => $newInvoiceNumber]);
+                            $renumberedCount++;
+                        }
+                        
+                        // 1. تحويل الطلب إلى طلب عادي
+                        $order = $offlineOrder->convertToOrder();
+                        
+                        // 2. التحقق من نجاح إنشاء الطلب
+                        if (!$order || !$order->id) {
+                            throw new \Exception('فشل في إنشاء الطلب العادي');
+                        }
+                        
+                        // 3. إنشاء عناصر الطلب مع التحقق من عدم وجودها مسبقاً
+                        $existingItems = OrderItem::where('order_id', $order->id)->count();
+                        if ($existingItems === 0) {
+                            $itemsCreated = $offlineOrder->createOrderItems($order->id);
+                            if (!$itemsCreated) {
+                                throw new \Exception('فشل في إنشاء عناصر الطلب');
+                            }
+                        } else {
+                            Log::warning("عناصر الطلب موجودة مسبقاً للطلب {$order->id}");
+                        }
+                        
+                        // 4. إنشاء حركات المخزون مع التحقق من عدم وجودها مسبقاً
+                        $existingMovements = StockMovement::where('related_order_id', $order->id)->count();
+                        if ($existingMovements === 0 && !empty($offlineOrder->stock_movements)) {
+                            $movementsCreated = $offlineOrder->createStockMovements($order->id);
+                            
+                            // 5. تحديث المخزون
+                            self::updateStockFromMovements($offlineOrder->stock_movements);
+                        } else {
+                            if ($existingMovements > 0) {
+                                Log::warning("حركات المخزون موجودة مسبقاً للطلب {$order->id}");
+                            }
+                        }
+                        
+                        // 6. تحديث حالة المزامنة إلى مكتملة
+                        $offlineOrder->updateSyncStatus('synced');
+                    });
 
-                $syncedCount++;
-                
-            } catch (\Exception $e) {
-                $error = 'خطأ في مزامنة الطلب ' . $offlineOrder->offline_id . ': ' . $e->getMessage();
-                $errors[] = $error;
-                Log::error($error);
-                
-                $offlineOrder->updateSyncStatus('failed', $e->getMessage());
-                $failedCount++;
+                    $syncedCount++;
+                    Log::info("تم مزامنة الطلب {$offlineOrder->offline_id} بنجاح");
+                    
+                } catch (\Exception $e) {
+                    $error = 'خطأ في مزامنة الطلب ' . $offlineOrder->offline_id . ': ' . $e->getMessage();
+                    $errors[] = $error;
+                    Log::error($error, [
+                        'offline_order_id' => $offlineOrder->id,
+                        'offline_id' => $offlineOrder->offline_id,
+                        'invoice_number' => $offlineOrder->invoice_number,
+                        'exception' => $e
+                    ]);
+                    
+                    // إعادة تعيين الحالة إلى فاشلة
+                    $offlineOrder->updateSyncStatus('failed', $e->getMessage());
+                    $failedCount++;
+                }
+            }
+
+            return [
+                'success' => true,
+                'synced_count' => $syncedCount,
+                'failed_count' => $failedCount,
+                'skipped_count' => $skippedCount,
+                'renumbered_count' => $renumberedCount,
+                'errors' => $errors,
+                'message' => "تم مزامنة {$syncedCount} طلب بنجاح" . 
+                           ($renumberedCount > 0 ? "، تم إعادة ترقيم {$renumberedCount} فاتورة" : "") .
+                           ($skippedCount > 0 ? "، تم تخطي {$skippedCount} طلب" : "") .
+                           ($failedCount > 0 ? "، فشل {$failedCount} طلب" : "")
+            ];
+            
+        } finally {
+            // إزالة الأقفال
+            \Illuminate\Support\Facades\Cache::forget($syncLockKey);
+            
+            if ($invoiceSystemLocked) {
+                self::unlockInvoiceNumberingSystem($invoiceSystemLockKey);
             }
         }
-
-        return [
-            'success' => true,
-            'synced_count' => $syncedCount,
-            'failed_count' => $failedCount,
-            'errors' => $errors,
-            'message' => "تم مزامنة {$syncedCount} طلب بنجاح" . ($failedCount > 0 ? " وفشل {$failedCount} طلب" : "")
-        ];
+    }
+    
+    /**
+     * قفل نظام ترقيم الفواتير أثناء المزامنة
+     */
+    private static function lockInvoiceNumberingSystem($lockKey): bool
+    {
+        // محاولة الحصول على القفل لمدة 5 ثوان
+        $attempts = 0;
+        $maxAttempts = 5;
+        
+        while ($attempts < $maxAttempts) {
+            if (!\Illuminate\Support\Facades\Cache::has($lockKey)) {
+                // الحصول على القفل لمدة 15 دقيقة
+                \Illuminate\Support\Facades\Cache::put($lockKey, Auth::id(), 900);
+                return true;
+            }
+            
+            sleep(1);
+            $attempts++;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * إلغاء قفل نظام ترقيم الفواتير
+     */
+    private static function unlockInvoiceNumberingSystem($lockKey): void
+    {
+        \Illuminate\Support\Facades\Cache::forget($lockKey);
+    }
+    
+    /**
+     * التحقق من تضارب رقم الفاتورة
+     */
+    private static function checkInvoiceNumberConflict($invoiceNumber): bool
+    {
+        // استخراج التاريخ والرقم التسلسلي من رقم الفاتورة
+        if (!preg_match('/^(\d{6})-(\d{3})$/', $invoiceNumber, $matches)) {
+            return true; // رقم غير صحيح، يحتاج إعادة ترقيم
+        }
+        
+        $dateCode = $matches[1];
+        $sequenceNumber = (int)$matches[2];
+        
+        // الحصول على آخر رقم تسلسلي حالي من النظام
+        $currentSequence = \App\Models\InvoiceSequence::where('date_code', $dateCode)->value('current_sequence') ?? 0;
+        
+        // إذا كان الرقم التسلسلي للطلب الأوفلاين أقل من أو يساوي الرقم الحالي
+        // فهذا يعني أن هناك تضارب محتمل
+        if ($sequenceNumber <= $currentSequence) {
+            // التحقق من وجود طلب آخر بنفس الرقم
+            $existsInOrders = Order::where('invoice_number', $invoiceNumber)->exists();
+            
+            if ($existsInOrders) {
+                return true; // يحتاج إعادة ترقيم
+            }
+        }
+        
+        return false; // لا يوجد تضارب
     }
 
     /**
