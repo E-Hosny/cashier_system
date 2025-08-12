@@ -1,13 +1,31 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { usePage } from '@inertiajs/vue3';
+import { router } from '@inertiajs/vue3';
 
 const props = defineProps({
   orders: Array,
   start: String,
   end: String,
+  selectedDate: String,
 });
+
+// تحديد تاريخ اليوم الحالي تلقائياً
+const getCurrentDate = () => {
+  const today = new Date();
+  return today.toISOString().split('T')[0];
+};
+
+const selectedDate = ref(props.selectedDate || getCurrentDate());
+
+const onDateChange = () => {
+  router.get('/invoices', { date: selectedDate.value }, { preserveState: true });
+};
+
+const clearDate = () => {
+  selectedDate.value = getCurrentDate();
+  router.get('/invoices', {}, { preserveState: true });
+};
 
 const formatDate = (date) => {
   return new Date(date).toLocaleString('ar-EG', {
@@ -37,9 +55,48 @@ const translateSize = (size) => {
 <template>
   <AppLayout title="فواتير اليوم">
     <template #header>
-      <h2 class="font-semibold text-xl text-gray-800 leading-tight">فواتير اليوم (من {{ formatDate(start) }} إلى {{ formatDate(end) }})</h2>
+      <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+        {{ selectedDate ? 'فواتير يوم محدد' : 'فواتير اليوم' }} 
+        (من {{ formatDate(start) }} إلى {{ formatDate(end) }})
+      </h2>
     </template>
     <div class="py-8 max-w-5xl mx-auto">
+      <!-- Date Filter Section -->
+      <div class="bg-white rounded-lg shadow-lg p-6 mb-6 border border-gray-200">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4">تصفية الفواتير حسب التاريخ</h3>
+        <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+          <div class="flex flex-col">
+            <label for="date-filter" class="text-sm font-medium text-gray-700 mb-2">
+              اختر التاريخ (اليوم يبدأ من 7 صباحاً إلى 7 صباحاً لليوم التالي):
+            </label>
+            <input
+              id="date-filter"
+              type="date"
+              v-model="selectedDate"
+              @change="onDateChange"
+              class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+          </div>
+          <div class="flex gap-2 mt-2 sm:mt-6">
+            <button
+              @click="onDateChange"
+              class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-200"
+            >
+              تطبيق
+            </button>
+            <button
+              @click="clearDate"
+              class="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 transition duration-200"
+            >
+              إعادة تعيين
+            </button>
+          </div>
+        </div>
+        <div v-if="selectedDate" class="mt-3 text-sm text-gray-600">
+          <span class="font-medium">التاريخ المحدد:</span> 
+          {{ new Date(selectedDate).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' }) }}
+        </div>
+      </div>
       <div v-if="orders.length === 0" class="text-center text-gray-500 py-12 text-lg">لا توجد فواتير في هذه الفترة.</div>
       <div v-for="order in orders" :key="order.id" class="mb-8 bg-white rounded-lg shadow p-6 border border-gray-200">
         <div class="flex flex-col md:flex-row md:justify-between md:items-center mb-4">

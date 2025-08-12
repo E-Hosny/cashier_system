@@ -272,11 +272,23 @@ class CashierController extends Controller
         return view('invoice-html', compact('order'));
     }
 
-    public function invoicesToday()
+    public function invoicesToday(Request $request)
     {
-        $now = now();
-        $start = $now->copy()->hour < 7 ? $now->copy()->subDay()->setTime(7,0,0) : $now->copy()->setTime(7,0,0);
-        $end = $start->copy()->addDay();
+        $selectedDate = $request->input('date');
+        
+        if ($selectedDate) {
+            // تحويل التاريخ المحدد إلى كائن Carbon
+            $date = \Carbon\Carbon::parse($selectedDate);
+            // تحديد بداية اليوم من 7 صباحا
+            $start = $date->copy()->setTime(7, 0, 0);
+            // تحديد نهاية اليوم في 7 صباحا لليوم التالي
+            $end = $start->copy()->addDay();
+        } else {
+            // السلوك الافتراضي: اليوم الحالي
+            $now = now();
+            $start = $now->copy()->hour < 7 ? $now->copy()->subDay()->setTime(7,0,0) : $now->copy()->setTime(7,0,0);
+            $end = $start->copy()->addDay();
+        }
 
         $orders = Order::with(['items'])
             ->whereBetween('created_at', [$start, $end])
@@ -287,6 +299,7 @@ class CashierController extends Controller
             'orders' => $orders,
             'start' => $start->toDateTimeString(),
             'end' => $end->toDateTimeString(),
+            'selectedDate' => $selectedDate,
         ]);
     }
 
