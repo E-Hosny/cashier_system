@@ -378,6 +378,9 @@ export default {
       showSalesModal: false,
       newShiftType: 'morning',
       isStartingShift: false,
+      // مدير الأوفلاين
+      offlineManager: null,
+      isSyncing: false,
       isClosingShift: false,
       isHandingOver: false,
       closedShift: null,
@@ -965,8 +968,9 @@ export default {
         
         // إذا كان متصل الآن وكان غير متصل سابقاً، قم بالمزامنة التلقائية
         if (this.isOnline && wasOffline) {
-          console.log('تم استعادة الاتصال - بدء المزامنة التلقائية...');
-          await this.autoSyncOfflineOrders();
+          console.log('🟢 تم استعادة الاتصال - OfflineManager سيتولى المزامنة (Cashier.vue)');
+          // لا نحتاج لاستدعاء المزامنة هنا لأن OfflineManager يتولى الأمر تلقائياً
+          // تجنب المزامنة المكررة
         }
         
         // تسجيل سبب عدم الاتصال إذا كان هناك مشكلة
@@ -1070,6 +1074,22 @@ export default {
       }, 5000);
     },
 
+    // معالج حدث عودة الاتصال من المتصفح
+    async handleBrowserOnline() {
+      console.log('🟢 تم رصد عودة الاتصال من المتصفح (Cashier.vue)');
+      this.isOnline = true;
+      
+      // لا نحتاج لاستدعاء المزامنة هنا لأن OfflineManager يتولى الأمر
+      // تجنب المزامنة المكررة
+      console.log('⏸️ OfflineManager سيتولى المزامنة التلقائية');
+    },
+    
+    // معالج حدث انقطاع الاتصال من المتصفح
+    handleBrowserOffline() {
+      console.log('🔴 تم رصد انقطاع الاتصال من المتصفح');
+      this.isOnline = false;
+    },
+    
     // بدء فحص الاتصال الدوري
     startConnectionCheck() {
       this.connectionCheckInterval = setInterval(() => {
@@ -1249,6 +1269,13 @@ export default {
     // الحصول على الوردية الحالية
     this.getCurrentShift();
     
+    // تهيئة مدير الأوفلاين للمزامنة التلقائية
+    this.offlineManager = new OfflineManager();
+    
+    // مراقبة أحداث الاتصال مباشرة من المتصفح
+    window.addEventListener('online', this.handleBrowserOnline);
+    window.addEventListener('offline', this.handleBrowserOffline);
+    
     // بدء فحص الاتصال
     this.checkConnection();
     this.startConnectionCheck();
@@ -1258,7 +1285,14 @@ export default {
   beforeDestroy() {
     document.removeEventListener('keydown', this.handleEscape);
     window.removeEventListener('message', this.handleIframeMessage);
+    window.removeEventListener('online', this.handleBrowserOnline);
+    window.removeEventListener('offline', this.handleBrowserOffline);
     this.stopConnectionCheck();
+    
+    // تنظيف مدير الأوفلاين
+    if (this.offlineManager) {
+      this.offlineManager.destroy();
+    }
   },
   watch: {
       products() {

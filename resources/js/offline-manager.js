@@ -13,6 +13,11 @@ class OfflineManager {
         this.lastConnectionCheck = 0;
         this.connectionCheckTimeout = 5000; // 5 ثوانٍ
         
+        // حماية من المزامنة المتعددة
+        this.isSyncing = false;
+        this.lastSyncTime = 0;
+        this.syncCooldown = 10000; // 10 ثوانٍ بين عمليات المزامنة
+        
         this.init();
     }
 
@@ -32,7 +37,7 @@ class OfflineManager {
     }
 
     handleOnline() {
-        console.log('تم استعادة الاتصال بالإنترنت');
+        console.log('🟢 تم استعادة الاتصال بالإنترنت (من أحداث المتصفح)');
         this.isOnline = true;
         this.retryAttempts = 0;
         
@@ -41,6 +46,11 @@ class OfflineManager {
         
         // محاولة مزامنة الطلبات المعلقة
         this.syncPendingRequests();
+        
+        // مزامنة الطلبات الأوفلاين تلقائياً مع تأخير لتجنب التضارب
+        setTimeout(() => {
+            this.autoSyncOfflineOrders();
+        }, 2000);
         
         // إعادة تشغيل فحص الاتصال
         this.startConnectionCheck();
@@ -92,8 +102,13 @@ class OfflineManager {
             
             // إذا كان متصل الآن وكان غير متصل سابقاً
             if (this.isOnline && wasOffline) {
-                console.log('تم استعادة الاتصال - بدء المزامنة التلقائية');
+                console.log('🟢 تم استعادة الاتصال - بدء المزامنة التلقائية (من فحص دوري)');
                 this.syncPendingRequests();
+                
+                // مزامنة الطلبات الأوفلاين أيضاً مع تأخير أطول لتجنب التضارب
+                setTimeout(() => {
+                    this.autoSyncOfflineOrders();
+                }, 3000);
             }
             
             // إذا كان غير متصل الآن وكان متصل سابقاً
@@ -447,6 +462,127 @@ class OfflineManager {
             pendingRequests: this.pendingRequests.length,
             lastCheck: this.lastConnectionCheck
         };
+    }
+
+    // مزامنة الطلبات الأوفلاين تلقائياً
+    async autoSyncOfflineOrders() {
+        const now = Date.now();
+        
+        // حماية من المزامنة المتعددة
+        if (this.isSyncing) {
+            console.log('⏸️ عملية مزامنة جارية بالفعل، تم تجاهل الطلب');
+            return;
+        }
+        
+        // حماية من المزامنة المتكررة (cooldown)
+        if (now - this.lastSyncTime < this.syncCooldown) {
+            console.log(`⏸️ مزامنة حديثة منذ ${Math.round((now - this.lastSyncTime) / 1000)} ثانية، تم تجاهل الطلب`);
+            return;
+        }
+        
+        try {
+            this.isSyncing = true;
+            this.lastSyncTime = now;
+            
+            console.log('🔄 بدء المزامنة التلقائية للطلبات الأوفلاين...');
+            
+            // إظهار إشعار بدء المزامنة
+            this.showNotification('جاري المزامنة التلقائية...', 'info');
+            
+            // التحقق من وجود طلبات محلية أولاً
+            await this.syncLocalOfflineOrders();
+            
+            // ثم مزامنة الطلبات من قاعدة البيانات
+            const response = await fetch('/offline/sync', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+                }
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success) {
+                    const syncedCount = data.synced_count || 0;
+                    const skippedCount = data.skipped_count || 0;
+                    const failedCount = data.failed_count || 0;
+                    
+                    if (syncedCount > 0) {
+                        this.showNotification(`✅ تم مزامنة ${syncedCount} طلب تلقائياً!`, 'success');
+                    } else if (skippedCount > 0) {
+                        console.log(`تم تخطي ${skippedCount} طلب (مزامن مسبقاً)`);
+                    } else {
+                        console.log('لا توجد طلبات جديدة للمزامنة');
+                    }
+                    
+                    if (failedCount > 0) {
+                        this.showNotification(`⚠️ فشل في مزامنة ${failedCount} طلب`, 'warning');
+                    }
+                    
+                    console.log('✅ تمت المزامنة التلقائية بنجاح:', data);
+                } else {
+                    console.error('❌ فشل في المزامنة التلقائية:', data.message);
+                    this.showNotification('فشل في المزامنة التلقائية', 'error');
+                }
+            }
+        } catch (error) {
+            console.error('❌ خطأ في المزامنة التلقائية للطلبات الأوفلاين:', error);
+            this.showNotification('خطأ في المزامنة التلقائية', 'error');
+        } finally {
+            this.isSyncing = false;
+        }
+    }
+
+    // مزامنة الطلبات المحلية المحفوظة في localStorage
+    async syncLocalOfflineOrders() {
+        try {
+            const localOrders = JSON.parse(localStorage.getItem('local_offline_orders') || '[]');
+            
+            if (localOrders.length === 0) {
+                console.log('لا توجد طلبات محلية للمزامنة');
+                return;
+            }
+            
+            console.log(`مزامنة ${localOrders.length} طلب محلي...`);
+            
+            for (const order of localOrders) {
+                try {
+                    const response = await fetch('/offline/orders', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+                        },
+                        body: JSON.stringify({
+                            total_price: order.total,
+                            payment_method: order.payment_method,
+                            items: order.items
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.success) {
+                            console.log('تم مزامنة الطلب المحلي:', order.offline_id);
+                        }
+                    }
+                } catch (error) {
+                    console.error('خطأ في مزامنة الطلب المحلي:', order.offline_id, error);
+                }
+            }
+            
+            // مسح الطلبات المحلية بعد المزامنة الناجحة
+            localStorage.removeItem('local_offline_orders');
+            console.log('تم مسح الطلبات المحلية بعد المزامنة');
+            
+        } catch (error) {
+            console.error('خطأ في مزامنة الطلبات المحلية:', error);
+        }
     }
 
     destroy() {

@@ -13,6 +13,7 @@ use App\Services\InvoiceNumberService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema; // Added for Schema facade
 
 class OfflineService
 {
@@ -168,7 +169,7 @@ class OfflineService
     }
 
     /**
-     * مزامنة الطلبات في وضع عدم الاتصال - محسنة ومحمية من التضارب
+     * مزامنة الطلبات في وضع عدم الاتصال - محسنة ومحمية من التضارب والتكرار
      */
     public static function syncOfflineOrders()
     {
@@ -181,14 +182,28 @@ class OfflineService
 
         $userId = Auth::id();
         
-        // التحقق من وجود مزامنة جارية
+        // التحقق من وجود مزامنة جارية - حماية مشددة
         $syncLockKey = "sync_offline_orders_{$userId}";
         if (\Illuminate\Support\Facades\Cache::has($syncLockKey)) {
+            Log::info("تم رفض طلب مزامنة للمستخدم {$userId} - عملية مزامنة جارية بالفعل");
             return [
                 'success' => false,
                 'message' => 'عملية مزامنة جارية بالفعل، يرجى الانتظار'
             ];
         }
+        
+        // قفل إضافي لفترة قصيرة لمنع الطلبات المتتالية السريعة
+        $quickLockKey = "sync_quick_lock_{$userId}";
+        if (\Illuminate\Support\Facades\Cache::has($quickLockKey)) {
+            Log::info("تم رفض طلب مزامنة للمستخدم {$userId} - طلبات متتالية سريعة");
+            return [
+                'success' => false,
+                'message' => 'طلبات مزامنة سريعة جداً، يرجى الانتظار'
+            ];
+        }
+        
+        // وضع قفل سريع لمدة 5 ثوانٍ
+        \Illuminate\Support\Facades\Cache::put($quickLockKey, true, 5);
         
         // قفل شامل لنظام ترقيم الفواتير أثناء المزامنة
         $invoiceSystemLockKey = "invoice_numbering_system_lock";
@@ -199,6 +214,8 @@ class OfflineService
             \Illuminate\Support\Facades\Cache::put($syncLockKey, true, 600);
             
             $pendingOrders = OfflineOrder::getPendingSync($userId);
+            
+            Log::info("🔄 بدء مزامنة للمستخدم {$userId} - عدد الطلبات المعلقة: " . $pendingOrders->count());
             
             if ($pendingOrders->isEmpty()) {
                 return [
@@ -224,84 +241,176 @@ class OfflineService
             $errors = [];
             $skippedCount = 0;
             $renumberedCount = 0;
+            
+            // إنشاء قاموس للفواتير المزامنة في هذه الدورة لمنع التكرار داخل الدورة الواحدة
+            $syncedInvoiceNumbers = [];
 
             foreach ($pendingOrders as $offlineOrder) {
                 try {
-                    // التحقق من حالة الطلب مرة أخرى (تجنب race conditions)
+                    Log::info("🔍 فحص الطلب {$offlineOrder->offline_id} - الحالة: {$offlineOrder->status} - الفاتورة: {$offlineOrder->invoice_number}");
+                    
+                    // طبقة الحماية الأولى: التحقق من الحالة مرة أخرى
                     $offlineOrder->refresh();
                     
                     if ($offlineOrder->status !== 'pending_sync' && $offlineOrder->status !== 'failed') {
-                        Log::info("تم تخطي الطلب {$offlineOrder->offline_id} - الحالة: {$offlineOrder->status}");
+                        Log::info("⏸️ تم تخطي الطلب {$offlineOrder->offline_id} - الحالة: {$offlineOrder->status}");
                         $skippedCount++;
                         continue;
                     }
                     
-                    // التحقق من وجود طلب مزامن مسبقاً بنفس رقم الفاتورة
+                    // طبقة الحماية الثانية: التحقق من المزامنة المسبقة بواسطة رقم الفاتورة
                     $existingOrder = Order::where('invoice_number', $offlineOrder->invoice_number)->first();
                     if ($existingOrder) {
-                        Log::warning("الطلب {$offlineOrder->offline_id} مزامن مسبقاً - رقم الفاتورة: {$offlineOrder->invoice_number}");
+                        Log::warning("⏸️ الطلب {$offlineOrder->offline_id} مزامن مسبقاً في قاعدة البيانات - رقم الفاتورة: {$offlineOrder->invoice_number}");
                         $offlineOrder->updateSyncStatus('synced');
                         $skippedCount++;
                         continue;
                     }
                     
-                    // تحديث حالة الطلب إلى "قيد المزامنة"
-                    $offlineOrder->updateSyncStatus('syncing');
-                    
-                    DB::transaction(function () use ($offlineOrder, &$renumberedCount) {
-                        // التحقق من تضارب رقم الفاتورة مع الأرقام المولدة حديثاً
-                        $currentInvoiceNumber = $offlineOrder->invoice_number;
-                        $needsRenumbering = self::checkInvoiceNumberConflict($currentInvoiceNumber);
-                        
-                        if ($needsRenumbering) {
-                            // إعادة ترقيم الفاتورة لتجنب التضارب
-                            $newInvoiceNumber = \App\Services\InvoiceNumberService::generateInvoiceNumber();
-                            
-                            Log::info("إعادة ترقيم الطلب {$offlineOrder->offline_id} من {$currentInvoiceNumber} إلى {$newInvoiceNumber}");
-                            
-                            // تحديث رقم الفاتورة في الطلب الأوفلاين
-                            $offlineOrder->update(['invoice_number' => $newInvoiceNumber]);
-                            $renumberedCount++;
-                        }
-                        
-                        // 1. تحويل الطلب إلى طلب عادي
-                        $order = $offlineOrder->convertToOrder();
-                        
-                        // 2. التحقق من نجاح إنشاء الطلب
-                        if (!$order || !$order->id) {
-                            throw new \Exception('فشل في إنشاء الطلب العادي');
-                        }
-                        
-                        // 3. إنشاء عناصر الطلب مع التحقق من عدم وجودها مسبقاً
-                        $existingItems = OrderItem::where('order_id', $order->id)->count();
-                        if ($existingItems === 0) {
-                            $itemsCreated = $offlineOrder->createOrderItems($order->id);
-                            if (!$itemsCreated) {
-                                throw new \Exception('فشل في إنشاء عناصر الطلب');
-                            }
-                        } else {
-                            Log::warning("عناصر الطلب موجودة مسبقاً للطلب {$order->id}");
-                        }
-                        
-                        // 4. إنشاء حركات المخزون مع التحقق من عدم وجودها مسبقاً
-                        $existingMovements = StockMovement::where('related_order_id', $order->id)->count();
-                        if ($existingMovements === 0 && !empty($offlineOrder->stock_movements)) {
-                            $movementsCreated = $offlineOrder->createStockMovements($order->id);
-                            
-                            // 5. تحديث المخزون
-                            self::updateStockFromMovements($offlineOrder->stock_movements);
-                        } else {
-                            if ($existingMovements > 0) {
-                                Log::warning("حركات المخزون موجودة مسبقاً للطلب {$order->id}");
-                            }
-                        }
-                        
-                        // 6. تحديث حالة المزامنة إلى مكتملة
+                    // طبقة الحماية الثالثة: التحقق من المزامنة في نفس الدورة
+                    if (in_array($offlineOrder->invoice_number, $syncedInvoiceNumbers)) {
+                        Log::warning("⏸️ الطلب {$offlineOrder->offline_id} مزامن بالفعل في هذه الدورة - رقم الفاتورة: {$offlineOrder->invoice_number}");
                         $offlineOrder->updateSyncStatus('synced');
-                    });
+                        $skippedCount++;
+                        continue;
+                    }
+                    
+                    // طبقة الحماية الرابعة: التحقق من تكرار offline_id (إذا كان metadata موجود)
+                    try {
+                        $existingByOfflineId = Order::where('user_id', $userId)
+                            ->whereJsonContains('metadata->offline_id', $offlineOrder->offline_id)
+                            ->first();
+                        
+                        if ($existingByOfflineId) {
+                            Log::warning("الطلب {$offlineOrder->offline_id} مزامن مسبقاً بنفس offline_id");
+                            $offlineOrder->updateSyncStatus('synced');
+                            $skippedCount++;
+                            continue;
+                        }
+                    } catch (\Exception $e) {
+                        // تجاهل الخطأ إذا كان العمود metadata غير موجود
+                        Log::info("تخطي فحص metadata للطلب {$offlineOrder->offline_id} - العمود غير متوفر");
+                    }
+                    
+                    // طبقة الحماية الخامسة: التحقق من تشابه المحتوى والتوقيت (فقط للطلبات المتطابقة تماماً)
+                    $timeThreshold = $offlineOrder->created_at->subSeconds(30);
+                    $timeThresholdEnd = $offlineOrder->created_at->addSeconds(30);
+                    
+                    $itemsCount = count($offlineOrder->items);
+                    $itemsSignature = collect($offlineOrder->items)->map(function($item) {
+                        return $item['product_name'] . '_' . $item['quantity'] . '_' . $item['price'];
+                    })->sort()->implode('|');
+                    
+                    $similarOrder = Order::where('user_id', $userId)
+                        ->where('total', $offlineOrder->total)
+                        ->whereBetween('created_at', [$timeThreshold, $timeThresholdEnd])
+                        ->with('items')
+                        ->get()
+                        ->filter(function($order) use ($itemsSignature, $itemsCount) {
+                            if ($order->items->count() !== $itemsCount) {
+                                return false;
+                            }
+                            $orderSignature = $order->items->map(function($item) {
+                                return $item->product_name . '_' . $item->quantity . '_' . $item->price;
+                            })->sort()->implode('|');
+                            return $orderSignature === $itemsSignature;
+                        })
+                        ->first();
+                    
+                    if ($similarOrder) {
+                        Log::warning("الطلب {$offlineOrder->offline_id} مطابق تماماً لطلب موجود (ID: {$similarOrder->id}) - المبلغ: {$offlineOrder->total}");
+                        $offlineOrder->updateSyncStatus('synced');
+                        $skippedCount++;
+                        continue;
+                    }
+                    
+                    // طبقة الحماية السادسة: قفل على مستوى الطلب الواحد
+                    $orderLockKey = "sync_order_{$offlineOrder->offline_id}";
+                    if (\Illuminate\Support\Facades\Cache::has($orderLockKey)) {
+                        Log::info("الطلب {$offlineOrder->offline_id} قيد المزامنة في عملية أخرى");
+                        $skippedCount++;
+                        continue;
+                    }
+                    
+                    // وضع قفل على الطلب لمدة 5 دقائق
+                    \Illuminate\Support\Facades\Cache::put($orderLockKey, true, 300);
+                    
+                    try {
+                        // تحديث حالة الطلب إلى "قيد المزامنة"
+                        Log::info("🔄 بدء مزامنة الطلب {$offlineOrder->offline_id} - الفاتورة: {$offlineOrder->invoice_number}");
+                        $offlineOrder->updateSyncStatus('syncing');
+                        
+                        // التحقق مرة أخيرة قبل بدء المعاملة
+                        $doubleCheckOrder = Order::where('invoice_number', $offlineOrder->invoice_number)->first();
+                        if ($doubleCheckOrder) {
+                            Log::warning("تم العثور على طلب مزامن بنفس رقم الفاتورة أثناء المزامنة: {$offlineOrder->invoice_number}");
+                            $offlineOrder->updateSyncStatus('synced');
+                            $skippedCount++;
+                            continue;
+                        }
+                        
+                        DB::transaction(function () use ($offlineOrder, &$renumberedCount, &$syncedInvoiceNumbers) {
+                            // التحقق من تضارب رقم الفاتورة مع الأرقام المولدة حديثاً
+                            $currentInvoiceNumber = $offlineOrder->invoice_number;
+                            $needsRenumbering = self::checkInvoiceNumberConflict($currentInvoiceNumber);
+                            
+                            if ($needsRenumbering) {
+                                // إعادة ترقيم الفاتورة لتجنب التضارب
+                                $newInvoiceNumber = \App\Services\InvoiceNumberService::generateInvoiceNumber();
+                                
+                                Log::info("إعادة ترقيم الطلب {$offlineOrder->offline_id} من {$currentInvoiceNumber} إلى {$newInvoiceNumber}");
+                                
+                                // تحديث رقم الفاتورة في الطلب الأوفلاين
+                                $offlineOrder->update(['invoice_number' => $newInvoiceNumber]);
+                                $renumberedCount++;
+                            }
+                            
+                            // 1. تحويل الطلب إلى طلب عادي مع metadata لتتبع المصدر
+                            $order = self::convertOfflineOrderToOrder($offlineOrder);
+                            
+                            // 2. التحقق من نجاح إنشاء الطلب
+                            if (!$order || !$order->id) {
+                                throw new \Exception('فشل في إنشاء الطلب العادي');
+                            }
+                            
+                            // إضافة رقم الفاتورة إلى القاموس لمنع التكرار في نفس الدورة
+                            $syncedInvoiceNumbers[] = $order->invoice_number;
+                            
+                            // 3. إنشاء عناصر الطلب مع التحقق من عدم وجودها مسبقاً
+                            $existingItems = OrderItem::where('order_id', $order->id)->count();
+                            if ($existingItems === 0) {
+                                $itemsCreated = $offlineOrder->createOrderItems($order->id);
+                                if (!$itemsCreated) {
+                                    throw new \Exception('فشل في إنشاء عناصر الطلب');
+                                }
+                            } else {
+                                Log::warning("عناصر الطلب موجودة مسبقاً للطلب {$order->id}");
+                            }
+                            
+                            // 4. إنشاء حركات المخزون مع التحقق من عدم وجودها مسبقاً
+                            $existingMovements = StockMovement::where('related_order_id', $order->id)->count();
+                            if ($existingMovements === 0 && !empty($offlineOrder->stock_movements)) {
+                                $movementsCreated = $offlineOrder->createStockMovements($order->id);
+                                
+                                // 5. تحديث المخزون
+                                self::updateStockFromMovements($offlineOrder->stock_movements);
+                            } else {
+                                if ($existingMovements > 0) {
+                                    Log::warning("حركات المخزون موجودة مسبقاً للطلب {$order->id}");
+                                }
+                            }
+                            
+                            // 6. تحديث حالة المزامنة إلى مكتملة
+                            $offlineOrder->updateSyncStatus('synced');
+                        });
 
-                    $syncedCount++;
-                    Log::info("تم مزامنة الطلب {$offlineOrder->offline_id} بنجاح");
+                        $syncedCount++;
+                        Log::info("✅ تم مزامنة الطلب {$offlineOrder->offline_id} بنجاح - رقم الفاتورة: {$offlineOrder->invoice_number} - المبلغ: {$offlineOrder->total}");
+                        
+                    } finally {
+                        // إزالة قفل الطلب
+                        \Illuminate\Support\Facades\Cache::forget($orderLockKey);
+                    }
                     
                 } catch (\Exception $e) {
                     $error = 'خطأ في مزامنة الطلب ' . $offlineOrder->offline_id . ': ' . $e->getMessage();
@@ -417,6 +526,39 @@ class OfflineService
                 ->where('id', $movement['product_id'])
                 ->increment('stock', $movement['quantity']);
         }
+    }
+
+    /**
+     * تحويل الطلب الأوفلاين إلى طلب عادي مع metadata للتتبع
+     */
+    private static function convertOfflineOrderToOrder($offlineOrder)
+    {
+        $orderData = [
+            'total' => $offlineOrder->total,
+            'payment_method' => $offlineOrder->payment_method,
+            'status' => 'completed',
+            'cashier_shift_id' => $offlineOrder->cashier_shift_id,
+            'invoice_number' => $offlineOrder->invoice_number,
+            'tenant_id' => $offlineOrder->user->tenant_id,
+            'user_id' => $offlineOrder->user_id,
+            'created_at' => $offlineOrder->created_at, // الحفاظ على التاريخ الأصلي
+            'updated_at' => now(),
+        ];
+
+        $order = Order::create($orderData);
+        
+        // إضافة metadata للتتبع (إذا كان الجدول يدعم ذلك)
+        if (Schema::hasColumn('orders', 'metadata')) {
+            $order->update([
+                'metadata' => json_encode([
+                    'source' => 'offline_sync',
+                    'offline_id' => $offlineOrder->offline_id,
+                    'synced_at' => now()->toISOString(),
+                ])
+            ]);
+        }
+        
+        return $order;
     }
 
     /**

@@ -27,11 +27,6 @@ const clearDate = () => {
   router.get('/invoices', {}, { preserveState: true });
 };
 
-// حساب إجمالي مبلغ الفواتير
-const totalAmount = computed(() => {
-  return props.orders.reduce((sum, order) => sum + parseFloat(order.total), 0);
-});
-
 const formatDate = (date) => {
   return new Date(date).toLocaleString('ar-EG', {
     year: 'numeric', month: '2-digit', day: '2-digit',
@@ -132,19 +127,6 @@ const translateSize = (size) => {
               </tr>
             </tbody>
           </table>
-        </div>
-      </div>
-      
-      <!-- إجمالي مبلغ الفواتير -->
-      <div v-if="orders.length > 0" class="mt-8 bg-gradient-to-r from-green-50 to-green-100 rounded-lg shadow-lg p-6 border-2 border-green-200">
-        <div class="text-center">
-          <h3 class="text-xl font-bold text-green-800 mb-2">إجمالي مبلغ الفواتير</h3>
-          <div class="text-3xl font-bold text-green-900">
-            {{ totalAmount.toFixed(2) }} جنيه
-          </div>
-          <div class="text-sm text-green-700 mt-2">
-            عدد الفواتير: {{ orders.length }} فاتورة
-          </div>
         </div>
       </div>
     </div>
