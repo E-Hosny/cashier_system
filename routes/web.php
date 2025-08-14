@@ -14,6 +14,8 @@ use App\Http\Controllers\Admin\EmployeeController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\OfflineController;
 use App\Http\Controllers\CashierShiftController;
+use App\Http\Controllers\FeedbackController;
+use App\Http\Controllers\Admin\FeedbackController as AdminFeedbackController;
 
 Route::get('/', function () {
     return Inertia::render('Welcome', [
@@ -114,4 +116,21 @@ Route::middleware([
         Route::get('/history', [CashierShiftController::class, 'getShiftHistory'])->name('cashier.shifts.history');
         Route::get('/stats', [CashierShiftController::class, 'getShiftStats'])->name('cashier.shifts.stats');
     });
+
+    // Feedback Management (Admin only)
+    Route::middleware(['admin'])->group(function () {
+        Route::get('/admin/feedback', [AdminFeedbackController::class, 'index'])->name('admin.feedback.index');
+        Route::get('/admin/feedback/create', [AdminFeedbackController::class, 'create'])->name('admin.feedback.create');
+        Route::post('/admin/feedback', [AdminFeedbackController::class, 'store'])->name('admin.feedback.store');
+        Route::get('/admin/feedback/{feedback}/edit', [AdminFeedbackController::class, 'edit'])->name('admin.feedback.edit');
+        Route::put('/admin/feedback/{feedback}', [AdminFeedbackController::class, 'update'])->name('admin.feedback.update');
+        Route::delete('/admin/feedback/{feedback}', [AdminFeedbackController::class, 'destroy'])->name('admin.feedback.destroy');
+        Route::put('/admin/feedback/{id}/approve', [AdminFeedbackController::class, 'approve'])->name('admin.feedback.approve');
+        Route::post('/admin/feedback/bulk-action', [AdminFeedbackController::class, 'bulkAction'])->name('admin.feedback.bulk-action');
+    });
 });
+
+// Public Feedback Routes (No Authentication Required)
+Route::get('/feedback', [FeedbackController::class, 'publicForm'])->name('feedback.public.form');
+Route::post('/feedback', [FeedbackController::class, 'publicStore'])->name('feedback.public.store');
+Route::get('/feedback/display', [FeedbackController::class, 'publicDisplay'])->name('feedback.public.display');

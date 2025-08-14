@@ -96,6 +96,13 @@ const logout = () => {
                                 <NavLink :href="route('expenses.index')" :active="route().current('expenses.index')">
                                     المصروفات
                                 </NavLink>
+                                <NavLink 
+                                    v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('admin')"
+                                    :href="route('admin.feedback.index')" 
+                                    :active="route().current('admin.feedback.*')"
+                                >
+                                    ⭐ التقييمات
+                                </NavLink>
                             </div>
                         </div>
 
