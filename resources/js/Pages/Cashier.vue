@@ -966,10 +966,10 @@ export default {
         
         this.isOnline = connectionStatus.isOnline;
         
-        // إذا كان متصل الآن وكان غير متصل سابقاً، قم بالمزامنة التلقائية
+        // إزالة المزامنة المكررة - OfflineManager يتولى الأمر
         if (this.isOnline && wasOffline) {
-          console.log('🟢 تم استعادة الاتصال - OfflineManager سيتولى المزامنة (Cashier.vue)');
-          // لا نحتاج لاستدعاء المزامنة هنا لأن OfflineManager يتولى الأمر تلقائياً
+          console.log('🟢 تم استعادة الاتصال - OfflineManager سيتولى المزامنة تلقائياً');
+          // لا نحتاج لاستدعاء المزامنة هنا لأن OfflineManager يتولى الأمر
           // تجنب المزامنة المكررة
         }
         
@@ -983,70 +983,15 @@ export default {
       }
     },
 
-    // المزامنة التلقائية للطلبات في وضع عدم الاتصال
-    async autoSyncOfflineOrders() {
-      try {
-        console.log('بدء المزامنة التلقائية...');
-        
-        // مزامنة الطلبات المحلية أولاً
-        await this.syncLocalOfflineOrders();
-        
-        // ثم مزامنة الطلبات من الخادم
-        const response = await axios.post('/offline/sync');
-        
-        if (response.data.success) {
-          const syncedCount = response.data.synced_count || 0;
-          if (syncedCount > 0) {
-            // عرض إشعار للمستخدم
-            this.showNotification(`تم مزامنة ${syncedCount} طلب تلقائياً بنجاح!`, 'success');
-          }
-        } else {
-          console.error('فشل في المزامنة التلقائية:', response.data.message);
-        }
-      } catch (error) {
-        console.error('خطأ في المزامنة التلقائية:', error);
-      }
-    },
+    // إزالة المزامنة التلقائية المكررة - OfflineManager يتولى الأمر
+    // async autoSyncOfflineOrders() {
+    //   // تم إزالة هذه الدالة لمنع التضارب
+    // },
 
-    // مزامنة الطلبات المحلية
-    async syncLocalOfflineOrders() {
-      try {
-        const localOrders = JSON.parse(localStorage.getItem('local_offline_orders') || '[]');
-        
-        if (localOrders.length === 0) {
-          console.log('لا توجد طلبات محلية للمزامنة');
-          return;
-        }
-        
-        console.log(`مزامنة ${localOrders.length} طلب محلي...`);
-        
-        for (const order of localOrders) {
-          try {
-            // إرسال الطلب إلى الخادم
-            const response = await axios.post('/offline/orders', {
-              total_price: order.total,
-              payment_method: order.payment_method,
-              items: order.items
-            });
-            
-            if (response.data.success) {
-              console.log('تم مزامنة الطلب المحلي:', order.offline_id);
-            } else {
-              console.error('فشل في مزامنة الطلب المحلي:', order.offline_id);
-            }
-          } catch (error) {
-            console.error('خطأ في مزامنة الطلب المحلي:', order.offline_id, error);
-          }
-        }
-        
-        // مسح الطلبات المحلية بعد المزامنة
-        localStorage.removeItem('local_offline_orders');
-        console.log('تم مسح الطلبات المحلية بعد المزامنة');
-        
-      } catch (error) {
-        console.error('خطأ في مزامنة الطلبات المحلية:', error);
-      }
-    },
+    // إزالة مزامنة الطلبات المحلية المكررة - OfflineManager يتولى الأمر
+    // async syncLocalOfflineOrders() {
+    //   // تم إزالة هذه الدالة لمنع التضارب
+    // },
 
     // عرض إشعار للمستخدم
     showNotification(message, type = 'info') {

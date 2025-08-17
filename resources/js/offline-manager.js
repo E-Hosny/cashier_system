@@ -468,7 +468,7 @@ class OfflineManager {
     async autoSyncOfflineOrders() {
         const now = Date.now();
         
-        // حماية من المزامنة المتعددة
+        // حماية مشددة من المزامنة المتعددة
         if (this.isSyncing) {
             console.log('⏸️ عملية مزامنة جارية بالفعل، تم تجاهل الطلب');
             return;
@@ -480,7 +480,16 @@ class OfflineManager {
             return;
         }
         
+        // قفل إضافي لمنع المزامنة المتزامنة
+        const syncLockKey = `offline_sync_lock_${Date.now()}`;
+        if (localStorage.getItem('offline_sync_locked')) {
+            console.log('⏸️ مزامنة مقفلة حالياً، تم تجاهل الطلب');
+            return;
+        }
+        
         try {
+            // وضع قفل المزامنة
+            localStorage.setItem('offline_sync_locked', syncLockKey);
             this.isSyncing = true;
             this.lastSyncTime = now;
             
@@ -532,7 +541,11 @@ class OfflineManager {
             console.error('❌ خطأ في المزامنة التلقائية للطلبات الأوفلاين:', error);
             this.showNotification('خطأ في المزامنة التلقائية', 'error');
         } finally {
+            // إزالة قفل المزامنة
             this.isSyncing = false;
+            if (localStorage.getItem('offline_sync_locked') === syncLockKey) {
+                localStorage.removeItem('offline_sync_locked');
+            }
         }
     }
 

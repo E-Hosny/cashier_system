@@ -182,6 +182,16 @@ class OfflineService
 
         $userId = Auth::id();
         
+        // قفل شامل لمزامنة المستخدم الواحد - حماية مشددة
+        $globalSyncLockKey = "global_sync_user_{$userId}";
+        if (\Illuminate\Support\Facades\Cache::has($globalSyncLockKey)) {
+            Log::info("تم رفض طلب مزامنة للمستخدم {$userId} - مزامنة شاملة جارية بالفعل");
+            return [
+                'success' => false,
+                'message' => 'عملية مزامنة شاملة جارية بالفعل، يرجى الانتظار'
+            ];
+        }
+        
         // التحقق من وجود مزامنة جارية - حماية مشددة
         $syncLockKey = "sync_offline_orders_{$userId}";
         if (\Illuminate\Support\Facades\Cache::has($syncLockKey)) {
@@ -210,6 +220,9 @@ class OfflineService
         $invoiceSystemLocked = false;
         
         try {
+            // قفل شامل لمزامنة المستخدم لمدة 15 دقيقة
+            \Illuminate\Support\Facades\Cache::put($globalSyncLockKey, true, 900);
+            
             // قفل عملية المزامنة لمدة 10 دقائق
             \Illuminate\Support\Facades\Cache::put($syncLockKey, true, 600);
             
@@ -311,7 +324,7 @@ class OfflineService
                                 return false;
                             }
                             $orderSignature = $order->items->map(function($item) {
-                                return $item->product_name . '_' . $item->quantity . '_' . $item->price;
+                                return $item->product_name . '_' . $item['quantity'] . '_' . $item['price'];
                             })->sort()->implode('|');
                             return $orderSignature === $itemsSignature;
                         })
@@ -444,6 +457,7 @@ class OfflineService
         } finally {
             // إزالة الأقفال
             \Illuminate\Support\Facades\Cache::forget($syncLockKey);
+            \Illuminate\Support\Facades\Cache::forget($globalSyncLockKey);
             
             if ($invoiceSystemLocked) {
                 self::unlockInvoiceNumberingSystem($invoiceSystemLockKey);

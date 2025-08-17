@@ -37,16 +37,41 @@ class InvoiceNumberService
             }
         }
         
-        $today = Carbon::today();
-        $dateCode = $today->format('ymd'); // مثال: 250806 لـ 6 أغسطس 2025
+        // قفل إضافي لمنع التضارب في توليد الأرقام
+        $numberingLockKey = "invoice_numbering_lock_" . time();
+        if (!\Illuminate\Support\Facades\Cache::add($numberingLockKey, true, 30)) {
+            // إذا فشل في الحصول على القفل، استخدم آلية طوارئ
+            return self::generateEmergencyInvoiceNumber();
+        }
         
-        // الحصول على الرقم التسلسلي التالي باستخدام النظام الآمن
-        $nextSequence = InvoiceSequence::getNextSequence($dateCode);
-        
-        // إنشاء رقم الفاتورة بالتنسيق: YYMMDD-XXX
-        $invoiceNumber = $dateCode . '-' . str_pad($nextSequence, 3, '0', STR_PAD_LEFT);
-        
-        return $invoiceNumber;
+        try {
+            $today = Carbon::today();
+            $dateCode = $today->format('ymd'); // مثال: 250806 لـ 6 أغسطس 2025
+            
+            // الحصول على الرقم التسلسلي التالي باستخدام النظام الآمن
+            $nextSequence = InvoiceSequence::getNextSequence($dateCode);
+            
+            // التحقق من عدم وجود تضارب
+            $invoiceNumber = $dateCode . '-' . str_pad($nextSequence, 3, '0', STR_PAD_LEFT);
+            
+            // التحقق النهائي من عدم وجود الرقم
+            if (self::invoiceNumberExists($invoiceNumber)) {
+                // إذا كان الرقم موجود، حاول مرة أخرى
+                $nextSequence = InvoiceSequence::getNextSequence($dateCode);
+                $invoiceNumber = $dateCode . '-' . str_pad($nextSequence, 3, '0', STR_PAD_LEFT);
+                
+                // إذا فشل مرة أخرى، استخدم آلية طوارئ
+                if (self::invoiceNumberExists($invoiceNumber)) {
+                    return self::generateEmergencyInvoiceNumber();
+                }
+            }
+            
+            return $invoiceNumber;
+            
+        } finally {
+            // إزالة قفل الترقيم
+            \Illuminate\Support\Facades\Cache::forget($numberingLockKey);
+        }
     }
     
     /**
