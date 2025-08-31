@@ -12,28 +12,7 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // مزامنة الطلبات في وضع عدم الاتصال كل دقيقة
-        $schedule->command('offline:sync')
-            ->everyMinute()
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->onFailure(function () {
-                \Log::error('فشل في مزامنة الطلبات في وضع عدم الاتصال');
-            });
 
-        // إعادة محاولة الطلبات الفاشلة كل 5 دقائق
-        $schedule->command('offline:sync --retry-failed')
-            ->everyFiveMinutes()
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->onFailure(function () {
-                \Log::error('فشل في إعادة محاولة الطلبات الفاشلة');
-            });
-
-        // تنظيف الطلبات المزامنة بنجاح كل ساعة
-        $schedule->call(function () {
-            \App\Services\OfflineService::cleanupSyncedOrders();
-        })->hourly()->withoutOverlapping();
     }
 
     /**

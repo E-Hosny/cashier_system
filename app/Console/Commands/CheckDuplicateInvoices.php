@@ -3,7 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Order;
-use App\Models\OfflineOrder;
+
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use App\Services\InvoiceNumberService;
@@ -46,26 +46,7 @@ class CheckDuplicateInvoices extends Command
 
         $this->newLine();
 
-        // فحص الفواتير الأوفلاين
-        $this->info('2. فحص الفواتير الأوفلاين:');
-        $offlineDuplicates = OfflineOrder::select('invoice_number', 'created_at', DB::raw('COUNT(*) as count'))
-            ->whereNotNull('invoice_number')
-            ->groupBy('invoice_number')
-            ->having('count', '>', 1)
-            ->get();
 
-        if ($offlineDuplicates->isEmpty()) {
-            $this->info('✅ لا توجد فواتير مكررة في الجدول الأوفلاين');
-        } else {
-            $this->warn("❌ تم العثور على " . $offlineDuplicates->count() . " فواتير مكررة:");
-            foreach ($offlineDuplicates as $dup) {
-                $this->warn("رقم الفاتورة: {$dup->invoice_number} | العدد: {$dup->count}");
-            }
-            
-            if ($shouldFix) {
-                $this->fixDuplicateOfflineOrders($offlineDuplicates);
-            }
-        }
 
         $this->newLine();
 
@@ -109,31 +90,7 @@ class CheckDuplicateInvoices extends Command
         $this->info('✅ تم إصلاح الفواتير المكررة في الجدول العادي');
     }
     
-    /**
-     * إصلاح الفواتير المكررة في جدول الطلبات الأوفلاين
-     */
-    private function fixDuplicateOfflineOrders($duplicates)
-    {
-        $this->info('🔧 إصلاح الفواتير المكررة في الجدول الأوفلاين...');
-        
-        foreach ($duplicates as $duplicate) {
-            $orders = OfflineOrder::where('invoice_number', $duplicate->invoice_number)
-                ->orderBy('created_at', 'asc')
-                ->get();
-            
-            // الاحتفاظ بالطلب الأول وتغيير باقي الطلبات
-            $firstOrder = $orders->first();
-            $otherOrders = $orders->skip(1);
-            
-            foreach ($otherOrders as $order) {
-                $newInvoiceNumber = InvoiceNumberService::generateInvoiceNumber();
-                $order->update(['invoice_number' => $newInvoiceNumber]);
-                $this->info("تم تغيير رقم فاتورة الطلب الأوفلاين {$order->id} إلى: {$newInvoiceNumber}");
-            }
-        }
-        
-        $this->info('✅ تم إصلاح الفواتير المكررة في الجدول الأوفلاين');
-    }
+
 
     /**
      * فحص الطلبات المتطابقة تماماً
@@ -184,61 +141,7 @@ class CheckDuplicateInvoices extends Command
         }
     }
 
-    /**
-     * فحص تضارب الأرقام بين الجدولين
-     */
-    private function checkCrossTableConflicts($shouldFix)
-    {
-        // البحث عن تضارب في أرقام الفواتير بين الجدولين
-        $crossTableConflicts = DB::select("
-            SELECT 
-                o.invoice_number,
-                o.id as order_id,
-                'orders' as table_name,
-                o.created_at
-            FROM orders o
-            WHERE o.invoice_number IN (
-                SELECT invoice_number FROM offline_orders WHERE invoice_number IS NOT NULL
-            )
-            UNION ALL
-            SELECT 
-                oo.invoice_number,
-                oo.id as offline_order_id,
-                'offline_orders' as table_name,
-                oo.created_at
-            FROM offline_orders oo
-            WHERE oo.invoice_number IN (
-                SELECT invoice_number FROM orders WHERE invoice_number IS NOT NULL
-            )
-            ORDER BY invoice_number, created_at
-        ");
 
-        if (empty($crossTableConflicts)) {
-            $this->info('✅ لا توجد تضاربات في أرقام الفواتير بين الجدولين');
-        } else {
-            $this->warn("❌ تم العثور على " . count($crossTableConflicts) . " تضارب في أرقام الفواتير:");
-            
-            $groupedConflicts = [];
-            foreach ($crossTableConflicts as $conflict) {
-                if (!isset($groupedConflicts[$conflict->invoice_number])) {
-                    $groupedConflicts[$conflict->invoice_number] = [];
-                }
-                $groupedConflicts[$conflict->invoice_number][] = $conflict;
-            }
-            
-            foreach ($groupedConflicts as $invoiceNumber => $conflicts) {
-                $this->warn("   رقم الفاتورة: {$invoiceNumber}");
-                foreach ($conflicts as $conflict) {
-                    $this->warn("     - {$conflict->table_name}: ID {$conflict->order_id} | {$conflict->created_at}");
-                }
-                $this->newLine();
-            }
-            
-            if ($shouldFix) {
-                $this->fixCrossTableConflicts($groupedConflicts);
-            }
-        }
-    }
 
     /**
      * إصلاح الطلبات المتطابقة تماماً
@@ -270,34 +173,5 @@ class CheckDuplicateInvoices extends Command
         $this->info("✅ تم إصلاح {$fixedCount} طلب مكرر");
     }
 
-    /**
-     * إصلاح تضارب الأرقام بين الجدولين
-     */
-    private function fixCrossTableConflicts($groupedConflicts)
-    {
-        $this->info('🔧 إصلاح تضارب الأرقام بين الجدولين...');
-        
-        $fixedCount = 0;
-        foreach ($groupedConflicts as $invoiceNumber => $conflicts) {
-            try {
-                // إعادة ترقيم الطلبات الأوفلاين لتجنب التضارب
-                foreach ($conflicts as $conflict) {
-                    if ($conflict->table_name === 'offline_orders') {
-                        $offlineOrder = OfflineOrder::find($conflict->order_id);
-                        if ($offlineOrder) {
-                            $newInvoiceNumber = \App\Services\InvoiceNumberService::generateInvoiceNumber();
-                            $offlineOrder->update(['invoice_number' => $newInvoiceNumber]);
-                            
-                            $this->info("   ✅ تم تغيير رقم فاتورة الطلب الأوفلاين {$conflict->order_id} من {$invoiceNumber} إلى {$newInvoiceNumber}");
-                            $fixedCount++;
-                        }
-                    }
-                }
-            } catch (\Exception $e) {
-                $this->error("   ❌ فشل في إصلاح تضارب {$invoiceNumber}: " . $e->getMessage());
-            }
-        }
-        
-        $this->info("✅ تم إصلاح {$fixedCount} تضارب في أرقام الفواتير");
-    }
+
 } 

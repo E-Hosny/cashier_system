@@ -5,7 +5,7 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use App\Models\InvoiceSequence;
 use App\Models\Order;
-use App\Models\OfflineOrder;
+
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -65,14 +65,7 @@ class InitInvoiceSequences extends Command
         
         $dates = $dates->merge($orderDates);
         
-        // التواريخ من جدول offline_orders
-        $offlineOrderDates = OfflineOrder::whereNotNull('invoice_number')
-            ->where('invoice_number', 'REGEXP', '^[0-9]{6}-[0-9]{3}$')
-            ->selectRaw('DATE(created_at) as date')
-            ->distinct()
-            ->pluck('date');
-        
-        $dates = $dates->merge($offlineOrderDates)->unique()->sort();
+        $dates = $dates->unique()->sort();
         
         $this->info("وجدت " . $dates->count() . " تاريخ مختلف");
         

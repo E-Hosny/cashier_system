@@ -5,7 +5,7 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use App\Services\InvoiceNumberService;
 use App\Models\Order;
-use App\Models\OfflineOrder;
+
 use Carbon\Carbon;
 
 class TestInvoiceSequence extends Command
@@ -154,14 +154,7 @@ class TestInvoiceSequence extends Command
             ->pluck('invoice_number')
             ->toArray();
             
-        $offlineInvoices = OfflineOrder::whereDate('created_at', $today)
-            ->whereNotNull('invoice_number')
-            ->where('invoice_number', 'LIKE', $dateCode . '-%')
-            ->where('invoice_number', 'REGEXP', '^[0-9]{6}-[0-9]{3}$')
-            ->pluck('invoice_number')
-            ->toArray();
-        
-        $allInvoices = array_merge($orderInvoices, $offlineInvoices);
+        $allInvoices = $orderInvoices;
         
         if (empty($allInvoices)) {
             $this->info("لا توجد فواتير لليوم الحالي");
@@ -212,22 +205,18 @@ class TestInvoiceSequence extends Command
             ->orderBy('invoice_number')
             ->pluck('invoice_number', 'id');
             
-        $offlineOrders = OfflineOrder::whereDate('created_at', $today)
-            ->whereNotNull('invoice_number')
-            ->orderBy('invoice_number')
-            ->pluck('invoice_number', 'id');
+
         
         $this->table(
             ['النوع', 'العدد'],
             [
                 ['الطلبات العادية', $orders->count()],
-                ['الطلبات الأوفلاين', $offlineOrders->count()],
-                ['الإجمالي', $orders->count() + $offlineOrders->count()]
+                ['الإجمالي', $orders->count()]
             ]
         );
         
-        if ($orders->count() > 0 || $offlineOrders->count() > 0) {
-            $allInvoices = $orders->merge($offlineOrders)->sort();
+        if ($orders->count() > 0) {
+            $allInvoices = $orders->sort();
             $this->line("آخر 10 فواتير:");
             foreach ($allInvoices->take(-10) as $invoice) {
                 $this->line("  - {$invoice}");

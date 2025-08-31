@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Models\Order;
-use App\Models\OfflineOrder;
+
 use App\Models\InvoiceSequence;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -112,21 +112,7 @@ class InvoiceNumberService
             })
             ->max() ?? 0;
         
-        // البحث عن أعلى رقم تسلسلي في جدول offline_orders  
-        $offlineOrdersQuery = OfflineOrder::whereNotNull('invoice_number')
-            ->where('invoice_number', 'LIKE', $dateCode . '-%')
-            ->where('invoice_number', 'REGEXP', '^[0-9]{6}-[0-9]{3}$') // فقط الأرقام العادية
-            ->lockForUpdate()
-            ->pluck('invoice_number');
-            
-        $maxFromOfflineOrders = $offlineOrdersQuery
-            ->map(function($invoiceNumber) {
-                $parts = explode('-', $invoiceNumber);
-                return isset($parts[1]) && is_numeric($parts[1]) ? (int)$parts[1] : 0;
-            })
-            ->max() ?? 0;
-        
-        return max($maxFromOrders, $maxFromOfflineOrders);
+        return $maxFromOrders;
     }
     
     /**
@@ -137,8 +123,7 @@ class InvoiceNumberService
      */
     private static function invoiceNumberExists(string $invoiceNumber): bool
     {
-        return Order::where('invoice_number', $invoiceNumber)->exists() || 
-               OfflineOrder::where('invoice_number', $invoiceNumber)->exists();
+        return Order::where('invoice_number', $invoiceNumber)->exists();
     }
     
     /**

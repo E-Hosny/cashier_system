@@ -4,7 +4,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use App\Models\Order;
-use App\Models\OfflineOrder;
+
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -93,17 +93,9 @@ class FixInvoiceGaps extends Command
             ->orderBy('created_at')
             ->get(['id', 'invoice_number', 'created_at']);
             
-        $offlineOrders = OfflineOrder::whereDate('created_at', $date)
-            ->whereNotNull('invoice_number')
-            ->where('invoice_number', 'LIKE', $dateCode . '-%')
-            ->where('invoice_number', 'REGEXP', '^[0-9]{6}-[0-9]{3}$')
-            ->orderBy('created_at')
-            ->get(['id', 'invoice_number', 'created_at']);
-        
-        // دمج وترتيب حسب الوقت
+                // ترتيب حسب الوقت
         $allInvoices = collect()
             ->merge($orders->map(fn($o) => ['type' => 'order', 'id' => $o->id, 'invoice_number' => $o->invoice_number, 'created_at' => $o->created_at]))
-            ->merge($offlineOrders->map(fn($o) => ['type' => 'offline_order', 'id' => $o->id, 'invoice_number' => $o->invoice_number, 'created_at' => $o->created_at]))
             ->sortBy('created_at')
             ->values();
         
@@ -228,7 +220,7 @@ class FixInvoiceGaps extends Command
      */
     private function applyFix(array $analysis): array
     {
-        $updated = ['orders' => 0, 'offline_orders' => 0];
+        $updated = ['orders' => 0];
         $errors = [];
         
         DB::transaction(function() use ($analysis, &$updated, &$errors) {
@@ -242,10 +234,6 @@ class FixInvoiceGaps extends Command
                         Order::where('id', $invoice['id'])
                             ->update(['invoice_number' => $newNumber]);
                         $updated['orders']++;
-                    } else {
-                        OfflineOrder::where('id', $invoice['id'])
-                            ->update(['invoice_number' => $newNumber]);
-                        $updated['offline_orders']++;
                     }
                     
                     $newSequence++;
@@ -271,8 +259,7 @@ class FixInvoiceGaps extends Command
             ['النوع', 'العدد المحدث'],
             [
                 ['الطلبات العادية', $result['updated']['orders']],
-                ['الطلبات الأوفلاين', $result['updated']['offline_orders']],
-                ['الإجمالي', $result['updated']['orders'] + $result['updated']['offline_orders']]
+                ['الإجمالي', $result['updated']['orders']]
             ]
         );
         

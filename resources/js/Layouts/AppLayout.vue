@@ -87,9 +87,7 @@ const logout = () => {
                                 <NavLink :href="route('cashier.index')" :active="route().current('cashier.index')">
                                     الكاشير
                                 </NavLink>
-                                <NavLink :href="route('offline.index')" :active="route().current('offline.index')">
-                                    📱 الطلبات المحفوظة
-                                </NavLink>
+
                                 <NavLink :href="route('purchases.index')" :active="route().current('purchases.index')">
                                     المشتريات
                                 </NavLink>

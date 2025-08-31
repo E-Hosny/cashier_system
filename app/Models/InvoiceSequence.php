@@ -64,18 +64,7 @@ class InvoiceSequence extends Model
                 })
                 ->max() ?? 0;
             
-            $maxFromOfflineOrders = \App\Models\OfflineOrder::whereNotNull('invoice_number')
-                ->where('invoice_number', 'LIKE', $dateCode . '-%')
-                ->where('invoice_number', 'REGEXP', '^[0-9]{6}-[0-9]{3}$')
-                ->get()
-                ->pluck('invoice_number')
-                ->map(function($invoiceNumber) {
-                    $parts = explode('-', $invoiceNumber);
-                    return isset($parts[1]) && is_numeric($parts[1]) ? (int)$parts[1] : 0;
-                })
-                ->max() ?? 0;
-            
-            $maxSequence = max($maxFromOrders, $maxFromOfflineOrders);
+            $maxSequence = $maxFromOrders;
             
             // تحديث أو إنشاء السجل
             self::updateOrCreate(
