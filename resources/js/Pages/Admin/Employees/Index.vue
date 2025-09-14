@@ -160,7 +160,7 @@
 
                       <!-- زر تسليم الراتب (يظهر فقط بعد الانصراف) -->
                       <button
-                        v-if="isAdmin && employee.today_amount > 0 && !employee.is_salary_delivered && !employee.is_present"
+                        v-if="canManageEmployees && employee.today_amount > 0 && !employee.is_salary_delivered && !employee.is_present"
                         @click="deliverSalary(employee)"
                         :disabled="loading"
                         class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm font-medium disabled:opacity-50"
@@ -171,7 +171,7 @@
 
                       <!-- زر إلغاء تسليم الراتب -->
                       <button
-                        v-if="isAdmin && employee.is_salary_delivered"
+                        v-if="canManageEmployees && employee.is_salary_delivered"
                         @click="undoSalaryDelivery(employee)"
                         :disabled="loading"
                         class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-sm font-medium disabled:opacity-50"
@@ -227,6 +227,11 @@ export default {
     computed: {
     isAdmin() {
       return this.$page.props.auth.user?.roles?.includes('admin');
+    },
+    canManageEmployees() {
+      return this.$page.props.auth.user?.permissions?.includes('manage employee attendance') ||
+             this.$page.props.auth.user?.roles?.includes('admin') ||
+             this.$page.props.auth.user?.roles?.includes('cashier');
     },
     presentEmployees() {
       return this.employees.filter(emp => emp.is_present);

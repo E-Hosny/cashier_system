@@ -126,7 +126,7 @@
                 <h4 class="text-lg font-semibold text-gray-900">تفاصيل كل يوم</h4>
                 <!-- زر تسليم الكل -->
                 <button
-                  v-if="isAdmin && pendingDaysCount > 0"
+                  v-if="canManageEmployees && pendingDaysCount > 0"
                   @click="deliverAllPendingSalaries"
                   :disabled="loading"
                   class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50 transition duration-200"
@@ -145,7 +145,7 @@
                       <th class="p-4 text-right text-sm font-medium text-gray-700">المبلغ</th>
                       <th class="p-4 text-right text-sm font-medium text-gray-700">حالة الراتب</th>
                       <th class="p-4 text-right text-sm font-medium text-gray-700">تفاصيل الحضور</th>
-                      <th v-if="isAdmin" class="p-4 text-right text-sm font-medium text-gray-700">إجراءات</th>
+                      <th v-if="canManageEmployees" class="p-4 text-right text-sm font-medium text-gray-700">إجراءات</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -201,7 +201,7 @@
                         <span v-else class="text-gray-400 text-sm">لا يوجد حضور في هذا اليوم</span>
                       </td>
                       <!-- خلية الإجراءات -->
-                      <td v-if="isAdmin" class="p-4">
+                      <td v-if="canManageEmployees" class="p-4">
                         <div class="flex gap-2">
                           <!-- زر تسليم لليوم -->
                           <button
@@ -317,6 +317,11 @@ export default {
     },
     isAdmin() {
       return this.$page.props.auth.user?.roles?.includes('admin');
+    },
+    canManageEmployees() {
+      return this.$page.props.auth.user?.permissions?.includes('manage employee attendance') ||
+             this.$page.props.auth.user?.roles?.includes('admin') ||
+             this.$page.props.auth.user?.roles?.includes('cashier');
     },
     // إحصائيات التسليم
     deliveredDaysCount() {
