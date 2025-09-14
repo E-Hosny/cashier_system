@@ -33,6 +33,14 @@ class Employee extends Model
     }
 
     /**
+     * علاقة مع سجلات تسليم الرواتب
+     */
+    public function salaryDeliveries()
+    {
+        return $this->hasMany(SalaryDelivery::class);
+    }
+
+    /**
      * الحصول على سجل الحضور الحالي (إذا كان موجوداً)
      */
     public function getCurrentAttendance()
@@ -214,5 +222,112 @@ class Employee extends Model
         }
 
         return $totalHours * $this->hourly_rate;
+    }
+
+    /**
+     * الحصول على سجل تسليم الراتب لتاريخ محدد
+     */
+    public function getSalaryDeliveryForDate($date)
+    {
+        return $this->salaryDeliveries()->where('salary_date', $date)->first();
+    }
+
+    /**
+     * الحصول على حالة تسليم راتب اليوم
+     */
+    public function getTodayDeliveryStatus()
+    {
+        $now = Carbon::now();
+        $currentHour = $now->hour;
+        
+        // تحديد التاريخ الصحيح بناءً على الوقت الحالي
+        if ($currentHour < 7) {
+            $targetDate = $now->copy()->subDay()->toDateString();
+        } else {
+            $targetDate = $now->copy()->toDateString();
+        }
+        
+        return $this->getSalaryDeliveryForDate($targetDate);
+    }
+
+    /**
+     * إنشاء سجل تسليم راتب لتاريخ محدد
+     */
+    public function createSalaryDelivery($date, $hours, $amount)
+    {
+        return $this->salaryDeliveries()->create([
+            'salary_date' => $date,
+            'hours_worked' => $hours,
+            'hourly_rate' => $this->hourly_rate,
+            'total_amount' => $amount,
+            'status' => 'pending'
+        ]);
+    }
+
+    /**
+     * إنشاء أو تحديث سجل تسليم راتب اليوم
+     */
+    public function createOrUpdateTodayDelivery()
+    {
+        $now = Carbon::now();
+        $currentHour = $now->hour;
+        
+        // تحديد التاريخ الصحيح بناءً على الوقت الحالي
+        if ($currentHour < 7) {
+            $targetDate = $now->copy()->subDay()->toDateString();
+        } else {
+            $targetDate = $now->copy()->toDateString();
+        }
+        
+        $hours = $this->getTodayHours();
+        $amount = $this->getTodayAmount();
+        
+        // البحث عن سجل موجود
+        $delivery = $this->getSalaryDeliveryForDate($targetDate);
+        
+        if ($delivery) {
+            // تحديث السجل الموجود إذا لم يتم تسليمه بعد
+            if (!$delivery->isDelivered()) {
+                $delivery->update([
+                    'hours_worked' => $hours,
+                    'hourly_rate' => $this->hourly_rate,
+                    'total_amount' => $amount
+                ]);
+            }
+            return $delivery;
+        } else {
+            // إنشاء سجل جديد
+            return $this->createSalaryDelivery($targetDate, $hours, $amount);
+        }
+    }
+
+    /**
+     * الحصول على إجمالي المبالغ المسلمة لفترة محددة
+     */
+    public function getDeliveredAmountForPeriod($startDate, $endDate = null)
+    {
+        if ($endDate === null) {
+            $endDate = $startDate;
+        }
+
+        return $this->salaryDeliveries()
+            ->where('status', 'delivered')
+            ->whereBetween('salary_date', [$startDate, $endDate])
+            ->sum('total_amount');
+    }
+
+    /**
+     * الحصول على إجمالي المبالغ غير المسلمة لفترة محددة
+     */
+    public function getPendingAmountForPeriod($startDate, $endDate = null)
+    {
+        if ($endDate === null) {
+            $endDate = $startDate;
+        }
+
+        return $this->salaryDeliveries()
+            ->where('status', 'pending')
+            ->whereBetween('salary_date', [$startDate, $endDate])
+            ->sum('total_amount');
     }
 } 

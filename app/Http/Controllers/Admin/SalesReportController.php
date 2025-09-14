@@ -8,6 +8,7 @@ use App\Models\OrderItem;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Category;
+use App\Models\SalaryDelivery;
 use Carbon\Carbon;
 use Inertia\Inertia;
 
@@ -84,10 +85,10 @@ class SalesReportController extends Controller
                 Carbon::parse($dateTo)->setTime(7, 0, 0)    // إلى الساعة 7 صباحاً من اليوم التالي
             ])->sum('amount');
 
-            // حساب إجمالي الرواتب للموظفين في الفترة المحددة
-            $totalSalaries = \App\Models\Employee::where('is_active', true)->get()->sum(function($employee) use ($dateFrom, $dateTo) {
-                return $employee->getTotalAmountForPeriod($dateFrom, $dateTo);
-            });
+            // حساب إجمالي الرواتب المسلمة فقط للموظفين في الفترة المحددة
+            $totalSalaries = SalaryDelivery::where('status', 'delivered')
+                ->whereBetween('salary_date', [$dateFrom, $dateTo])
+                ->sum('total_amount');
         } else {
             $totalPurchases = \App\Models\Purchase::whereDate('purchase_date', $dateFrom)->sum('total_amount');
             $totalExpenses = \App\Models\Expense::whereBetween('created_at', [
@@ -95,10 +96,10 @@ class SalesReportController extends Controller
                 Carbon::parse($dateFrom)->addDay()->setTime(7, 0, 0) // إلى الساعة 7 صباحاً من اليوم التالي
             ])->sum('amount');
 
-            // حساب إجمالي الرواتب للموظفين في اليوم المحدد
-            $totalSalaries = \App\Models\Employee::where('is_active', true)->get()->sum(function($employee) use ($dateFrom) {
-                return $employee->getTotalAmountForPeriod($dateFrom, $dateFrom);
-            });
+            // حساب إجمالي الرواتب المسلمة فقط للموظفين في اليوم المحدد
+            $totalSalaries = SalaryDelivery::where('status', 'delivered')
+                ->where('salary_date', $dateFrom)
+                ->sum('total_amount');
         }
 
         $totalSales = $sales->sum('total_price');

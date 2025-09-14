@@ -65,6 +65,11 @@ Route::middleware([
         Route::get('/employees/{employee}/report', [EmployeeController::class, 'report'])->name('admin.employees.report');
         Route::get('/employees/salary-calculator', [EmployeeController::class, 'salaryCalculator'])->name('admin.employees.salary-calculator');
         Route::post('/employees/{employee}/calculate-salary', [EmployeeController::class, 'calculateSalary'])->name('admin.employees.calculate-salary');
+        Route::post('/employees/{employee}/deliver-salary', [EmployeeController::class, 'deliverSalary'])->name('admin.employees.deliver-salary');
+        Route::post('/employees/{employee}/undo-salary-delivery', [EmployeeController::class, 'undoSalaryDelivery'])->name('admin.employees.undo-salary-delivery');
+        Route::post('/employees/{employee}/deliver-salary-for-date', [EmployeeController::class, 'deliverSalaryForDate'])->name('admin.employees.deliver-salary-for-date');
+        Route::post('/employees/{employee}/deliver-salary-for-period', [EmployeeController::class, 'deliverSalaryForPeriod'])->name('admin.employees.deliver-salary-for-period');
+        Route::post('/employees/{employee}/undo-salary-delivery-for-date', [EmployeeController::class, 'undoSalaryDeliveryForDate'])->name('admin.employees.undo-salary-delivery-for-date');
     });
 
     // Cashier & Invoices

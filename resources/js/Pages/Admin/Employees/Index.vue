@@ -69,12 +69,13 @@
                   <th class="p-4 text-right">سجلات الحضور اليوم</th>
                   <th class="p-4 text-right">الساعات اليوم</th>
                   <th class="p-4 text-right">المبلغ اليوم</th>
+                  <th class="p-4 text-right">حالة الراتب</th>
                   <th class="p-4 text-right">الإجراءات</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="employees.length === 0" class="border-t">
-                  <td colspan="8" class="text-center p-6 text-gray-500">
+                  <td colspan="9" class="text-center p-6 text-gray-500">
                     لا يوجد موظفين مسجلين
                   </td>
                 </tr>
@@ -119,6 +120,23 @@
                     {{ formatPrice(employee.today_amount) }}
                   </td>
                   <td class="p-4">
+                    <div class="flex flex-col gap-2">
+                      <span
+                        :class="[
+                          'px-3 py-1 rounded-full text-xs font-medium inline-block',
+                          employee.is_salary_delivered
+                            ? 'bg-green-100 text-green-800'
+                            : (employee.today_amount > 0 ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-600')
+                        ]"
+                      >
+                        {{ employee.is_salary_delivered ? '✅ تم التسليم' : (employee.today_amount > 0 ? '⏳ في الانتظار' : '❌ لا يوجد مبلغ') }}
+                      </span>
+                      <div v-if="employee.is_salary_delivered && employee.today_delivery_status" class="text-xs text-gray-500">
+                        تاريخ التسليم: {{ formatDeliveryDate(employee.today_delivery_status.delivered_at) }}
+                      </div>
+                    </div>
+                  </td>
+                  <td class="p-4">
                     <div class="flex gap-2 flex-wrap">
                       <!-- زر الحضور -->
                       <button
@@ -138,6 +156,28 @@
                         class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm font-medium disabled:opacity-50"
                       >
                         🚪 انصراف
+                      </button>
+
+                      <!-- زر تسليم الراتب (يظهر فقط بعد الانصراف) -->
+                      <button
+                        v-if="isAdmin && employee.today_amount > 0 && !employee.is_salary_delivered && !employee.is_present"
+                        @click="deliverSalary(employee)"
+                        :disabled="loading"
+                        class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm font-medium disabled:opacity-50"
+                        title="تسليم راتب اليوم (متاح فقط بعد الانصراف)"
+                      >
+                        💰 تسليم
+                      </button>
+
+                      <!-- زر إلغاء تسليم الراتب -->
+                      <button
+                        v-if="isAdmin && employee.is_salary_delivered"
+                        @click="undoSalaryDelivery(employee)"
+                        :disabled="loading"
+                        class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-sm font-medium disabled:opacity-50"
+                        title="إلغاء تسليم الراتب"
+                      >
+                        ↩️ إلغاء التسليم
                       </button>
 
                       <!-- زر التعديل -->
@@ -210,6 +250,17 @@ export default {
       if (!timeString) return '-';
       const time = new Date(timeString);
       return time.toLocaleTimeString('ar-EG', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    },
+    formatDeliveryDate(dateString) {
+      if (!dateString) return '-';
+      const date = new Date(dateString);
+      return date.toLocaleString('ar-EG', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
       });
@@ -306,6 +357,76 @@ export default {
       } catch (error) {
         console.error('Error:', error);
         alert('حدث خطأ أثناء تسجيل الانصراف');
+      } finally {
+        this.loading = false;
+      }
+    },
+    
+    async deliverSalary(employee) {
+      if (!confirm(`هل تريد تسليم راتب ${employee.name} بمبلغ ${this.formatPrice(employee.today_amount)} ؟`)) {
+        return;
+      }
+
+      this.loading = true;
+      try {
+        const response = await fetch(route('admin.employees.deliver-salary', employee.id), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+          },
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          // تحديث حالة الموظف
+          employee.is_salary_delivered = true;
+          employee.today_delivery_status = data.delivery;
+          employee.delivery_status_text = data.delivery.status_text;
+
+          alert(`تم تسليم الراتب بنجاح!\n\nالموظف: ${employee.name}\nالمبلغ: ${this.formatPrice(data.delivery.total_amount)}\nالساعات: ${data.delivery.hours_worked} ساعة`);
+        } else {
+          alert(data.message || 'حدث خطأ أثناء تسليم الراتب');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        alert('حدث خطأ في الاتصال بالخادم');
+      } finally {
+        this.loading = false;
+      }
+    },
+    
+    async undoSalaryDelivery(employee) {
+      if (!confirm(`هل تريد إلغاء تسليم راتب ${employee.name} بمبلغ ${this.formatPrice(employee.today_amount)} ؟`)) {
+        return;
+      }
+
+      this.loading = true;
+      try {
+        const response = await fetch(route('admin.employees.undo-salary-delivery', employee.id), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+          },
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          // تحديث حالة الموظف
+          employee.is_salary_delivered = false;
+          employee.today_delivery_status = data.delivery;
+          employee.delivery_status_text = data.delivery.status_text;
+
+          alert(`تم إلغاء تسليم الراتب بنجاح!\n\nالموظف: ${employee.name}\nالمبلغ: ${this.formatPrice(data.delivery.total_amount)}`);
+        } else {
+          alert(data.message || 'حدث خطأ أثناء إلغاء تسليم الراتب');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        alert('حدث خطأ في الاتصال بالخادم');
       } finally {
         this.loading = false;
       }
