@@ -213,13 +213,13 @@
                           >
                             💰 تسليم
                           </button>
-                          <!-- زر إلغاء التسليم -->
+                          <!-- زر إلغاء التسليم (للأدمن فقط) -->
                           <button
-                            v-if="day.delivery_status && day.delivery_status.is_delivered"
+                            v-if="isAdmin && day.delivery_status && day.delivery_status.is_delivered"
                             @click="undoDeliveryForDay(day)"
                             :disabled="loading"
                             class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-xs font-medium disabled:opacity-50 transition duration-200"
-                            title="إلغاء تسليم الراتب"
+                            title="إلغاء تسليم الراتب (للأدمن فقط)"
                           >
                             ↩️ إلغاء
                           </button>

@@ -169,13 +169,13 @@
                         💰 تسليم
                       </button>
 
-                      <!-- زر إلغاء تسليم الراتب -->
+                      <!-- زر إلغاء تسليم الراتب (للأدمن فقط) -->
                       <button
-                        v-if="canManageEmployees && employee.is_salary_delivered"
+                        v-if="isAdmin && employee.is_salary_delivered"
                         @click="undoSalaryDelivery(employee)"
                         :disabled="loading"
                         class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-sm font-medium disabled:opacity-50"
-                        title="إلغاء تسليم الراتب"
+                        title="إلغاء تسليم الراتب (للأدمن فقط)"
                       >
                         ↩️ إلغاء التسليم
                       </button>
