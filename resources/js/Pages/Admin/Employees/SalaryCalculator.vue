@@ -74,7 +74,7 @@
             <!-- ملخص الموظف -->
             <div class="bg-blue-50 p-6 rounded-lg">
               <h4 class="text-lg font-semibold text-blue-900 mb-4">معلومات الموظف</h4>
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div :class="isAdmin ? 'grid grid-cols-1 md:grid-cols-3 gap-4' : 'grid grid-cols-1 md:grid-cols-2 gap-4'">
                 <div>
                   <span class="text-sm text-blue-700">الاسم:</span>
                   <span class="font-semibold text-blue-900">{{ salaryData.employee.name }}</span>
@@ -83,7 +83,7 @@
                   <span class="text-sm text-blue-700">الوظيفة:</span>
                   <span class="font-semibold text-blue-900">{{ salaryData.employee.position || 'غير محدد' }}</span>
                 </div>
-                <div>
+                <div v-if="isAdmin">
                   <span class="text-sm text-blue-700">سعر الساعة:</span>
                   <span class="font-semibold text-blue-900">{{ formatPrice(salaryData.employee.hourly_rate) }}</span>
                 </div>

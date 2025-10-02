@@ -64,7 +64,7 @@
                 <tr class="text-gray-700">
                   <th class="p-4 text-right">الموظف</th>
                   <th class="p-4 text-right">الوظيفة</th>
-                  <th class="p-4 text-right">سعر الساعة</th>
+                  <th v-if="isAdmin" class="p-4 text-right">سعر الساعة</th>
                   <th class="p-4 text-right">الحالة</th>
                   <th class="p-4 text-right">سجلات الحضور اليوم</th>
                   <th class="p-4 text-right">الساعات اليوم</th>
@@ -75,7 +75,7 @@
               </thead>
               <tbody>
                 <tr v-if="employees.length === 0" class="border-t">
-                  <td colspan="9" class="text-center p-6 text-gray-500">
+                  <td :colspan="isAdmin ? '9' : '8'" class="text-center p-6 text-gray-500">
                     لا يوجد موظفين مسجلين
                   </td>
                 </tr>
@@ -85,7 +85,7 @@
                     <div class="text-sm text-gray-500">{{ employee.phone || 'لا يوجد رقم' }}</div>
                   </td>
                   <td class="p-4 text-gray-600">{{ employee.position || 'غير محدد' }}</td>
-                  <td class="p-4 font-bold text-green-600">{{ formatPrice(employee.hourly_rate) }}</td>
+                  <td v-if="isAdmin" class="p-4 font-bold text-green-600">{{ formatPrice(employee.hourly_rate) }}</td>
                   <td class="p-4">
                     <span
                       :class="[
