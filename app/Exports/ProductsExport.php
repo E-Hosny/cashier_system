@@ -37,7 +37,7 @@ class ProductsExport implements WithMultipleSheets
 class SummarySheet implements FromCollection, WithHeadings, WithMapping, WithStyles, WithColumnWidths, WithTitle
 {
     protected $categories;
-    protected $maxSizes = 3; // صغير، وسط، كبير
+    protected $maxSizes = 4; // صغير، وسط، كبير، كان كبير
 
     public function __construct($categories)
     {
@@ -59,7 +59,7 @@ class SummarySheet implements FromCollection, WithHeadings, WithMapping, WithSty
                 ]);
                 foreach ($category->products as $product) {
                     $sizes = collect($product->size_variants ?? []);
-                    $sizeNames = ['small' => 'صغير', 'medium' => 'وسط', 'large' => 'كبير'];
+                    $sizeNames = ['small' => 'صغير', 'medium' => 'وسط', 'large' => 'كبير', 'extra_large' => 'كان كبير'];
                     $sizesArr = [];
                     $pricesArr = [];
                     for ($i = 0; $i < $this->maxSizes; $i++) {
@@ -169,7 +169,7 @@ class CategorySheet implements FromCollection, WithHeadings, WithMapping, WithSt
         $data = collect();
         foreach ($this->category->products as $product) {
             $sizes = collect($product->size_variants ?? []);
-            $sizeNames = ['small' => 'صغير', 'medium' => 'وسط', 'large' => 'كبير'];
+            $sizeNames = ['small' => 'صغير', 'medium' => 'وسط', 'large' => 'كبير', 'extra_large' => 'كان كبير'];
             $sizesArr = [];
             $pricesArr = [];
             for ($i = 0; $i < $this->maxSizes; $i++) {

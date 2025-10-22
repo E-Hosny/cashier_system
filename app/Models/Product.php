@@ -85,6 +85,7 @@ class Product extends Model
             'small' => 'صغير',
             'medium' => 'وسط',
             'large' => 'كبير',
+            'extra_large' => 'كان كبير',
         ];
 
         return collect($this->size_variants)

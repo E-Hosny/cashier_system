@@ -56,6 +56,7 @@ class ProductController extends Controller
             ['value' => 'small', 'label' => 'صغير'],
             ['value' => 'medium', 'label' => 'وسط'],
             ['value' => 'large', 'label' => 'كبير'],
+            ['value' => 'extra_large', 'label' => 'كان كبير'],
         ];
 
         return Inertia::render('Admin/Products/Create', [
@@ -73,6 +74,7 @@ class ProductController extends Controller
             ['value' => 'small', 'label' => 'صغير'],
             ['value' => 'medium', 'label' => 'وسط'],
             ['value' => 'large', 'label' => 'كبير'],
+            ['value' => 'extra_large', 'label' => 'كان كبير'],
         ];
 
         // Group ingredients by size for the form

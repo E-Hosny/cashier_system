@@ -225,7 +225,7 @@ export default {
     },
     sizeToArabic(size) {
       if (!size) return 'غير محدد';
-      const map = { small: 'صغير', medium: 'وسط', large: 'كبير' };
+      const map = { small: 'صغير', medium: 'وسط', large: 'كبير', extra_large: 'كان كبير' };
       return map[size] || size;
     },
     // دالة الانتقال لصفحة المصروفات مع التاريخ المحدد

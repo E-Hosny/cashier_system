@@ -77,8 +77,17 @@
         </thead>
         <tbody>
             @foreach ($order->items as $item)
+                @php
+                    $size = is_array($item) ? ($item['size'] ?? '') : ($item->size ?? '');
+                    $productName = is_array($item) ? $item['product_name'] : $item->product_name;
+                    
+                    // إضافة الحجم فقط إذا كان "كان كبير"
+                    if ($size === 'extra_large') {
+                        $productName .= ' (كان كبير)';
+                    }
+                @endphp
                 <tr>
-                                    <td>{{ is_array($item) ? $item['product_name'] : $item->product_name }} ({{ is_array($item) ? ($item['size'] ?? '') : ($item->size ?? '') }})</td>
+                    <td>{{ $productName }}</td>
                     <td>{{ is_array($item) ? $item['quantity'] : $item->quantity }}</td>
                     <td>{{ number_format(is_array($item) ? $item['price'] : $item->price, 2) }}</td>
                     <td>{{ number_format((is_array($item) ? $item['quantity'] : $item->quantity) * (is_array($item) ? $item['price'] : $item->price), 2) }}</td>

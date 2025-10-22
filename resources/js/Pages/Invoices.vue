@@ -46,6 +46,9 @@ const translateSize = (size) => {
     case 'large':
     case 'كبير':
       return 'كبير';
+    case 'extra_large':
+    case 'كان كبير':
+      return 'كان كبير';
     default:
       return size;
   }

@@ -147,6 +147,7 @@ export default {
         small: 'صغير',
         medium: 'وسط',
         large: 'كبير',
+        extra_large: 'كان كبير',
       },
       expandedRows: [],
       selectedCategory: this.filters?.category_id || '',

@@ -122,6 +122,7 @@ export default {
         'small': 'صغير',
         'medium': 'وسط',
         'large': 'كبير',
+        'extra_large': 'كان كبير',
       };
       return translations[size] || size;
     },

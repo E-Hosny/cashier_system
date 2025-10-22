@@ -355,6 +355,7 @@ export default {
         small: 'صغير',
         medium: 'وسط',
         large: 'كبير',
+        extra_large: 'كان كبير',
       },
       // متغيرات إدارة الورديات
       currentShift: null,
