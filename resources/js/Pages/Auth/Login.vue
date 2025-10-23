@@ -10,6 +10,7 @@ import TextInput from '@/Components/TextInput.vue';
 
 defineProps({
     canResetPassword: Boolean,
+    canRegister: Boolean,
     status: String,
 });
 

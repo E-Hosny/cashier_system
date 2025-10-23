@@ -15,12 +15,13 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             \App\Http\Middleware\HandleInertiaRequests::class,
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
+            \App\Http\Middleware\EnsureTenantScope::class,
         ]);
 
         $middleware->alias([
             'admin' => \App\Http\Middleware\AdminMiddleware::class,
-
             'employee.attendance' => \App\Http\Middleware\EmployeeAttendanceMiddleware::class,
+            'tenant' => \App\Http\Middleware\EnsureTenantScope::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

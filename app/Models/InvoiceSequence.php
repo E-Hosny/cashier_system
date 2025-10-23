@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
@@ -10,8 +11,29 @@ class InvoiceSequence extends Model
 {
     protected $fillable = [
         'date_code',
-        'current_sequence'
+        'current_sequence',
+        'tenant_id'
     ];
+
+    public function tenant()
+    {
+        return $this->belongsTo(User::class, 'tenant_id');
+    }
+
+    protected static function booted()
+    {
+        static::addGlobalScope('tenant', function (Builder $query) {
+            if (auth()->check()) {
+                $query->where('tenant_id', auth()->user()->tenant_id);
+            }
+        });
+
+        static::creating(function ($model) {
+            if (auth()->check()) {
+                $model->tenant_id = auth()->user()->tenant_id;
+            }
+        });
+    }
 
     /**
      * الحصول على الرقم التسلسلي التالي لليوم الحالي
@@ -23,10 +45,16 @@ class InvoiceSequence extends Model
     public static function getNextSequence(string $dateCode): int
     {
         return DB::transaction(function () use ($dateCode) {
+            $tenantId = auth()->check() ? auth()->user()->tenant_id : null;
+            
             // محاولة الحصول على السجل الموجود مع قفل للتحديث
-            $sequence = self::where('date_code', $dateCode)
-                ->lockForUpdate()
-                ->first();
+            $query = self::where('date_code', $dateCode)->lockForUpdate();
+            
+            if ($tenantId) {
+                $query->where('tenant_id', $tenantId);
+            }
+            
+            $sequence = $query->first();
             
             if ($sequence) {
                 // تحديث الرقم التسلسلي الحالي
@@ -36,7 +64,8 @@ class InvoiceSequence extends Model
                 // إنشاء سجل جديد لهذا اليوم
                 $newSequence = self::create([
                     'date_code' => $dateCode,
-                    'current_sequence' => 1
+                    'current_sequence' => 1,
+                    'tenant_id' => $tenantId
                 ]);
                 return $newSequence->current_sequence;
             }
@@ -52,11 +81,18 @@ class InvoiceSequence extends Model
     public static function resetSequenceFromExisting(string $dateCode): int
     {
         return DB::transaction(function () use ($dateCode) {
+            $tenantId = auth()->check() ? auth()->user()->tenant_id : null;
+            
             // حساب أعلى رقم تسلسلي من الفواتير الموجودة
-            $maxFromOrders = \App\Models\Order::whereNotNull('invoice_number')
+            $query = \App\Models\Order::whereNotNull('invoice_number')
                 ->where('invoice_number', 'LIKE', $dateCode . '-%')
-                ->where('invoice_number', 'REGEXP', '^[0-9]{6}-[0-9]{3}$')
-                ->get()
+                ->where('invoice_number', 'REGEXP', '^[0-9]{6}-[0-9]{3}$');
+            
+            if ($tenantId) {
+                $query->where('tenant_id', $tenantId);
+            }
+            
+            $maxFromOrders = $query->get()
                 ->pluck('invoice_number')
                 ->map(function($invoiceNumber) {
                     $parts = explode('-', $invoiceNumber);
@@ -67,8 +103,13 @@ class InvoiceSequence extends Model
             $maxSequence = $maxFromOrders;
             
             // تحديث أو إنشاء السجل
+            $updateData = ['date_code' => $dateCode];
+            if ($tenantId) {
+                $updateData['tenant_id'] = $tenantId;
+            }
+            
             self::updateOrCreate(
-                ['date_code' => $dateCode],
+                $updateData,
                 ['current_sequence' => $maxSequence]
             );
             

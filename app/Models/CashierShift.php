@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Carbon\Carbon;
 
 class CashierShift extends Model
@@ -21,6 +22,7 @@ class CashierShift extends Model
         'difference',
         'notes',
         'status',
+        'tenant_id',
     ];
 
     protected $casts = [
@@ -33,11 +35,34 @@ class CashierShift extends Model
     ];
 
     /**
+     * العلاقة مع المستأجر
+     */
+    public function tenant()
+    {
+        return $this->belongsTo(User::class, 'tenant_id');
+    }
+
+    /**
      * العلاقة مع المستخدم
      */
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    protected static function booted()
+    {
+        static::addGlobalScope('tenant', function (Builder $query) {
+            if (auth()->check()) {
+                $query->where('tenant_id', auth()->user()->tenant_id);
+            }
+        });
+
+        static::creating(function ($model) {
+            if (auth()->check()) {
+                $model->tenant_id = auth()->user()->tenant_id;
+            }
+        });
     }
 
     /**
