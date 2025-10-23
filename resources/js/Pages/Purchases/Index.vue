@@ -193,7 +193,7 @@ const submitPurchase = () => {
                               <tr v-for="purchase in purchases" :key="purchase.id">
                                   <td class="border border-gray-200 p-2 text-center" data-label="المبلغ الإجمالي">{{ purchase.total_amount }}</td>
                                   <td class="border border-gray-200 p-2 text-center" data-label="الكمية">{{ purchase.quantity ?? 'غير محدد' }}</td>
-                                  <td class="border border-gray-200 p-2 text-center" data-label="المنتج">{{ purchase.product_name }}</td>
+                                  <td class="border border-gray-200 p-2 text-center" data-label="المنتج">{{ purchase.description }}</td>
                                   <td class="border border-gray-200 p-2 text-center" data-label="التاريخ">{{ purchase.purchase_date }}</td>
                               </tr>
                           </tbody>
