@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\EmployeeAttendance;
 use App\Models\SalaryDelivery;
+use App\Models\EmployeeDiscount;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Carbon\Carbon;
@@ -26,6 +27,10 @@ class EmployeeController extends Controller
         $employee->today_hours = $employee->getTodayHours();
         $employee->today_amount = $employee->getTodayAmount();
         $employee->today_attendance_records = $employee->getTodayAttendanceRecords();
+        
+        // معلومات الخصومات اليومية
+        $employee->today_discounts = $employee->getTodayDiscounts();
+        $employee->today_discount_total = $employee->getTodayDiscountTotal();
         
         // معلومات تسليم الراتب
         $employee->today_delivery_status = $employee->getTodayDeliveryStatus();
@@ -721,6 +726,67 @@ class EmployeeController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'حدث خطأ أثناء تسليم الرواتب: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * إضافة خصم لموظف لليوم الحالي
+     */
+    public function addDiscount(Employee $employee, Request $request)
+    {
+        $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+            'reason' => 'nullable|string|max:1000',
+        ]);
+
+        try {
+            $now = Carbon::now();
+            $currentHour = $now->hour;
+            
+            // تحديد التاريخ الصحيح بناءً على الوقت الحالي (نفس منطق حساب الراتب)
+            if ($currentHour < 7) {
+                $targetDate = $now->copy()->subDay()->toDateString();
+            } else {
+                $targetDate = $now->copy()->toDateString();
+            }
+
+            // إنشاء سجل الخصم
+            $discount = EmployeeDiscount::create([
+                'employee_id' => $employee->id,
+                'discount_date' => $targetDate,
+                'amount' => $request->amount,
+                'reason' => $request->reason,
+                'created_by' => auth()->id(),
+            ]);
+
+            // إعادة تحميل الموظف مع السجلات الجديدة
+            $employee->refresh();
+
+            // حساب المبلغ المحدث بعد الخصم
+            $todayAmount = $employee->getTodayAmount();
+            $discountTotal = $employee->getTodayDiscountTotal();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'تم إضافة الخصم بنجاح',
+                'discount' => [
+                    'id' => $discount->id,
+                    'amount' => $discount->amount,
+                    'reason' => $discount->reason,
+                    'discount_date' => $discount->discount_date,
+                    'created_at' => $discount->created_at->format('Y-m-d H:i:s'),
+                ],
+                'employee' => [
+                    'today_amount' => $todayAmount,
+                    'today_discount_total' => $discountTotal,
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'حدث خطأ أثناء إضافة الخصم: ' . $e->getMessage()
             ], 500);
         }
     }

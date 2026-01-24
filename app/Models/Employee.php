@@ -66,6 +66,14 @@ class Employee extends Model
     }
 
     /**
+     * علاقة مع الخصومات
+     */
+    public function discounts()
+    {
+        return $this->hasMany(EmployeeDiscount::class);
+    }
+
+    /**
      * الحصول على سجل الحضور الحالي (إذا كان موجوداً)
      */
     public function getCurrentAttendance()
@@ -154,11 +162,45 @@ class Employee extends Model
 
     /**
      * الحصول على إجمالي المبلغ المستحق لليوم الحالي (من 7 صباحاً إلى 7 صباحاً للوم التالي)
+     * مع خصم الخصومات اليومية
      */
     public function getTodayAmount()
     {
         $hours = $this->getTodayHours();
-        return $hours * $this->hourly_rate;
+        $baseAmount = $hours * $this->hourly_rate;
+        $discountTotal = $this->getTodayDiscountTotal();
+        $finalAmount = max(0, $baseAmount - $discountTotal); // التأكد من عدم وجود مبلغ سالب
+        return $finalAmount;
+    }
+
+    /**
+     * الحصول على خصومات اليوم الحالي
+     */
+    public function getTodayDiscounts()
+    {
+        $now = Carbon::now();
+        $currentHour = $now->hour;
+        
+        // تحديد التاريخ الصحيح بناءً على الوقت الحالي (نفس منطق حساب الراتب)
+        if ($currentHour < 7) {
+            $targetDate = $now->copy()->subDay()->toDateString();
+        } else {
+            $targetDate = $now->copy()->toDateString();
+        }
+        
+        return $this->discounts()
+            ->where('discount_date', $targetDate)
+            ->orderBy('created_at', 'desc')
+            ->get();
+    }
+
+    /**
+     * الحصول على إجمالي الخصومات لليوم الحالي
+     */
+    public function getTodayDiscountTotal()
+    {
+        $discounts = $this->getTodayDiscounts();
+        return $discounts->sum('amount');
     }
 
     /**
