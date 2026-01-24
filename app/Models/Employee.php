@@ -217,11 +217,25 @@ class Employee extends Model
 
     /**
      * الحصول على إجمالي المبلغ المستحق لفترة محددة
+     * مع خصم الخصومات
      */
     public function getAmountForPeriod($startDate, $endDate = null)
     {
         $hours = $this->getHoursForPeriod($startDate, $endDate);
-        return $hours * $this->hourly_rate;
+        $baseAmount = $hours * $this->hourly_rate;
+        
+        // حساب الخصومات للفترة
+        $start = Carbon::parse($startDate);
+        $end = $endDate ? Carbon::parse($endDate) : $start;
+        
+        $discounts = $this->discounts()
+            ->whereBetween('discount_date', [$start->toDateString(), $end->toDateString()])
+            ->get();
+        
+        $discountTotal = $discounts->sum('amount');
+        $finalAmount = max(0, $baseAmount - $discountTotal);
+        
+        return $finalAmount;
     }
 
     /**

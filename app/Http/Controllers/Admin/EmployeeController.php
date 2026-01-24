@@ -265,6 +265,8 @@ class EmployeeController extends Controller
 
         $totalHours = 0;
         $totalAmount = 0;
+        $totalBaseAmount = 0;
+        $totalDiscounts = 0;
         $dailyDetails = [];
 
         // تجميع البيانات حسب اليوم
@@ -334,18 +336,40 @@ class EmployeeController extends Controller
                 ];
             }
 
+            // حساب الخصومات لهذا اليوم
+            $dateString = $currentDate->format('Y-m-d');
+            $dayDiscounts = $employee->discounts()
+                ->where('discount_date', $dateString)
+                ->get();
+            $dayDiscountTotal = $dayDiscounts->sum('amount');
+            
+            // خصم الخصومات من المبلغ اليومي
+            $dayAmountAfterDiscount = max(0, $dayAmount - $dayDiscountTotal);
+
             $totalHours += $dayHours;
-            $totalAmount += $dayAmount;
+            $totalAmount += $dayAmountAfterDiscount; // استخدام المبلغ بعد الخصم في الإجمالي
+            $totalBaseAmount += $dayAmount; // المبلغ الأصلي قبل الخصم
+            $totalDiscounts += $dayDiscountTotal; // إجمالي الخصومات
 
             // البحث عن حالة تسليم الراتب لهذا اليوم
-            $salaryDelivery = $employee->getSalaryDeliveryForDate($currentDate->format('Y-m-d'));
+            $salaryDelivery = $employee->getSalaryDeliveryForDate($dateString);
             
             $dailyDetails[] = [
-                'date' => $currentDate->format('Y-m-d'),
+                'date' => $dateString,
                 'date_arabic' => $currentDate->format('d/m/Y'),
                 'day_name' => $currentDate->locale('ar')->dayName,
                 'hours' => round($dayHours, 2),
-                'amount' => round($dayAmount, 2),
+                'amount' => round($dayAmountAfterDiscount, 2), // المبلغ بعد الخصم
+                'base_amount' => round($dayAmount, 2), // المبلغ الأصلي قبل الخصم
+                'discounts' => $dayDiscounts->map(function ($discount) {
+                    return [
+                        'id' => $discount->id,
+                        'amount' => $discount->amount,
+                        'reason' => $discount->reason,
+                        'created_at' => $discount->created_at->format('Y-m-d H:i:s'),
+                    ];
+                })->toArray(),
+                'discount_total' => round($dayDiscountTotal, 2),
                 'records' => $dayRecords,
                 'has_records' => count($dayRecords) > 0,
                 'delivery_status' => $salaryDelivery ? [
@@ -376,7 +400,9 @@ class EmployeeController extends Controller
             ],
             'summary' => [
                 'total_hours' => round($totalHours, 2),
-                'total_amount' => round($totalAmount, 2),
+                'total_amount' => round($totalAmount, 2), // المبلغ بعد الخصم
+                'total_base_amount' => round($totalBaseAmount, 2), // المبلغ الأصلي قبل الخصم
+                'total_discounts' => round($totalDiscounts, 2), // إجمالي الخصومات
                 'days_count' => count($dailyDetails),
                 'days_with_records' => count(array_filter($dailyDetails, fn($day) => $day['has_records'])),
             ],
@@ -649,7 +675,7 @@ class EmployeeController extends Controller
                     return $checkinTime >= $dayStart && $checkinTime < $dayEnd;
                 });
 
-                // حساب الساعات والمبلغ لهذا اليوم
+                // حساب الساعات والمبلغ لهذا اليوم (مع خصم الخصومات)
                 $dayHours = 0;
                 foreach ($dayAttendances as $attendance) {
                     if ($attendance->checkout_time) {
@@ -665,7 +691,8 @@ class EmployeeController extends Controller
                     }
                 }
 
-                $dayAmount = $dayHours * $employee->hourly_rate;
+                // استخدام getAmountForPeriod لخصم الخصومات تلقائياً
+                $dayAmount = $employee->getAmountForPeriod($dateString, $dateString);
 
                 // إذا كان هناك ساعات عمل في هذا اليوم
                 if ($dayHours > 0) {

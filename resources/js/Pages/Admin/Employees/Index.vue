@@ -50,6 +50,12 @@
             <div class="bg-purple-50 p-4 rounded-lg">
               <div class="text-purple-600 text-2xl font-bold">{{ formatPrice(updatedTotalTodayAmount) }}</div>
               <div class="text-purple-800 text-sm">إجمالي الرواتب اليوم</div>
+              <div v-if="updatedTotalTodayDiscounts > 0" class="text-xs text-red-600 mt-1">
+                خصومات: -{{ formatPrice(updatedTotalTodayDiscounts) }}
+              </div>
+              <div v-if="updatedTotalTodayDiscounts > 0" class="text-xs text-gray-600 mt-1">
+                المبلغ الأصلي: {{ formatPrice(updatedTotalTodayAmount + updatedTotalTodayDiscounts) }}
+              </div>
             </div>
             <div class="bg-orange-50 p-4 rounded-lg">
               <div class="text-orange-600 text-2xl font-bold">{{ updatedTotalTodayHours.toFixed(2) }}</div>
@@ -120,8 +126,16 @@
                     <div class="font-bold text-green-600">
                       {{ formatPrice(employee.today_amount) }}
                     </div>
-                    <div v-if="employee.today_discount_total > 0" class="text-xs text-red-600 mt-1">
-                      خصومات: -{{ formatPrice(employee.today_discount_total) }}
+                    <div v-if="employee.today_discount_total > 0" class="text-xs text-red-600 mt-1 space-y-1">
+                      <div>خصومات: -{{ formatPrice(employee.today_discount_total) }}</div>
+                      <div v-if="employee.today_discounts && employee.today_discounts.length > 0" class="mt-1 space-y-1">
+                        <div v-for="discount in employee.today_discounts" :key="discount.id" class="border-r-2 border-red-300 pr-2">
+                          <div class="font-medium">-{{ formatPrice(discount.amount) }}</div>
+                          <div v-if="discount.reason" class="text-gray-600 text-xs mt-0.5">
+                            {{ discount.reason }}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </td>
                   <td class="p-4">
@@ -320,6 +334,9 @@ export default {
     },
     updatedTotalTodayHours() {
       return this.employees.reduce((total, emp) => total + (emp.today_hours || 0), 0);
+    },
+    updatedTotalTodayDiscounts() {
+      return this.employees.reduce((total, emp) => total + (emp.today_discount_total || 0), 0);
     },
   },
   methods: {

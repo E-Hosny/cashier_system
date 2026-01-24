@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\Category;
 use App\Models\SalaryDelivery;
+use App\Models\Employee;
 use Carbon\Carbon;
 use Inertia\Inertia;
 
@@ -85,10 +86,20 @@ class SalesReportController extends Controller
                 Carbon::parse($dateTo)->setTime(7, 0, 0)    // إلى الساعة 7 صباحاً من اليوم التالي
             ])->sum('amount');
 
-            // حساب إجمالي الرواتب المسلمة فقط للموظفين في الفترة المحددة
-            $totalSalaries = SalaryDelivery::where('status', 'delivered')
-                ->whereBetween('salary_date', [$dateFrom, $dateTo])
-                ->sum('total_amount');
+            // حساب إجمالي الرواتب المسلمة فقط للموظفين في الفترة المحددة (بعد الخصم)
+            $totalSalaries = Employee::where('is_active', true)->get()->sum(function($employee) use ($dateFrom, $dateTo) {
+                // حساب المبلغ بعد الخصم لكل موظف في الفترة
+                $amount = $employee->getAmountForPeriod($dateFrom, $dateTo);
+                
+                // التحقق من أن الراتب تم تسليمه في هذه الفترة
+                $hasDelivered = SalaryDelivery::where('employee_id', $employee->id)
+                    ->where('status', 'delivered')
+                    ->whereBetween('salary_date', [$dateFrom, $dateTo])
+                    ->exists();
+                
+                // نرجع المبلغ بعد الخصم فقط إذا كان مسلماً
+                return $hasDelivered ? $amount : 0;
+            });
         } else {
             $totalPurchases = \App\Models\Purchase::whereDate('purchase_date', $dateFrom)->sum('total_amount');
             $totalExpenses = \App\Models\Expense::whereBetween('created_at', [
@@ -96,10 +107,20 @@ class SalesReportController extends Controller
                 Carbon::parse($dateFrom)->addDay()->setTime(7, 0, 0) // إلى الساعة 7 صباحاً من اليوم التالي
             ])->sum('amount');
 
-            // حساب إجمالي الرواتب المسلمة فقط للموظفين في اليوم المحدد
-            $totalSalaries = SalaryDelivery::where('status', 'delivered')
-                ->where('salary_date', $dateFrom)
-                ->sum('total_amount');
+            // حساب إجمالي الرواتب المسلمة فقط للموظفين في اليوم المحدد (بعد الخصم)
+            $totalSalaries = Employee::where('is_active', true)->get()->sum(function($employee) use ($dateFrom) {
+                // حساب المبلغ بعد الخصم لكل موظف في اليوم المحدد
+                $amount = $employee->getAmountForPeriod($dateFrom, $dateFrom);
+                
+                // التحقق من أن الراتب تم تسليمه في هذا اليوم
+                $delivered = SalaryDelivery::where('employee_id', $employee->id)
+                    ->where('status', 'delivered')
+                    ->where('salary_date', $dateFrom)
+                    ->exists();
+                
+                // نرجع المبلغ فقط إذا كان مسلماً
+                return $delivered ? $amount : 0;
+            });
         }
 
         $totalSales = $sales->sum('total_price');
