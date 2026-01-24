@@ -127,7 +127,11 @@
                       {{ formatPrice(employee.today_amount) }}
                     </div>
                     <div v-if="employee.today_discount_total > 0" class="text-xs text-red-600 mt-1 space-y-1">
-                      <div>خصومات: -{{ formatPrice(employee.today_discount_total) }}</div>
+                      <!-- إذا كان هناك أكثر من خصم، نعرض الإجمالي -->
+                      <div v-if="employee.today_discounts && employee.today_discounts.length > 1">
+                        خصومات: -{{ formatPrice(employee.today_discount_total) }}
+                      </div>
+                      <!-- عرض تفاصيل الخصومات -->
                       <div v-if="employee.today_discounts && employee.today_discounts.length > 0" class="mt-1 space-y-1">
                         <div v-for="discount in employee.today_discounts" :key="discount.id" class="border-r-2 border-red-300 pr-2">
                           <div class="font-medium">-{{ formatPrice(discount.amount) }}</div>
