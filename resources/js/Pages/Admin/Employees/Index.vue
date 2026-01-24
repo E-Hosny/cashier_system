@@ -116,8 +116,13 @@
                   <td class="p-4 font-bold text-blue-600">
                     {{ employee.today_hours.toFixed(2) }} ساعة
                   </td>
-                  <td class="p-4 font-bold text-green-600">
-                    {{ formatPrice(employee.today_amount) }}
+                  <td class="p-4">
+                    <div class="font-bold text-green-600">
+                      {{ formatPrice(employee.today_amount) }}
+                    </div>
+                    <div v-if="employee.today_discount_total > 0" class="text-xs text-red-600 mt-1">
+                      خصومات: -{{ formatPrice(employee.today_discount_total) }}
+                    </div>
                   </td>
                   <td class="p-4">
                     <div class="flex flex-col gap-2">
@@ -189,6 +194,16 @@
                         ✏️ تعديل
                       </Link>
 
+                      <!-- زر الخصم -->
+                      <button
+                        v-if="canManageEmployees"
+                        @click="openDiscountModal(employee)"
+                        :disabled="loading"
+                        class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-sm font-medium disabled:opacity-50"
+                        title="إضافة خصم من راتب اليوم"
+                      >
+                        💸 خصم
+                      </button>
 
                     </div>
                   </td>
@@ -197,6 +212,60 @@
             </table>
           </div>
 
+          <!-- Modal إضافة خصم -->
+          <div v-if="showDiscountModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" @click.self="closeDiscountModal">
+            <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white" dir="rtl">
+              <div class="mt-3">
+                <h3 class="text-lg font-bold text-gray-900 mb-4">إضافة خصم - {{ selectedEmployee?.name }}</h3>
+                
+                <form @submit.prevent="submitDiscount">
+                  <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                      مبلغ الخصم <span class="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      v-model="discountForm.amount"
+                      step="0.01"
+                      min="0.01"
+                      required
+                      class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  
+                  <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                      السبب (اختياري)
+                    </label>
+                    <textarea
+                      v-model="discountForm.reason"
+                      rows="3"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      placeholder="أدخل سبب الخصم..."
+                    ></textarea>
+                  </div>
+                  
+                  <div class="flex gap-2 justify-end">
+                    <button
+                      type="button"
+                      @click="closeDiscountModal"
+                      class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition duration-200"
+                    >
+                      إلغاء
+                    </button>
+                    <button
+                      type="submit"
+                      :disabled="loading || !discountForm.amount || discountForm.amount <= 0"
+                      class="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
+                    >
+                      إضافة خصم
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
 
         </div>
       </div>
@@ -222,6 +291,12 @@ export default {
   data() {
     return {
       loading: false,
+      showDiscountModal: false,
+      selectedEmployee: null,
+      discountForm: {
+        amount: '',
+        reason: '',
+      },
     };
   },
     computed: {
@@ -437,6 +512,72 @@ export default {
       }
     },
 
+    // فتح modal إضافة خصم
+    openDiscountModal(employee) {
+      this.selectedEmployee = employee;
+      this.discountForm = {
+        amount: '',
+        reason: '',
+      };
+      this.showDiscountModal = true;
+    },
+
+    // إغلاق modal إضافة خصم
+    closeDiscountModal() {
+      this.showDiscountModal = false;
+      this.selectedEmployee = null;
+      this.discountForm = {
+        amount: '',
+        reason: '',
+      };
+    },
+
+    // إضافة خصم
+    async submitDiscount() {
+      if (!this.selectedEmployee) return;
+
+      if (!this.discountForm.amount || this.discountForm.amount <= 0) {
+        alert('يرجى إدخال مبلغ خصم صحيح');
+        return;
+      }
+
+      this.loading = true;
+      try {
+        const response = await fetch(route('admin.employees.add-discount', this.selectedEmployee.id), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+          },
+          body: JSON.stringify({
+            amount: parseFloat(this.discountForm.amount),
+            reason: this.discountForm.reason || null,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          // تحديث المبلغ اليومي للموظف
+          this.selectedEmployee.today_amount = data.employee.today_amount;
+          
+          alert(`تم إضافة الخصم بنجاح!\n\nالمبلغ الأصلي: ${this.formatPrice(parseFloat(this.discountForm.amount) + data.employee.today_amount)}\nمبلغ الخصم: ${this.formatPrice(this.discountForm.amount)}\nالمبلغ النهائي: ${this.formatPrice(data.employee.today_amount)}`);
+          
+          // إغلاق الـ modal
+          this.closeDiscountModal();
+          
+          // إعادة تحميل الصفحة لتحديث البيانات
+          window.location.reload();
+        } else {
+          alert(data.message || 'حدث خطأ أثناء إضافة الخصم');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        alert('حدث خطأ في الاتصال بالخادم');
+      } finally {
+        this.loading = false;
+      }
+    },
 
   },
   };

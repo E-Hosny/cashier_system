@@ -70,6 +70,7 @@ Route::middleware([
         Route::post('/employees/{employee}/deliver-salary-for-date', [EmployeeController::class, 'deliverSalaryForDate'])->name('admin.employees.deliver-salary-for-date');
         Route::post('/employees/{employee}/deliver-salary-for-period', [EmployeeController::class, 'deliverSalaryForPeriod'])->name('admin.employees.deliver-salary-for-period');
         Route::post('/employees/{employee}/undo-salary-delivery-for-date', [EmployeeController::class, 'undoSalaryDeliveryForDate'])->name('admin.employees.undo-salary-delivery-for-date');
+        Route::post('/employees/{employee}/add-discount', [EmployeeController::class, 'addDiscount'])->name('admin.employees.add-discount');
     });
 
     // Cashier & Invoices
