@@ -78,7 +78,7 @@ const logout = () => {
                                     المواد الخام
                                 </NavLink>
                                 <NavLink 
-                                    v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('admin')"
+                                    v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('super admin')"
                                     :href="route('admin.users.index')" 
                                     :active="route().current('admin.users.*')"
                                 >
@@ -290,7 +290,7 @@ const logout = () => {
                                 المواد الخام
                             </ResponsiveNavLink>
                             <ResponsiveNavLink 
-                                v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('admin')"
+                                v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('super admin')"
                                 :href="route('admin.users.index')" 
                                 :active="route().current('admin.users.*')"
                                 @click="showingSidebar = false"

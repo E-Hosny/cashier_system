@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Category;
+use App\Models\OrderItem;
 use App\Models\Product;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
@@ -246,6 +248,91 @@ class ProductController extends Controller
 
         return Inertia::render('Admin/Products/CostAnalysis', [
             'products' => $products,
+        ]);
+    }
+
+    public function salesAnalysis(Request $request)
+    {
+        $groupBy = $request->input('group_by', 'category');
+        $dateFrom = $request->input('date_from');
+        $dateTo = $request->input('date_to');
+
+        $orderDateFilter = function ($query) use ($dateFrom, $dateTo) {
+            if (!$dateFrom) {
+                return;
+            }
+            $start = Carbon::parse($dateFrom)->setTime(7, 0, 0);
+            if ($dateTo) {
+                $end = Carbon::parse($dateTo)->setTime(7, 0, 0);
+                $query->whereBetween('created_at', [$start, $end]);
+            } else {
+                $end = Carbon::parse($dateFrom)->addDay()->setTime(7, 0, 0);
+                $query->whereBetween('created_at', [$start, $end]);
+            }
+        };
+
+        $baseQuery = OrderItem::query()
+            ->whereHas('order', $orderDateFilter)
+            ->join('products', 'order_items.product_id', '=', 'products.id');
+
+        if ($groupBy === 'category') {
+            $rows = (clone $baseQuery)
+                ->selectRaw('products.category_id as category_id, SUM(order_items.quantity) as total_quantity, SUM(order_items.quantity * order_items.price) as total_revenue')
+                ->groupBy('products.category_id')
+                ->orderByDesc('total_quantity')
+                ->get();
+
+            $categoryIds = $rows->pluck('category_id')->filter()->unique()->values();
+            $categories = Category::whereIn('id', $categoryIds)->get()->keyBy('id');
+
+            $analysis = $rows->map(function ($row) use ($categories) {
+                $name = $row->category_id && isset($categories[$row->category_id])
+                    ? $categories[$row->category_id]->name
+                    : 'بدون فئة';
+                return [
+                    'name' => $name,
+                    'total_quantity' => (int) $row->total_quantity,
+                    'total_revenue' => round((float) $row->total_revenue, 2),
+                ];
+            })->values()->all();
+        } else {
+            $rows = (clone $baseQuery)
+                ->selectRaw('order_items.product_id as product_id, products.name as product_name, SUM(order_items.quantity) as total_quantity, SUM(order_items.quantity * order_items.price) as total_revenue')
+                ->groupBy('order_items.product_id', 'products.name')
+                ->orderByDesc('total_quantity')
+                ->get();
+
+            $analysis = $rows->map(function ($row) {
+                return [
+                    'name' => $row->product_name,
+                    'total_quantity' => (int) $row->total_quantity,
+                    'total_revenue' => round((float) $row->total_revenue, 2),
+                ];
+            })->values()->all();
+        }
+
+        $totalQuantity = array_sum(array_column($analysis, 'total_quantity'));
+        $totalRevenue = array_sum(array_column($analysis, 'total_revenue'));
+
+        foreach ($analysis as &$row) {
+            $row['quantity_percentage'] = $totalQuantity > 0
+                ? round($row['total_quantity'] / $totalQuantity * 100, 2)
+                : 0;
+            $row['revenue_percentage'] = $totalRevenue > 0
+                ? round($row['total_revenue'] / $totalRevenue * 100, 2)
+                : 0;
+        }
+
+        $categories = Category::orderBy('name')->get(['id', 'name']);
+
+        return Inertia::render('Admin/Products/SalesAnalysis', [
+            'analysis' => $analysis,
+            'group_by' => $groupBy,
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
+            'total_quantity' => $totalQuantity,
+            'total_revenue' => round($totalRevenue, 2),
+            'categories' => $categories,
         ]);
     }
 }

@@ -41,6 +41,7 @@ Route::middleware([
     Route::resource('products', ProductController::class, ['names' => 'admin.products'])->except(['show']);
     Route::get('/products/export', [ProductController::class, 'export'])->name('admin.products.export');
     Route::get('/products/cost-analysis', [ProductController::class, 'costAnalysis'])->name('admin.products.cost-analysis');
+    Route::get('/products/sales-analysis', [ProductController::class, 'salesAnalysis'])->name('admin.products.sales-analysis')->middleware('super_admin');
 
     // Categories
     Route::get('/categories', [CategoryController::class, 'index'])->name('admin.categories.index');
@@ -51,8 +52,8 @@ Route::middleware([
     // Raw Materials
     Route::resource('raw-materials', RawMaterialController::class, ['as' => 'admin'])->except(['show']);
 
-    // Users Management (admin only)
-    Route::middleware(['admin'])->group(function () {
+    // Users Management (super admin only)
+    Route::middleware(['super_admin'])->group(function () {
         Route::resource('users', UserController::class, ['as' => 'admin'])->except(['show']);
         Route::post('/users/{user}/reset-password', [UserController::class, 'resetPassword'])->name('admin.users.reset-password');
     });

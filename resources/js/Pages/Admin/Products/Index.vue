@@ -3,6 +3,7 @@
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
       <h1 class="text-3xl font-bold text-gray-800">📦 إدارة المنتجات</h1>
       <div class="flex flex-col sm:flex-row gap-2 sm:gap-4">
+        <a v-if="hasSuperAdminRole" :href="route('admin.products.sales-analysis')" class="btn-blue text-center">📈 تحليل المنتجات</a>
         <a :href="route('admin.products.cost-analysis')" class="btn-blue text-center">💰 تحليل التكلفة</a>
         <a :href="route('admin.products.export')" class="btn-green text-center">📊 تصدير Excel</a>
         <a :href="route('admin.products.create')" class="btn-primary text-center">➕ إضافة منتج جديد</a>
@@ -140,6 +141,12 @@ export default {
     products: Array,
     categories: Array,
     filters: Object,
+  },
+  computed: {
+    hasSuperAdminRole() {
+      const roles = this.$page?.props?.auth?.user?.roles;
+      return Array.isArray(roles) && roles.includes('super admin');
+    },
   },
   data() {
     return {
