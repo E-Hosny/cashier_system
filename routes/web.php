@@ -16,6 +16,7 @@ use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\CashierShiftController;
 use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\Admin\FeedbackController as AdminFeedbackController;
+use App\Http\Controllers\Admin\DisplayScreenController;
 
 Route::get('/', function () {
     return Inertia::render('Welcome', [
@@ -56,6 +57,15 @@ Route::middleware([
     Route::middleware(['super_admin'])->group(function () {
         Route::resource('users', UserController::class, ['as' => 'admin'])->except(['show']);
         Route::post('/users/{user}/reset-password', [UserController::class, 'resetPassword'])->name('admin.users.reset-password');
+    });
+
+    // Display Screen (super admin only)
+    Route::middleware(['super_admin'])->prefix('admin/display-screen')->name('admin.display-screen.')->group(function () {
+        Route::get('/', [DisplayScreenController::class, 'index'])->name('index');
+        Route::post('/slides', [DisplayScreenController::class, 'storeSlide'])->name('slides.store');
+        Route::put('/slides/order', [DisplayScreenController::class, 'updateOrder'])->name('slides.order');
+        Route::put('/config', [DisplayScreenController::class, 'updateConfig'])->name('config.update');
+        Route::delete('/slides/{slide}', [DisplayScreenController::class, 'destroySlide'])->name('slides.destroy');
     });
 
     // Employees Management (admin and cashier with attendance permission)
@@ -125,3 +135,6 @@ Route::middleware([
 Route::get('/feedback', [FeedbackController::class, 'publicForm'])->name('feedback.public.form');
 Route::post('/feedback', [FeedbackController::class, 'publicStore'])->name('feedback.public.store');
 Route::get('/feedback/display', [FeedbackController::class, 'publicDisplay'])->name('feedback.public.display');
+
+// Public Display Screen (full-screen slideshow, no auth)
+Route::get('/display', [DisplayScreenController::class, 'show'])->name('display.screen');

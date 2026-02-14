@@ -84,6 +84,13 @@ const logout = () => {
                                 >
                                     إدارة المستخدمين
                                 </NavLink>
+                                <NavLink 
+                                    v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('super admin')"
+                                    :href="route('admin.display-screen.index')" 
+                                    :active="route().current('admin.display-screen.*')"
+                                >
+                                    عرض الشاشة
+                                </NavLink>
                                 <NavLink :href="route('cashier.index')" :active="route().current('cashier.index')">
                                     الكاشير
                                 </NavLink>
@@ -296,6 +303,14 @@ const logout = () => {
                                 @click="showingSidebar = false"
                             >
                                 إدارة المستخدمين
+                            </ResponsiveNavLink>
+                            <ResponsiveNavLink 
+                                v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('super admin')"
+                                :href="route('admin.display-screen.index')" 
+                                :active="route().current('admin.display-screen.*')"
+                                @click="showingSidebar = false"
+                            >
+                                عرض الشاشة
                             </ResponsiveNavLink>
                             <ResponsiveNavLink :href="route('cashier.index')" :active="route().current('cashier.index')" @click="showingSidebar = false">
                                 الكاشير
