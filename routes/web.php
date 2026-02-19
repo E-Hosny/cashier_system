@@ -64,7 +64,7 @@ Route::middleware([
         Route::get('/', [DisplayScreenController::class, 'index'])->name('index');
         Route::post('/slides', [DisplayScreenController::class, 'storeSlide'])->name('slides.store');
         Route::put('/slides/order', [DisplayScreenController::class, 'updateOrder'])->name('slides.order');
-        Route::put('/config', [DisplayScreenController::class, 'updateConfig'])->name('config.update');
+        Route::put('/slides/{slide}', [DisplayScreenController::class, 'updateSlide'])->name('slides.update');
         Route::delete('/slides/{slide}', [DisplayScreenController::class, 'destroySlide'])->name('slides.destroy');
     });
 

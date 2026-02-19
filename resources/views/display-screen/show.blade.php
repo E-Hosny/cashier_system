@@ -44,38 +44,43 @@
     </style>
 </head>
 <body>
-    @if (empty($imageUrls))
+    @if (empty($slides))
         <div class="no-slides">لا توجد صور للعرض</div>
     @else
-        @foreach ($imageUrls as $index => $url)
-            <div class="slide {{ $index === 0 ? 'active' : '' }}" data-index="{{ $index }}">
-                <img src="{{ $url }}" alt="شريحة {{ $index + 1 }}">
+        @foreach ($slides as $index => $slide)
+            <div class="slide {{ $index === 0 ? 'active' : '' }}" data-index="{{ $index }}" data-duration="{{ $slide['duration_seconds'] }}">
+                <img src="{{ $slide['url'] }}" alt="شريحة {{ $index + 1 }}">
             </div>
         @endforeach
     @endif
 
-    @if (!empty($imageUrls))
+    @if (!empty($slides))
     <script>
         (function() {
-            var slides = document.querySelectorAll('.slide');
-            var total = slides.length;
+            var slideEls = document.querySelectorAll('.slide');
+            var total = slideEls.length;
             var current = 0;
-            var intervalMs = {{ (int) $intervalSeconds }} * 1000;
+            var timeoutId;
 
             if (total <= 1) return;
 
             function show(index) {
-                slides.forEach(function(s, i) {
+                slideEls.forEach(function(s, i) {
                     s.classList.toggle('active', i === index);
                 });
                 current = index;
             }
 
-            function next() {
-                show((current + 1) % total);
+            function scheduleNext() {
+                var durationSec = parseInt(slideEls[current].getAttribute('data-duration') || '3', 10);
+                var durationMs = Math.max(1000, durationSec * 1000);
+                timeoutId = setTimeout(function() {
+                    show((current + 1) % total);
+                    scheduleNext();
+                }, durationMs);
             }
 
-            setInterval(next, intervalMs);
+            scheduleNext();
         })();
     </script>
     @endif

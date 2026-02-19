@@ -9,5 +9,5 @@ class DisplayScreenSlide extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['path', 'sort_order'];
+    protected $fillable = ['path', 'sort_order', 'duration_seconds'];
 }

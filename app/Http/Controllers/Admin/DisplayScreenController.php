@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\DisplayScreenConfig;
 use App\Models\DisplayScreenSlide;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -19,16 +18,12 @@ class DisplayScreenController extends Controller
                 'path' => $slide->path,
                 'url' => asset('storage/' . $slide->path),
                 'sort_order' => $slide->sort_order,
+                'duration_seconds' => (int) ($slide->duration_seconds ?? 3),
             ];
         });
-        $config = DisplayScreenConfig::first();
-        if (!$config) {
-            $config = DisplayScreenConfig::create(['interval_seconds' => 3]);
-        }
 
         return Inertia::render('Admin/DisplayScreen/Index', [
             'slides' => $slides,
-            'interval_seconds' => (int) $config->interval_seconds,
         ]);
     }
 
@@ -36,6 +31,7 @@ class DisplayScreenController extends Controller
     {
         $request->validate([
             'image' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:10240',
+            'duration_seconds' => 'required|integer|min:1|max:60',
         ]);
 
         $path = $request->file('image')->store('display-screen', 'public');
@@ -43,6 +39,7 @@ class DisplayScreenController extends Controller
         DisplayScreenSlide::create([
             'path' => $path,
             'sort_order' => $maxOrder + 1,
+            'duration_seconds' => (int) $request->duration_seconds,
         ]);
 
         return redirect()->route('admin.display-screen.index')->with('success', 'تم رفع الصورة بنجاح.');
@@ -63,6 +60,15 @@ class DisplayScreenController extends Controller
         return redirect()->route('admin.display-screen.index')->with('success', 'تم تحديث الترتيب.');
     }
 
+    public function updateSlide(Request $request, DisplayScreenSlide $slide)
+    {
+        $request->validate([
+            'duration_seconds' => 'required|integer|min:1|max:60',
+        ]);
+        $slide->update(['duration_seconds' => (int) $request->duration_seconds]);
+        return redirect()->route('admin.display-screen.index')->with('success', 'تم تحديث المدة.');
+    }
+
     public function destroySlide(DisplayScreenSlide $slide)
     {
         if ($slide->path && Storage::disk('public')->exists($slide->path)) {
@@ -72,37 +78,20 @@ class DisplayScreenController extends Controller
         return redirect()->route('admin.display-screen.index')->with('success', 'تم حذف الصورة.');
     }
 
-    public function updateConfig(Request $request)
-    {
-        $request->validate([
-            'interval_seconds' => 'required|integer|min:1|max:60',
-        ]);
-
-        $config = DisplayScreenConfig::first();
-        if (!$config) {
-            $config = DisplayScreenConfig::create(['interval_seconds' => 3]);
-        }
-        $config->update(['interval_seconds' => $request->interval_seconds]);
-
-        return redirect()->route('admin.display-screen.index')->with('success', 'تم حفظ المدة.');
-    }
-
     /**
      * Public full-screen display (no auth).
      */
     public function show()
     {
-        $slides = DisplayScreenSlide::orderBy('sort_order')->get();
-        $config = DisplayScreenConfig::first();
-        if (!$config) {
-            $config = DisplayScreenConfig::create(['interval_seconds' => 3]);
-        }
-        $intervalSeconds = (int) $config->interval_seconds;
-        $imageUrls = $slides->map(fn ($slide) => asset('storage/' . $slide->path))->values()->all();
+        $slides = DisplayScreenSlide::orderBy('sort_order')->get()->map(function ($slide) {
+            return [
+                'url' => asset('storage/' . $slide->path),
+                'duration_seconds' => (int) ($slide->duration_seconds ?? 3),
+            ];
+        })->values()->all();
 
         return view('display-screen.show', [
-            'imageUrls' => $imageUrls,
-            'intervalSeconds' => $intervalSeconds,
+            'slides' => $slides,
         ]);
     }
 }

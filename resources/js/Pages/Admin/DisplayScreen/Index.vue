@@ -3,25 +3,7 @@
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
       <h1 class="text-3xl font-bold text-gray-800">عرض الشاشة</h1>
     </div>
-    <p class="text-gray-600 mb-6">إدارة صور العرض على الشاشة الكبيرة (المنتجات، المنيو، العروض).</p>
-
-    <!-- مدة الشريحة -->
-    <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
-      <h2 class="text-xl font-semibold text-gray-800 mb-4">مدة كل شريحة (ثانية)</h2>
-      <form @submit.prevent="saveConfig" class="flex flex-wrap items-end gap-4">
-        <div class="flex flex-col gap-1">
-          <label class="text-gray-700 font-medium">من 1 إلى 60 ثانية</label>
-          <input
-            v-model.number="intervalSeconds"
-            type="number"
-            min="1"
-            max="60"
-            class="p-3 border border-gray-300 rounded-lg w-32"
-          />
-        </div>
-        <button type="submit" class="btn-primary">حفظ</button>
-      </form>
-    </div>
+    <p class="text-gray-600 mb-6">إدارة صور العرض على الشاشة الكبيرة (المنتجات، المنيو، العروض). حدد مدة عرض كل صورة بالثواني.</p>
 
     <!-- رفع صورة -->
     <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
@@ -34,6 +16,16 @@
           class="p-2 border border-gray-300 rounded-lg"
           @change="onFileSelect"
         />
+        <div class="flex flex-col gap-1">
+          <label class="text-gray-700 font-medium">مدة العرض (ثانية) 1–60</label>
+          <input
+            v-model.number="newSlideDuration"
+            type="number"
+            min="1"
+            max="60"
+            class="p-3 border border-gray-300 rounded-lg w-24"
+          />
+        </div>
         <button type="submit" class="btn-green" :disabled="!selectedFile">رفع</button>
       </form>
     </div>
@@ -49,12 +41,25 @@
           class="border border-gray-200 rounded-lg overflow-hidden bg-gray-50"
         >
           <img :src="slide.url" :alt="'شريحة ' + (index + 1)" class="w-full h-40 object-cover" />
-          <div class="p-2 flex justify-between items-center">
-            <span class="text-sm text-gray-600">#{{ index + 1 }}</span>
+          <div class="p-2 space-y-2">
+            <div class="flex justify-between items-center gap-2">
+              <span class="text-sm text-gray-600">#{{ index + 1 }}</span>
+              <div class="flex items-center gap-1">
+                <label class="text-xs text-gray-500">ثانية:</label>
+                <input
+                  :value="slide.duration_seconds"
+                  type="number"
+                  min="1"
+                  max="60"
+                  class="w-12 p-1 border border-gray-300 rounded text-sm text-center"
+                  @change="updateDuration(slide.id, $event.target.value)"
+                />
+              </div>
+            </div>
             <button
               type="button"
               @click="deleteSlide(slide.id)"
-              class="btn-red text-sm py-1 px-2"
+              class="btn-red text-sm py-1 px-2 w-full"
             >
               حذف
             </button>
@@ -85,11 +90,10 @@ export default {
   layout: AppLayout,
   props: {
     slides: Array,
-    interval_seconds: Number,
   },
   data() {
     return {
-      intervalSeconds: this.interval_seconds ?? 3,
+      newSlideDuration: 3,
       selectedFile: null,
     };
   },
@@ -99,24 +103,27 @@ export default {
     },
   },
   methods: {
-    saveConfig() {
-      const sec = Math.max(1, Math.min(60, Number(this.intervalSeconds) || 3));
-      Inertia.put(route('admin.display-screen.config.update'), { interval_seconds: sec });
-    },
     onFileSelect(event) {
       this.selectedFile = event.target.files?.[0] || null;
     },
     uploadImage() {
       if (!this.selectedFile) return;
+      const duration = Math.max(1, Math.min(60, Number(this.newSlideDuration) || 3));
       const formData = new FormData();
       formData.append('image', this.selectedFile);
+      formData.append('duration_seconds', duration);
       Inertia.post(route('admin.display-screen.slides.store'), formData, {
         forceFormData: true,
         onSuccess: () => {
           this.selectedFile = null;
+          this.newSlideDuration = 3;
           if (this.$refs.fileInput) this.$refs.fileInput.value = '';
         },
       });
+    },
+    updateDuration(slideId, value) {
+      const sec = Math.max(1, Math.min(60, parseInt(value, 10) || 3));
+      Inertia.put(route('admin.display-screen.slides.update', slideId), { duration_seconds: sec });
     },
     deleteSlide(id) {
       if (!confirm('حذف هذه الصورة؟')) return;
