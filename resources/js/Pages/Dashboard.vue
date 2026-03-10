@@ -6,6 +6,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 const page = usePage();
 const canViewReports = computed(() => page.props.canViewReports);
 const canManageAttendance = computed(() => !!page.props.canManageAttendance);
+const canManageFeedback = computed(() => !!page.props.canManageFeedback);
 </script>
 
 <template>
@@ -95,7 +96,7 @@ const canManageAttendance = computed(() => !!page.props.canManageAttendance);
                     </a>
 
                     <!-- Card 7: التقييمات -->
-                    <a v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('admin')" 
+                    <a v-if="canManageFeedback" 
                        href="/admin/feedback" 
                        class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
                         <div class="flex flex-col items-center">

@@ -68,16 +68,26 @@
       </div>
     </div>
 
-    <!-- رابط العرض العام -->
+    <!-- رابط العرض العام (كل فرع له رابط خاص، مفتوح للجميع بدون تسجيل دخول) -->
     <div class="bg-white rounded-xl shadow-lg p-6">
-      <a
-        :href="displayUrl"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="btn-primary inline-block"
-      >
-        فتح عرض الشاشة في تاب جديد
-      </a>
+      <p class="text-gray-600 mb-2">رابط عرض الشاشة لهذا الفرع (يمكن فتحه على أي جهاز بدون تسجيل):</p>
+      <div class="flex flex-wrap items-center gap-2">
+        <a
+          :href="displayUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn-primary inline-block"
+        >
+          فتح عرض الشاشة في تاب جديد
+        </a>
+        <input
+          type="text"
+          :value="displayUrl"
+          readonly
+          class="flex-1 min-w-[200px] p-2 border border-gray-300 rounded-lg bg-gray-50 text-sm font-mono"
+          @click="$event.target.select()"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -90,6 +100,7 @@ export default {
   layout: AppLayout,
   props: {
     slides: Array,
+    displayPublicUrl: { type: String, default: '' },
   },
   data() {
     return {
@@ -99,7 +110,9 @@ export default {
   },
   computed: {
     displayUrl() {
-      return window.location.origin + '/display';
+      const fromProp = this.displayPublicUrl;
+      const fromPage = this.$page?.props?.displayPublicUrl;
+      return fromProp || fromPage || (window.location.origin + '/display');
     },
   },
   methods: {

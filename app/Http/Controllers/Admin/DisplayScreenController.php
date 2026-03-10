@@ -4,13 +4,14 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\DisplayScreenSlide;
+use App\Models\Tenant;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
 class DisplayScreenController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $slides = DisplayScreenSlide::orderBy('sort_order')->get()->map(function ($slide) {
             return [
@@ -22,8 +23,23 @@ class DisplayScreenController extends Controller
             ];
         });
 
+        $displayPublicUrl = '';
+        $user = $request->user();
+        if ($user && $user->tenant_id) {
+            $tenant = Tenant::find($user->tenant_id);
+            if ($tenant) {
+                // استخدام slug إن وُجد، وإلا معرّف الـ tenant ليكون الرابط دائماً خاصاً بالفرع
+                $tenantParam = $tenant->slug ?: (string) $tenant->id;
+                $displayPublicUrl = url()->route('display.screen', ['tenant' => $tenantParam]);
+            }
+        }
+        if ($displayPublicUrl === '') {
+            $displayPublicUrl = url()->route('display.screen', []);
+        }
+
         return Inertia::render('Admin/DisplayScreen/Index', [
             'slides' => $slides,
+            'displayPublicUrl' => $displayPublicUrl,
         ]);
     }
 
@@ -79,19 +95,43 @@ class DisplayScreenController extends Controller
     }
 
     /**
-     * Public full-screen display (no auth).
+     * Public full-screen display (no auth). المحتوى حسب الـ tenant في الرابط: /display/{slug أو id}
      */
-    public function show()
+    public function show(?string $tenant = null)
     {
-        $slides = DisplayScreenSlide::orderBy('sort_order')->get()->map(function ($slide) {
-            return [
-                'url' => asset('storage/' . $slide->path),
-                'duration_seconds' => (int) ($slide->duration_seconds ?? 3),
-            ];
-        })->values()->all();
+        $tenantModel = null;
+        if ($tenant !== null && $tenant !== '') {
+            $tenantModel = is_numeric($tenant)
+                ? Tenant::find($tenant)
+                : Tenant::where('slug', $tenant)->first();
+        }
+        if ($tenantModel === null && $tenant !== null && $tenant !== '') {
+            return response()->view('display-screen.show', ['slides' => [], 'error' => 'tenant_not_found'], 404);
+        }
+        if ($tenantModel === null) {
+            $tenantModel = Tenant::orderBy('id')->first();
+        }
+
+        $tenantId = $tenantModel?->id;
+        $slides = [];
+        if ($tenantId !== null) {
+            $slides = DisplayScreenSlide::withoutGlobalScope('tenant')
+                ->where('tenant_id', $tenantId)
+                ->orderBy('sort_order')
+                ->get()
+                ->map(function ($slide) {
+                    return [
+                        'url' => asset('storage/' . $slide->path),
+                        'duration_seconds' => (int) ($slide->duration_seconds ?? 3),
+                    ];
+                })
+                ->values()
+                ->all();
+        }
 
         return view('display-screen.show', [
             'slides' => $slides,
+            'tenant' => $tenantModel,
         ]);
     }
 }

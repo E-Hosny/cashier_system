@@ -340,6 +340,9 @@
         
                     <form class="feedback-form" method="POST" action="{{ route('feedback.public.store') }}">
                 @csrf
+                @if(!empty($tenant_param))
+                <input type="hidden" name="tenant" value="{{ $tenant_param }}">
+                @endif
                 
                 @if(session('success'))
                     <div class="success-message">
@@ -393,7 +396,7 @@
         
         <!-- رابط عرض جميع التقييمات -->
         <div class="cta-section">
-            <a href="{{ route('feedback.public.display') }}" class="cta-link">
+            <a href="{{ $display_url ?? route('feedback.public.display') }}" class="cta-link">
                 <i class="fas fa-eye"></i>
                 عرض جميع التقييمات
             </a>

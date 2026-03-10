@@ -44,7 +44,9 @@
     </style>
 </head>
 <body>
-    @if (empty($slides))
+    @if (isset($error) && $error === 'tenant_not_found')
+        <div class="no-slides">الفرع غير موجود. تأكد من الرابط.</div>
+    @elseif (empty($slides))
         <div class="no-slides">لا توجد صور للعرض</div>
     @else
         @foreach ($slides as $index => $slide)

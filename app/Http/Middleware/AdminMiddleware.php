@@ -15,7 +15,7 @@ class AdminMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if (!auth()->check() || !auth()->user()->hasRole('admin')) {
+        if (!auth()->check() || (!auth()->user()->hasRole('admin') && !auth()->user()->hasRole('super admin'))) {
             abort(403, 'غير مصرح لك بالوصول لهذه الصفحة');
         }
 

@@ -4,12 +4,13 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Feedback;
+use App\Models\Tenant;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class FeedbackController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $feedback = Feedback::orderBy('created_at', 'desc')
             ->paginate(15);
@@ -28,9 +29,27 @@ class FeedbackController extends Controller
             ]
         ];
 
+        $feedbackPublicFormUrl = '';
+        $feedbackPublicDisplayUrl = '';
+        $user = $request->user();
+        if ($user && $user->tenant_id) {
+            $tenant = Tenant::find($user->tenant_id);
+            if ($tenant) {
+                $param = $tenant->slug ?: (string) $tenant->id;
+                $feedbackPublicFormUrl = url()->route('feedback.public.form', ['tenant' => $param]);
+                $feedbackPublicDisplayUrl = url()->route('feedback.public.display', ['tenant' => $param]);
+            }
+        }
+        if ($feedbackPublicFormUrl === '') {
+            $feedbackPublicFormUrl = url()->route('feedback.public.form');
+            $feedbackPublicDisplayUrl = url()->route('feedback.public.display');
+        }
+
         return Inertia::render('Feedback/Index', [
             'feedback' => $feedback,
-            'stats' => $stats
+            'stats' => $stats,
+            'feedbackPublicFormUrl' => $feedbackPublicFormUrl,
+            'feedbackPublicDisplayUrl' => $feedbackPublicDisplayUrl,
         ]);
     }
 

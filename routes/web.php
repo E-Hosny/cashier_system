@@ -36,6 +36,7 @@ Route::middleware([
         return Inertia::render('Dashboard', [
             'canViewReports' => Auth::user()->can('view sales reports'),
             'canManageAttendance' => Auth::user()->can('manage employee attendance'),
+            'canManageFeedback' => Auth::user()->hasRole('admin') || Auth::user()->hasRole('super admin'),
         ]);
     })->name('dashboard');
 
@@ -132,10 +133,10 @@ Route::middleware([
     });
 });
 
-// Public Feedback Routes (No Authentication Required)
-Route::get('/feedback', [FeedbackController::class, 'publicForm'])->name('feedback.public.form');
+// Public Feedback Routes (No Authentication) — كل رابط عام حسب الـ tenant (يجب تعريف display قبل form لتجنب تفسير "display" كـ tenant)
+Route::get('/feedback/display/{tenant?}', [FeedbackController::class, 'publicDisplay'])->name('feedback.public.display');
+Route::get('/feedback/{tenant?}', [FeedbackController::class, 'publicForm'])->name('feedback.public.form');
 Route::post('/feedback', [FeedbackController::class, 'publicStore'])->name('feedback.public.store');
-Route::get('/feedback/display', [FeedbackController::class, 'publicDisplay'])->name('feedback.public.display');
 
-// Public Display Screen (full-screen slideshow, no auth)
-Route::get('/display', [DisplayScreenController::class, 'show'])->name('display.screen');
+// Public Display Screen (full-screen slideshow, no auth) — المحتوى حسب الـ tenant في الرابط
+Route::get('/display/{tenant?}', [DisplayScreenController::class, 'show'])->name('display.screen');

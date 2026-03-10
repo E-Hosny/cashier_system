@@ -206,8 +206,11 @@ const getRatingPercentage = (rating) => {
     return total > 0 ? Math.round((count / total) * 100) : 0;
 };
 
+const feedbackPublicFormUrl = computed(() => page.props.feedbackPublicFormUrl || `${window.location.origin}/feedback`);
+const feedbackPublicDisplayUrl = computed(() => page.props.feedbackPublicDisplayUrl || `${window.location.origin}/feedback/display`);
+
 const copyFeedbackLink = () => {
-    const link = `${window.location.origin}/feedback`;
+    const link = feedbackPublicFormUrl.value;
     navigator.clipboard.writeText(link).then(() => {
         alert('تم نسخ رابط التقييم!');
     });

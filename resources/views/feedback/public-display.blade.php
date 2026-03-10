@@ -381,7 +381,7 @@
         
         <!-- دعوة للعمل -->
         <div class="cta-section">
-            <a href="/feedback" class="cta-button">
+            <a href="{{ $formUrl ?? url('/feedback') }}" class="cta-button">
                 <i class="fas fa-star ml-2"></i>
                 أضف تقييمك الآن
             </a>
