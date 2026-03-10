@@ -35,6 +35,7 @@ Route::middleware([
     Route::get('/dashboard', function () {
         return Inertia::render('Dashboard', [
             'canViewReports' => Auth::user()->can('view sales reports'),
+            'canManageAttendance' => Auth::user()->can('manage employee attendance'),
         ]);
     })->name('dashboard');
 

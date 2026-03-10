@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Feedback extends Model
 {
+    use BelongsToTenant;
     use HasFactory;
 
     protected $fillable = [
@@ -14,8 +16,14 @@ class Feedback extends Model
         'comment',
         'is_approved',
         'ip_address',
-        'user_agent'
+        'user_agent',
+        'tenant_id',
     ];
+
+    protected static function booted()
+    {
+        static::bootBelongsToTenant();
+    }
 
     protected $casts = [
         'rating' => 'integer',

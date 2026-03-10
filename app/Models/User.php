@@ -69,10 +69,21 @@ class User extends Authenticatable
         ];
     }
 
-    public function users()
-{
-    return $this->hasMany(User::class, 'tenant_id');
-}
+    /**
+     * الـ tenant الذي ينتمي إليه المستخدم
+     */
+    public function tenant()
+    {
+        return $this->belongsTo(Tenant::class, 'tenant_id');
+    }
+
+    /**
+     * المستخدمون التابعون لنفس الـ tenant (عندما يكون المستخدم سوبر أدمن)
+     */
+    public function tenantUsers()
+    {
+        return $this->hasMany(User::class, 'tenant_id');
+    }
 
     /**
      * العلاقة مع ورديات الكاشير

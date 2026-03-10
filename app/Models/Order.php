@@ -2,13 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Builder;
-
 
 class Order extends Model
 {
+    use BelongsToTenant;
     use HasFactory;
 
     protected $fillable = [
@@ -26,11 +26,6 @@ class Order extends Model
         return $this->hasMany(OrderItem::class);
     }
 
-    public function tenant()
-    {
-        return $this->belongsTo(User::class, 'tenant_id');
-    }
-
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id');
@@ -46,16 +41,10 @@ class Order extends Model
 
     protected static function booted()
     {
-        static::addGlobalScope('tenant', function (Builder $query) {
-            if (auth()->check()) {
-                $query->where('tenant_id', auth()->user()->tenant_id);
-            }
-        });
-
+        static::bootBelongsToTenant();
         static::creating(function ($model) {
             if (auth()->check()) {
-                $model->tenant_id = auth()->user()->tenant_id;
-                $model->user_id = auth()->id();
+                $model->user_id = $model->user_id ?? auth()->id();
             }
         });
     }

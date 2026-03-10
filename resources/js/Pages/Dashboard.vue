@@ -5,7 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 
 const page = usePage();
 const canViewReports = computed(() => page.props.canViewReports);
-const canManageAttendance = computed(() => page.props.auth.user?.roles?.includes('admin') || page.props.auth.user?.roles?.includes('cashier'));
+const canManageAttendance = computed(() => !!page.props.canManageAttendance);
 </script>
 
 <template>

@@ -2,16 +2,25 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class InvoiceSequence extends Model
 {
+    use BelongsToTenant;
+
     protected $fillable = [
         'date_code',
-        'current_sequence'
+        'current_sequence',
+        'tenant_id',
     ];
+
+    protected static function booted()
+    {
+        static::bootBelongsToTenant();
+    }
 
     /**
      * الحصول على الرقم التسلسلي التالي لليوم الحالي

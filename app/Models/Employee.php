@@ -2,12 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
 
 class Employee extends Model
 {
+    use BelongsToTenant;
     use HasFactory;
 
     protected $fillable = [
@@ -16,13 +18,19 @@ class Employee extends Model
         'is_active',
         'phone',
         'position',
-        'notes'
+        'notes',
+        'tenant_id',
     ];
 
     protected $casts = [
         'hourly_rate' => 'decimal:2',
         'is_active' => 'boolean',
     ];
+
+    protected static function booted()
+    {
+        static::bootBelongsToTenant();
+    }
 
     /**
      * علاقة مع سجلات الحضور والانصراف

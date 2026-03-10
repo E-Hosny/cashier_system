@@ -100,7 +100,8 @@ class CashierController extends Controller
                 
                 $order = Order::create($orderData);
 
-                // 2. إنشاء عناصر الطلب بشكل جماعي
+                // 2. إنشاء عناصر الطلب بشكل جماعي (مع tenant_id لظهورها في التقارير والفواتير حسب الـ tenant)
+                $tenantId = $order->tenant_id ?? Auth::user()->tenant_id;
                 $orderItems = [];
                 foreach ($data['items'] as $item) {
                     $orderItems[] = [
@@ -110,6 +111,7 @@ class CashierController extends Controller
                         'quantity' => $item['quantity'],
                         'price' => $item['price'],
                         'size' => $item['size'],
+                        'tenant_id' => $tenantId,
                         'created_at' => now(),
                         'updated_at' => now(),
                     ];
@@ -156,12 +158,13 @@ class CashierController extends Controller
                             }
                             $stockUpdates[$ingredient->raw_material_id] -= $quantityToDeduct;
                             
-                            // تجميع حركات المخزون
+                            // تجميع حركات المخزون (مع tenant_id)
                             $stockMovements[] = [
                                 'product_id' => $ingredient->raw_material_id,
                                 'quantity' => -$quantityToDeduct,
                                 'type' => 'sale_deduction',
                                 'related_order_id' => $order->id,
+                                'tenant_id' => $tenantId,
                                 'created_at' => now(),
                                 'updated_at' => now(),
                             ];
@@ -179,6 +182,7 @@ class CashierController extends Controller
                             'quantity' => -$item['quantity'],
                             'type' => 'sale_deduction',
                             'related_order_id' => $order->id,
+                            'tenant_id' => $tenantId,
                             'created_at' => now(),
                             'updated_at' => now(),
                         ];

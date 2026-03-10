@@ -2,12 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
 
 class SalaryDelivery extends Model
 {
+    use BelongsToTenant;
     use HasFactory;
 
     protected $fillable = [
@@ -19,8 +21,14 @@ class SalaryDelivery extends Model
         'status',
         'delivered_at',
         'delivered_by',
-        'notes'
+        'notes',
+        'tenant_id',
     ];
+
+    protected static function booted()
+    {
+        static::bootBelongsToTenant();
+    }
 
     protected $casts = [
         'salary_date' => 'date',

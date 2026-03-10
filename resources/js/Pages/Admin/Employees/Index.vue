@@ -2,7 +2,7 @@
   <AppLayout title="إدارة الموظفين">
     <template #header>
       <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-        👥 {{ isAdmin ? 'إدارة الموظفين' : 'الحضور والانصراف' }}
+        👥 {{ (isAdmin || isSuperAdmin) ? 'إدارة الموظفين' : 'الحضور والانصراف' }}
       </h2>
     </template>
 
@@ -12,10 +12,10 @@
           <!-- رأس الصفحة -->
           <div class="mb-6 flex justify-between items-center">
             <div>
-              <h3 class="text-lg font-semibold text-gray-900">{{ isAdmin ? 'قائمة الموظفين' : 'الحضور والانصراف' }}</h3>
-              <p class="text-sm text-gray-600">{{ isAdmin ? 'إدارة حضور وانصراف الموظفين' : 'تسجيل حضور وانصراف الموظفين' }}</p>
+              <h3 class="text-lg font-semibold text-gray-900">{{ (isAdmin || isSuperAdmin) ? 'قائمة الموظفين' : 'الحضور والانصراف' }}</h3>
+              <p class="text-sm text-gray-600">{{ (isAdmin || isSuperAdmin) ? 'إدارة حضور وانصراف الموظفين' : 'تسجيل حضور وانصراف الموظفين' }}</p>
             </div>
-            <div v-if="isAdmin" class="flex gap-2">
+            <div v-if="isAdmin || isSuperAdmin" class="flex gap-2">
               <Link
                 :href="route('admin.employees.create')"
                 class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition duration-200"
@@ -321,10 +321,14 @@ export default {
     isAdmin() {
       return this.$page.props.auth.user?.roles?.includes('admin');
     },
+    isSuperAdmin() {
+      return this.$page.props.auth.user?.roles?.includes('super admin');
+    },
     canManageEmployees() {
       return this.$page.props.auth.user?.permissions?.includes('manage employee attendance') ||
              this.$page.props.auth.user?.roles?.includes('admin') ||
-             this.$page.props.auth.user?.roles?.includes('cashier');
+             this.$page.props.auth.user?.roles?.includes('cashier') ||
+             this.$page.props.auth.user?.roles?.includes('super admin');
     },
     presentEmployees() {
       return this.employees.filter(emp => emp.is_present);
