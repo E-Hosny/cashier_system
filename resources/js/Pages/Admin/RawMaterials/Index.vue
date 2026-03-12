@@ -21,13 +21,16 @@
           <tr v-for="material in rawMaterials" :key="material.id" class="block sm:table-row border-t sm:border-t-0 border-gray-200 hover:bg-gray-50" :class="{'bg-red-100 hover:bg-red-200': isStockLow(material)}">
             <td class="p-4 block sm:table-cell" data-label="اسم المادة">{{ material.name }}</td>
             <td class="p-4 block sm:table-cell font-mono font-bold" data-label="الكمية الحالية (المخزون)">
-              {{ material.stock }} {{ material.consume_unit }}
-              <span v-if="material.purchase_unit && material.consume_unit && material.stock">
-                (
-                {{ (material.stock / ((material.purchase_unit === 'لتر' && material.consume_unit === 'مللي') ? 1000 : (material.purchase_unit === 'كجم' && material.consume_unit === 'جرام') ? 1000 : 1)).toFixed(2) }}
-                {{ material.purchase_unit }}
-                )
-              </span>
+              <template v-if="material.quantity_per_unit">
+                {{ formatStockUnits(material) }} {{ material.unit }}
+                <span class="text-gray-600 font-normal">({{ formatStockConsume(material) }} {{ material.consume_unit }})</span>
+              </template>
+              <template v-else>
+                {{ material.stock }} {{ material.consume_unit }}
+                <span v-if="material.purchase_unit && material.consume_unit && material.stock" class="text-gray-600 font-normal">
+                  ({{ (material.stock / ((material.purchase_unit === 'لتر' && material.consume_unit === 'مللي') ? 1000 : (material.purchase_unit === 'كجم' && material.consume_unit === 'جرام') ? 1000 : 1)).toFixed(2) }} {{ material.purchase_unit }})
+                </span>
+              </template>
             </td>
             <td class="p-4 block sm:table-cell" data-label="وحدة القياس">{{ material.unit }}</td>
             <td class="p-4 block sm:table-cell" data-label="معلومات التسعير">
@@ -69,7 +72,16 @@ export default {
     isStockLow(material) {
         if (!material.stock_alert_threshold) return false;
         return parseFloat(material.stock) <= parseFloat(material.stock_alert_threshold);
-    }
+    },
+    formatStockUnits(material) {
+      if (!material.quantity_per_unit) return material.stock;
+      const u = parseFloat(material.stock) / parseFloat(material.quantity_per_unit);
+      return u % 1 === 0 ? u : parseFloat(u).toFixed(2);
+    },
+    formatStockConsume(material) {
+      const s = parseFloat(material.stock);
+      return s % 1 === 0 ? s : s.toFixed(2);
+    },
   },
 };
 </script>

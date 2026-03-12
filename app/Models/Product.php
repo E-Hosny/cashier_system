@@ -26,6 +26,7 @@ class Product extends Model
         'purchase_quantity',
         'purchase_price',
         'consume_unit',
+        'quantity_per_unit',
         'unit_consume_price',
     ];
 

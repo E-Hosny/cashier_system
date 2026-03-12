@@ -36,16 +36,19 @@ class RawMaterialController extends Controller
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'unit' => 'required|string|max:50',
+            'price_per_piece' => 'required|numeric|min:0',
+            'consume_unit' => 'required|string|in:مللي,جرام,قطعة,كوب',
+            'quantity_per_unit' => 'required|numeric|min:0.001',
             'stock' => 'required|numeric|min:0',
             'stock_alert_threshold' => 'nullable|numeric|min:0',
-            'purchase_unit' => 'required|string|max:20',
-            'purchase_quantity' => 'required|numeric|min:0.001',
-            'purchase_price' => 'required|numeric|min:0.01',
-            'consume_unit' => 'required|string|max:20',
             'unit_consume_price' => 'required|numeric|min:0',
         ]);
 
         $data['type'] = 'raw';
+        $data['purchase_unit'] = $data['unit'];
+        $data['purchase_quantity'] = 1;
+        $data['purchase_price'] = $data['price_per_piece'];
+        unset($data['price_per_piece']);
         Product::create($data);
 
         return redirect()->route('admin.raw-materials.index')->with('success', 'تمت إضافة المادة الخام بنجاح.');
@@ -77,15 +80,18 @@ class RawMaterialController extends Controller
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'unit' => 'required|string|max:50',
+            'price_per_piece' => 'required|numeric|min:0',
+            'consume_unit' => 'required|string|in:مللي,جرام,قطعة,كوب',
+            'quantity_per_unit' => 'required|numeric|min:0.001',
             'stock' => 'required|numeric|min:0',
             'stock_alert_threshold' => 'nullable|numeric|min:0',
-            'purchase_unit' => 'required|string|max:20',
-            'purchase_quantity' => 'required|numeric|min:0.001',
-            'purchase_price' => 'required|numeric|min:0.01',
-            'consume_unit' => 'required|string|max:20',
             'unit_consume_price' => 'required|numeric|min:0',
         ]);
 
+        $data['purchase_unit'] = $data['unit'];
+        $data['purchase_quantity'] = 1;
+        $data['purchase_price'] = $data['price_per_piece'];
+        unset($data['price_per_piece']);
         $raw_material->update($data);
 
         return redirect()->route('admin.raw-materials.index')->with('success', 'تم تحديث المادة الخام بنجاح.');
