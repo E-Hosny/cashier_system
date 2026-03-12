@@ -40,9 +40,10 @@
               </div>
               <div v-else class="text-gray-500 text-sm">لم يتم تحديد السعر</div>
             </td>
-            <td class="p-4 block sm:table-cell" data-label="حد التنبيه">{{ material.stock_alert_threshold || 'لم يحدد' }}</td>
+            <td class="p-4 block sm:table-cell" data-label="حد التنبيه">{{ formatAlertThreshold(material) }}</td>
             <td class="p-4 block sm:table-cell" data-label="الإجراءات">
               <div class="flex justify-center items-center gap-2">
+                <button @click="goToAddQuantity(material.id)" class="btn-green">➕ إضافة كمية</button>
                 <a :href="route('admin.raw-materials.edit', material.id)" class="btn-yellow">✏️ تعديل</a>
                 <button @click="deleteMaterial(material.id)" class="btn-red">🗑️ حذف</button>
               </div>
@@ -64,6 +65,9 @@ export default {
     rawMaterials: Array,
   },
   methods: {
+    goToAddQuantity(id) {
+      Inertia.get(route("admin.raw-materials.add-quantity", id));
+    },
     deleteMaterial(id) {
       if (confirm("هل أنت متأكد من حذف هذه المادة الخام؟")) {
         Inertia.delete(route("admin.raw-materials.destroy", id));
@@ -82,6 +86,17 @@ export default {
       const s = parseFloat(material.stock);
       return s % 1 === 0 ? s : s.toFixed(2);
     },
+    formatAlertThreshold(material) {
+      if (material.stock_alert_threshold == null || material.stock_alert_threshold === '') return 'لم يحدد';
+      const t = parseFloat(material.stock_alert_threshold);
+      if (material.quantity_per_unit) {
+        const qpu = parseFloat(material.quantity_per_unit);
+        const units = t / qpu;
+        const u = units % 1 === 0 ? units : parseFloat(units).toFixed(2);
+        return u + ' ' + (material.unit || 'قطعة');
+      }
+      return t + ' ' + (material.consume_unit || '');
+    },
   },
 };
 </script>
@@ -92,6 +107,9 @@ export default {
 }
 .btn-yellow {
   @apply bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg transition;
+}
+.btn-green {
+  @apply bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition;
 }
 .btn-red {
   @apply bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition;

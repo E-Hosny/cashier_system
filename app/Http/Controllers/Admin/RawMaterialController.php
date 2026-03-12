@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Models\StockMovement;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -95,6 +96,43 @@ class RawMaterialController extends Controller
         $raw_material->update($data);
 
         return redirect()->route('admin.raw-materials.index')->with('success', 'تم تحديث المادة الخام بنجاح.');
+    }
+
+    /**
+     * Show form for adding extra quantity to a raw material.
+     */
+    public function addQuantityForm(Product $raw_material)
+    {
+        return Inertia::render('Admin/RawMaterials/AddQuantity', [
+            'rawMaterial' => $raw_material,
+        ]);
+    }
+
+    /**
+     * Store added quantity for a raw material (in pieces).
+     */
+    public function addQuantity(Request $request, Product $raw_material)
+    {
+        $data = $request->validate([
+            'quantity_units' => 'required|numeric|min:0.001',
+            'note' => 'nullable|string|max:255',
+        ]);
+
+        $unitsToAdd = (float) $data['quantity_units'];
+        $perUnit = $raw_material->quantity_per_unit ?: 1;
+        $quantityToAdd = $unitsToAdd * $perUnit;
+
+        $raw_material->increment('stock', $quantityToAdd);
+
+        StockMovement::create([
+            'product_id' => $raw_material->id,
+            'quantity' => $quantityToAdd,
+            'type' => 'manual_addition',
+            'related_order_id' => null,
+            'related_purchase_id' => null,
+        ]);
+
+        return redirect()->route('admin.raw-materials.index')->with('success', 'تمت إضافة الكمية للمخزون بنجاح.');
     }
 
     /**

@@ -54,6 +54,8 @@ Route::middleware([
 
     // Raw Materials
     Route::resource('raw-materials', RawMaterialController::class, ['as' => 'admin'])->except(['show']);
+    Route::get('raw-materials/{raw_material}/add-quantity', [RawMaterialController::class, 'addQuantityForm'])->name('admin.raw-materials.add-quantity');
+    Route::post('raw-materials/{raw_material}/add-quantity', [RawMaterialController::class, 'addQuantity'])->name('admin.raw-materials.add-quantity.store');
 
     // Users Management (super admin only)
     Route::middleware(['super_admin'])->group(function () {

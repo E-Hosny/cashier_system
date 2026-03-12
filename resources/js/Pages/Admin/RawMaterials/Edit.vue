@@ -57,11 +57,11 @@
           <input id="unit" v-model="form.unit" type="text" class="input-style" placeholder="مثال: قطعة، كرتونة" required />
         </div>
 
-        <!-- 7. حد التنبيه -->
+        <!-- 7. حد التنبيه (بالقطعة) -->
         <div>
-          <label for="stock_alert_threshold" class="block text-gray-700 font-medium mb-2">٧ – حد التنبيه (اختياري)</label>
-          <input id="stock_alert_threshold" v-model="form.stock_alert_threshold" type="number" step="0.01" min="0" class="input-style" placeholder="بوحدة الاستهلاك (مثلاً 1500 مللي)" />
-          <p class="text-sm text-gray-500 mt-1">سيتم تنبيهك عند وصول المخزون إلى هذا الحد.</p>
+          <label for="stock_alert_threshold" class="block text-gray-700 font-medium mb-2">٧ – حد التنبيه (بالقطعة، اختياري)</label>
+          <input id="stock_alert_threshold" v-model="form.stock_alert_threshold" type="number" step="any" min="0" class="input-style" :placeholder="'مثال: 2 ' + (form.unit || 'قطعة')" />
+          <p class="text-sm text-gray-500 mt-1">سيتم تنبيهك عند وصول عدد القطع في المخزون إلى هذا الحد أو أقل.</p>
         </div>
 
         <button type="submit" class="btn-primary w-full !mt-8">
@@ -84,6 +84,8 @@ export default {
   data() {
     const qpu = this.rawMaterial.quantity_per_unit ? parseFloat(this.rawMaterial.quantity_per_unit) : null;
     const stock = parseFloat(this.rawMaterial.stock) || 0;
+    const rawThreshold = this.rawMaterial.stock_alert_threshold != null ? parseFloat(this.rawMaterial.stock_alert_threshold) : null;
+    const thresholdInUnits = (qpu && rawThreshold != null) ? (rawThreshold / qpu) : rawThreshold;
     return {
       form: {
         name: this.rawMaterial.name,
@@ -92,7 +94,7 @@ export default {
         quantity_per_unit: qpu,
         stock_units: qpu ? (stock / qpu) : null,
         unit: this.rawMaterial.unit || 'قطعة',
-        stock_alert_threshold: this.rawMaterial.stock_alert_threshold,
+        stock_alert_threshold: thresholdInUnits,
       },
     };
   },
@@ -113,6 +115,9 @@ export default {
     submit() {
       const stock = (parseFloat(this.form.stock_units) || 0) * (parseFloat(this.form.quantity_per_unit) || 0);
       const unitConsumePrice = (parseFloat(this.form.price_per_piece) || 0) / (parseFloat(this.form.quantity_per_unit) || 1);
+      const qpu = parseFloat(this.form.quantity_per_unit) || 0;
+      const thresholdPieces = this.form.stock_alert_threshold != null && this.form.stock_alert_threshold !== '' ? parseFloat(this.form.stock_alert_threshold) : null;
+      const stock_alert_threshold = (thresholdPieces != null && qpu) ? (thresholdPieces * qpu) : thresholdPieces;
       const submitData = {
         name: this.form.name,
         unit: this.form.unit,
@@ -120,7 +125,7 @@ export default {
         consume_unit: this.form.consume_unit,
         quantity_per_unit: this.form.quantity_per_unit,
         stock,
-        stock_alert_threshold: this.form.stock_alert_threshold || null,
+        stock_alert_threshold: stock_alert_threshold,
         unit_consume_price: unitConsumePrice,
       };
       Inertia.put(route('admin.raw-materials.update', this.rawMaterial.id), submitData);
