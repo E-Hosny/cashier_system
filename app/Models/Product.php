@@ -3,8 +3,8 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 
 class Product extends Model
 {
@@ -28,6 +28,7 @@ class Product extends Model
         'consume_unit',
         'quantity_per_unit',
         'unit_consume_price',
+        'barcode',
     ];
 
     protected $casts = [
@@ -38,7 +39,12 @@ class Product extends Model
     public function ingredients()
     {
         return $this->belongsToMany(Product::class, 'ingredients', 'finished_product_id', 'raw_material_id')
-                    ->withPivot('quantity_consumed', 'size');
+            ->withPivot('quantity_consumed', 'size');
+    }
+
+    public function rawMaterialPendingLabels()
+    {
+        return $this->hasMany(RawMaterialPendingLabel::class, 'product_id');
     }
 
     protected static function booted()
@@ -56,6 +62,7 @@ class Product extends Model
         if (empty($this->size_variants)) {
             return [];
         }
+
         return collect($this->size_variants)->pluck('size')->toArray();
     }
 
@@ -75,6 +82,7 @@ class Product extends Model
         return collect($this->size_variants)
             ->map(function ($variant) use ($sizeTranslations) {
                 $size = $sizeTranslations[$variant['size']] ?? $variant['size'];
+
                 return "{$size}: {$variant['price']}";
             })
             ->implode('، ');
@@ -85,9 +93,10 @@ class Product extends Model
      */
     public function getUnitPrice($unit = null)
     {
-        if ($this->type !== 'raw' || !$this->unit_consume_price) {
+        if ($this->type !== 'raw' || ! $this->unit_consume_price) {
             return 0;
         }
+
         return $this->unit_consume_price;
     }
 
@@ -97,6 +106,7 @@ class Product extends Model
     public function calculateCost($quantity, $unit = null)
     {
         $unitPrice = $this->getUnitPrice($unit);
+
         return $unitPrice * $quantity;
     }
 
@@ -134,13 +144,13 @@ class Product extends Model
         }
 
         $variant = collect($this->size_variants)->firstWhere('size', $size);
-        if (!$variant) {
+        if (! $variant) {
             return 0;
         }
 
         $sellingPrice = $variant['price'];
         $costPrice = $this->calculateIngredientsCost($size);
-        
+
         if ($costPrice == 0) {
             return 0;
         }
@@ -158,14 +168,13 @@ class Product extends Model
         }
 
         $variant = collect($this->size_variants)->firstWhere('size', $size);
-        if (!$variant) {
+        if (! $variant) {
             return 0;
         }
 
         $sellingPrice = $variant['price'];
         $costPrice = $this->calculateIngredientsCost($size);
-        
+
         return $sellingPrice - $costPrice;
     }
-
 }

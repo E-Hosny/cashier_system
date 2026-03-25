@@ -2,7 +2,10 @@
   <div class="container mx-auto p-4 sm:p-6" dir="rtl">
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
       <h1 class="text-3xl font-bold text-gray-800">🛢️ إدارة المواد الخام</h1>
-      <a :href="route('admin.raw-materials.create')" class="btn-primary">➕ إضافة مادة خام</a>
+      <div class="flex flex-wrap gap-2">
+        <a :href="route('admin.raw-materials.pending-receive')" class="btn-blue">📥 سحب المنتجات</a>
+        <a :href="route('admin.raw-materials.create')" class="btn-primary">➕ إضافة مادة خام</a>
+      </div>
     </div>
 
     <div class="bg-white shadow-lg rounded-xl overflow-x-auto">
@@ -24,6 +27,9 @@
               <template v-if="material.quantity_per_unit">
                 {{ formatStockUnits(material) }} {{ material.unit }}
                 <span class="text-gray-600 font-normal">({{ formatStockConsume(material) }} {{ material.consume_unit }})</span>
+                <span v-if="material.pending_pieces > 0" class="block text-amber-800 text-sm font-semibold mt-1">
+                  قيد الاستلام: {{ formatPendingPieces(material) }} {{ material.unit }}
+                </span>
               </template>
               <template v-else>
                 {{ material.stock }} {{ material.consume_unit }}
@@ -42,7 +48,8 @@
             </td>
             <td class="p-4 block sm:table-cell" data-label="حد التنبيه">{{ formatAlertThreshold(material) }}</td>
             <td class="p-4 block sm:table-cell" data-label="الإجراءات">
-              <div class="flex justify-center items-center gap-2">
+              <div class="flex flex-wrap justify-center items-center gap-2">
+                <button type="button" @click="openPrintModal(material)" class="btn-blue-outline">🏷️ طباعة كود</button>
                 <button @click="goToAddQuantity(material.id)" class="btn-green">➕ إضافة كمية</button>
                 <a :href="route('admin.raw-materials.edit', material.id)" class="btn-yellow">✏️ تعديل</a>
                 <button @click="deleteMaterial(material.id)" class="btn-red">🗑️ حذف</button>
@@ -51,6 +58,29 @@
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <div
+      v-if="printModal.open"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      @click.self="closePrintModal"
+    >
+      <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6" dir="rtl">
+        <h3 class="text-lg font-bold text-gray-800 mb-2">طباعة كود — {{ printModal.materialName }}</h3>
+        <p class="text-sm text-gray-600 mb-4">أدخل عدد القطع المراد تكويدها (لن يُضاف للمخزون حتى «سحب المنتجات»).</p>
+        <label class="block text-gray-700 text-sm mb-1">عدد القطع</label>
+        <input
+          v-model.number="printModal.piece_count"
+          type="number"
+          step="any"
+          min="0.001"
+          class="w-full border rounded-lg p-3 mb-4"
+        />
+        <div class="flex gap-2 justify-end">
+          <button type="button" class="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300" @click="closePrintModal">إلغاء</button>
+          <button type="button" class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700" @click="submitPrintLabel">متابعة للطباعة</button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -64,7 +94,38 @@ export default {
   props: {
     rawMaterials: Array,
   },
+  data() {
+    return {
+      printModal: {
+        open: false,
+        materialId: null,
+        materialName: '',
+        piece_count: 1,
+      },
+    };
+  },
   methods: {
+    openPrintModal(material) {
+      this.printModal = {
+        open: true,
+        materialId: material.id,
+        materialName: material.name,
+        piece_count: 1,
+      };
+    },
+    closePrintModal() {
+      this.printModal.open = false;
+    },
+    submitPrintLabel() {
+      const n = parseFloat(this.printModal.piece_count);
+      if (!this.printModal.materialId || !n || n < 0.001) {
+        alert('أدخل عدد قطع صالحاً.');
+        return;
+      }
+      Inertia.post(route('admin.raw-materials.labels.store', this.printModal.materialId), {
+        piece_count: n,
+      });
+    },
     goToAddQuantity(id) {
       Inertia.get(route("admin.raw-materials.add-quantity", id));
     },
@@ -86,6 +147,11 @@ export default {
       const s = parseFloat(material.stock);
       return s % 1 === 0 ? s : s.toFixed(2);
     },
+    formatPendingPieces(material) {
+      const p = parseFloat(material.pending_pieces);
+      if (Number.isNaN(p)) return '0';
+      return p % 1 === 0 ? p : p.toFixed(2);
+    },
     formatAlertThreshold(material) {
       if (material.stock_alert_threshold == null || material.stock_alert_threshold === '') return 'لم يحدد';
       const t = parseFloat(material.stock_alert_threshold);
@@ -104,6 +170,12 @@ export default {
 <style scoped>
 .btn-primary {
   @apply bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition shadow-md;
+}
+.btn-blue {
+  @apply bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded-lg transition shadow-md;
+}
+.btn-blue-outline {
+  @apply border-2 border-sky-600 text-sky-700 hover:bg-sky-50 font-bold py-2 px-4 rounded-lg transition;
 }
 .btn-yellow {
   @apply bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg transition;

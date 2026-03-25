@@ -68,6 +68,7 @@ class TenantsAssignAll extends Command
             'categories',
             'ingredients',
             'stock_movements',
+            'raw_material_pending_labels',
             'invoice_sequences',
             'expenses',
             'employees',

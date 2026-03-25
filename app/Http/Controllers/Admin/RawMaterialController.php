@@ -4,8 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Models\RawMaterialPendingLabel;
 use App\Models\StockMovement;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 
 class RawMaterialController extends Controller
@@ -16,6 +19,17 @@ class RawMaterialController extends Controller
     public function index()
     {
         $rawMaterials = Product::where('type', 'raw')->latest()->get();
+        $pendingSums = RawMaterialPendingLabel::query()
+            ->where('status', RawMaterialPendingLabel::STATUS_PENDING)
+            ->selectRaw('product_id, SUM(piece_count) as total')
+            ->groupBy('product_id')
+            ->pluck('total', 'product_id');
+        $rawMaterials = $rawMaterials->map(function (Product $m) use ($pendingSums) {
+            $m->pending_pieces = (float) ($pendingSums[$m->id] ?? 0);
+
+            return $m;
+        });
+
         return Inertia::render('Admin/RawMaterials/Index', [
             'rawMaterials' => $rawMaterials,
         ]);
@@ -50,7 +64,10 @@ class RawMaterialController extends Controller
         $data['purchase_quantity'] = 1;
         $data['purchase_price'] = $data['price_per_piece'];
         unset($data['price_per_piece']);
-        Product::create($data);
+        $product = Product::create($data);
+        if (empty($product->barcode)) {
+            $product->forceFill(['barcode' => 'RM-'.strtoupper(Str::ulid())])->save();
+        }
 
         return redirect()->route('admin.raw-materials.index')->with('success', 'تمت إضافة المادة الخام بنجاح.');
     }
@@ -94,8 +111,112 @@ class RawMaterialController extends Controller
         $data['purchase_price'] = $data['price_per_piece'];
         unset($data['price_per_piece']);
         $raw_material->update($data);
+        if ($raw_material->type === 'raw' && empty($raw_material->barcode)) {
+            $raw_material->forceFill(['barcode' => 'RM-'.strtoupper(Str::ulid())])->save();
+        }
 
         return redirect()->route('admin.raw-materials.index')->with('success', 'تم تحديث المادة الخام بنجاح.');
+    }
+
+    /**
+     * Create a pending label batch (does not change stock until received).
+     */
+    public function storeLabel(Request $request, Product $raw_material)
+    {
+        if ($raw_material->type !== 'raw') {
+            abort(404);
+        }
+
+        $data = $request->validate([
+            'piece_count' => 'required|numeric|min:0.001',
+        ]);
+
+        $pieces = (float) $data['piece_count'];
+        $perUnit = (float) ($raw_material->quantity_per_unit ?: 1);
+        $consumeAmount = $pieces * $perUnit;
+
+        $label = RawMaterialPendingLabel::create([
+            'product_id' => $raw_material->id,
+            'label_code' => strtoupper(Str::ulid()),
+            'piece_count' => $pieces,
+            'consume_amount' => $consumeAmount,
+            'status' => RawMaterialPendingLabel::STATUS_PENDING,
+        ]);
+
+        return redirect()->route('admin.raw-materials.labels.print', $label);
+    }
+
+    /**
+     * Printable label page (barcode encodes label_code).
+     */
+    public function printLabel(RawMaterialPendingLabel $label)
+    {
+        $label->loadMissing('product');
+
+        return Inertia::render('Admin/RawMaterials/PrintLabel', [
+            'label' => [
+                'id' => $label->id,
+                'label_code' => $label->label_code,
+                'piece_count' => (float) $label->piece_count,
+                'consume_amount' => (float) $label->consume_amount,
+                'status' => $label->status,
+            ],
+            'productName' => $label->product?->name ?? '',
+            'unit' => $label->product?->unit ?? '',
+            'consumeUnit' => $label->product?->consume_unit ?? '',
+        ]);
+    }
+
+    public function receiveByBarcodeForm()
+    {
+        return Inertia::render('Admin/RawMaterials/ReceiveByBarcode');
+    }
+
+    /**
+     * Receive stock by scanning / entering label_code.
+     */
+    public function receiveByBarcode(Request $request)
+    {
+        $data = $request->validate([
+            'label_code' => 'required|string|max:64',
+        ]);
+
+        $code = strtoupper(trim($data['label_code']));
+
+        $label = RawMaterialPendingLabel::query()
+            ->where('label_code', $code)
+            ->where('status', RawMaterialPendingLabel::STATUS_PENDING)
+            ->first();
+
+        if (! $label) {
+            return back()->withErrors(['label_code' => 'الكود غير صالح أو تم استلامه مسبقاً.'])->withInput();
+        }
+
+        $product = $label->product;
+        if (! $product || $product->type !== 'raw') {
+            return back()->withErrors(['label_code' => 'المادة المرتبطة بهذا الكود غير صالحة.'])->withInput();
+        }
+
+        $amount = (float) $label->consume_amount;
+
+        DB::transaction(function () use ($product, $label, $amount) {
+            $product->increment('stock', $amount);
+
+            StockMovement::create([
+                'product_id' => $product->id,
+                'quantity' => $amount,
+                'type' => 'barcode_receipt',
+                'related_order_id' => null,
+                'related_purchase_id' => null,
+            ]);
+
+            $label->update([
+                'status' => RawMaterialPendingLabel::STATUS_RECEIVED,
+                'received_at' => now(),
+            ]);
+        });
+
+        return redirect()->route('admin.raw-materials.index')->with('success', 'تم استلام الكمية وإضافتها إلى المخزون بنجاح.');
     }
 
     /**
@@ -142,6 +263,7 @@ class RawMaterialController extends Controller
     {
         // Add check if material is used in any finished product before deleting
         $raw_material->delete();
+
         return redirect()->route('admin.raw-materials.index')->with('success', 'تم حذف المادة الخام بنجاح.');
     }
 }
