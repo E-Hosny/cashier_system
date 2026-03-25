@@ -143,6 +143,21 @@ class RawMaterialController extends Controller
             'status' => RawMaterialPendingLabel::STATUS_PENDING,
         ]);
 
+        // When called from the list modal (AJAX), return JSON and do not redirect.
+        if ($request->isXmlHttpRequest()) {
+            $label->loadMissing('product');
+
+            return response()->json([
+                'label_code' => $label->label_code,
+                'piece_count' => (float) $label->piece_count,
+                'consume_amount' => (float) $label->consume_amount,
+                'status' => $label->status,
+                'product_name' => $label->product?->name,
+                'unit' => $label->product?->unit,
+                'consume_unit' => $label->product?->consume_unit,
+            ]);
+        }
+
         return redirect()->route('admin.raw-materials.labels.print', $label);
     }
 

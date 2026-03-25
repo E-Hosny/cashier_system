@@ -1,6 +1,6 @@
 <template>
   <div class="container mx-auto p-4 sm:p-6" dir="rtl">
-    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4 no-print">
       <h1 class="text-3xl font-bold text-gray-800">🛢️ إدارة المواد الخام</h1>
       <div class="flex flex-wrap gap-2">
         <a :href="route('admin.raw-materials.pending-receive')" class="btn-blue">📥 سحب المنتجات</a>
@@ -8,7 +8,7 @@
       </div>
     </div>
 
-    <div class="bg-white shadow-lg rounded-xl overflow-x-auto">
+    <div class="bg-white shadow-lg rounded-xl overflow-x-auto no-print">
       <table class="w-full text-end">
         <thead class="bg-gray-200 hidden sm:table-header-group">
           <tr>
@@ -21,7 +21,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="material in rawMaterials" :key="material.id" class="block sm:table-row border-t sm:border-t-0 border-gray-200 hover:bg-gray-50" :class="{'bg-red-100 hover:bg-red-200': isStockLow(material)}">
+          <tr v-for="material in rawMaterialsLocal" :key="material.id" class="block sm:table-row border-t sm:border-t-0 border-gray-200 hover:bg-gray-50" :class="{'bg-red-100 hover:bg-red-200': isStockLow(material)}">
             <td class="p-4 block sm:table-cell" data-label="اسم المادة">{{ material.name }}</td>
             <td class="p-4 block sm:table-cell font-mono font-bold" data-label="الكمية الحالية (المخزون)">
               <template v-if="material.quantity_per_unit">
@@ -35,6 +35,9 @@
                 {{ material.stock }} {{ material.consume_unit }}
                 <span v-if="material.purchase_unit && material.consume_unit && material.stock" class="text-gray-600 font-normal">
                   ({{ (material.stock / ((material.purchase_unit === 'لتر' && material.consume_unit === 'مللي') ? 1000 : (material.purchase_unit === 'كجم' && material.consume_unit === 'جرام') ? 1000 : 1)).toFixed(2) }} {{ material.purchase_unit }})
+                </span>
+                <span v-if="material.pending_pieces > 0" class="block text-amber-800 text-sm font-semibold mt-1">
+                  قيد الاستلام: {{ formatPendingPieces(material) }} {{ material.unit }}
                 </span>
               </template>
             </td>
@@ -65,20 +68,60 @@
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       @click.self="closePrintModal"
     >
-      <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6" dir="rtl">
+      <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 print-only" dir="rtl">
         <h3 class="text-lg font-bold text-gray-800 mb-2">طباعة كود — {{ printModal.materialName }}</h3>
-        <p class="text-sm text-gray-600 mb-4">أدخل عدد القطع المراد تكويدها (لن يُضاف للمخزون حتى «سحب المنتجات»).</p>
-        <label class="block text-gray-700 text-sm mb-1">عدد القطع</label>
-        <input
-          v-model.number="printModal.piece_count"
-          type="number"
-          step="any"
-          min="0.001"
-          class="w-full border rounded-lg p-3 mb-4"
-        />
+
+        <p v-if="!printModal.created" class="text-sm text-gray-600 mb-4">
+          أدخل عدد القطع المراد تكويدها (لن يُضاف للمخزون حتى «سحب المنتجات»).
+        </p>
+
+        <p v-else class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg py-2 px-3 mb-4">
+          تم تكويد {{ printModal.piece_count }} قطعة كمُعلّق لم تصل للمحل بعد.
+        </p>
+
+        <div v-if="!printModal.created">
+          <label class="block text-gray-700 text-sm mb-1">عدد القطع</label>
+          <input
+            v-model.number="printModal.piece_count"
+            type="number"
+            step="any"
+            min="0.001"
+            class="w-full border rounded-lg p-3 mb-4"
+          />
+        </div>
+
+        <div v-else>
+          <p class="text-sm text-gray-700 mb-2">
+            الكود: <span class="font-mono break-all">{{ printModal.label_code }}</span>
+          </p>
+          <div class="flex justify-center mb-3">
+            <svg ref="barcodeSvgPreview" class="max-w-full h-auto"></svg>
+          </div>
+          <p class="text-xs text-gray-600 mb-4">
+            سيتم إضافة الكمية للمخزون عند سحب المنتجات عبر نفس الكود.
+          </p>
+        </div>
+
         <div class="flex gap-2 justify-end">
-          <button type="button" class="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300" @click="closePrintModal">إلغاء</button>
-          <button type="button" class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700" @click="submitPrintLabel">متابعة للطباعة</button>
+          <button type="button" class="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300" @click="closePrintModal">
+            إغلاق
+          </button>
+          <button
+            v-if="!printModal.created"
+            type="button"
+            class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+            @click="submitPrintLabel"
+          >
+            متابعة للطباعة
+          </button>
+          <button
+            v-else
+            type="button"
+            class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+            @click="doPrint"
+          >
+            طباعة
+          </button>
         </div>
       </div>
     </div>
@@ -87,6 +130,7 @@
 
 <script>
 import { Inertia } from "@inertiajs/inertia";
+import JsBarcode from 'jsbarcode';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
 export default {
@@ -96,13 +140,24 @@ export default {
   },
   data() {
     return {
+      rawMaterialsLocal: this.rawMaterials,
       printModal: {
         open: false,
         materialId: null,
         materialName: '',
         piece_count: 1,
+        created: false,
+        label_code: '',
       },
     };
+  },
+  watch: {
+    rawMaterials: {
+      deep: true,
+      handler(val) {
+        this.rawMaterialsLocal = val;
+      },
+    },
   },
   methods: {
     openPrintModal(material) {
@@ -111,10 +166,15 @@ export default {
         materialId: material.id,
         materialName: material.name,
         piece_count: 1,
+        created: false,
+        label_code: '',
       };
     },
     closePrintModal() {
       this.printModal.open = false;
+    },
+    doPrint() {
+      window.print();
     },
     submitPrintLabel() {
       const n = parseFloat(this.printModal.piece_count);
@@ -122,9 +182,41 @@ export default {
         alert('أدخل عدد قطع صالحاً.');
         return;
       }
-      Inertia.post(route('admin.raw-materials.labels.store', this.printModal.materialId), {
-        piece_count: n,
-      });
+
+      // AJAX call to avoid redirect to another page (easy UX for testing).
+      window.axios
+        .post(route('admin.raw-materials.labels.store', this.printModal.materialId), {
+          piece_count: n,
+        })
+        .then((res) => {
+          const d = res.data || {};
+          this.printModal.created = true;
+          this.printModal.label_code = d.label_code || '';
+          this.printModal.consume_amount = d.consume_amount || null;
+
+          // Update pending pieces immediately on the list.
+          const m = this.rawMaterialsLocal.find((x) => x.id === this.printModal.materialId);
+          if (m) {
+            m.pending_pieces = (parseFloat(m.pending_pieces) || 0) + n;
+          }
+
+          this.$nextTick(() => {
+            const el = this.$refs.barcodeSvgPreview;
+            if (el && this.printModal.label_code) {
+              JsBarcode(el, this.printModal.label_code, {
+                format: 'CODE128',
+                width: 2,
+                height: 72,
+                displayValue: false,
+                margin: 8,
+              });
+            }
+          });
+        })
+        .catch((err) => {
+          const msg = err?.response?.data?.message || 'حدث خطأ أثناء تكويد الباركود.';
+          alert(msg);
+        });
     },
     goToAddQuantity(id) {
       Inertia.get(route("admin.raw-materials.add-quantity", id));
@@ -185,6 +277,17 @@ export default {
 }
 .btn-red {
   @apply bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
 }
 
 /* Styles for responsive table */
