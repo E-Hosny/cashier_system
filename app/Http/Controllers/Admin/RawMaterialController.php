@@ -13,11 +13,36 @@ use Inertia\Inertia;
 
 class RawMaterialController extends Controller
 {
+    private function userHasAnyRole(array $roles): bool
+    {
+        $user = auth()->user();
+        if (! $user) {
+            return false;
+        }
+
+        foreach ($roles as $role) {
+            if ($user->hasRole($role)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function requireAnyRole(array $roles): void
+    {
+        if (! $this->userHasAnyRole($roles)) {
+            abort(403, 'غير مصرح لك بالوصول لهذه الصفحة');
+        }
+    }
+
     /**
      * Display a listing of the resource.
      */
     public function index()
     {
+        $this->requireAnyRole(['admin', 'super admin', 'cashier']);
+
         $rawMaterials = Product::where('type', 'raw')->latest()->get();
         $pendingSums = RawMaterialPendingLabel::query()
             ->where('status', RawMaterialPendingLabel::STATUS_PENDING)
@@ -40,6 +65,8 @@ class RawMaterialController extends Controller
      */
     public function create()
     {
+        $this->requireAnyRole(['super admin']);
+
         return Inertia::render('Admin/RawMaterials/Create');
     }
 
@@ -48,6 +75,8 @@ class RawMaterialController extends Controller
      */
     public function store(Request $request)
     {
+        $this->requireAnyRole(['super admin']);
+
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'unit' => 'required|string|max:50',
@@ -85,6 +114,8 @@ class RawMaterialController extends Controller
      */
     public function edit(Product $raw_material)
     {
+        $this->requireAnyRole(['admin', 'super admin']);
+
         return Inertia::render('Admin/RawMaterials/Edit', [
             'rawMaterial' => $raw_material,
         ]);
@@ -95,6 +126,8 @@ class RawMaterialController extends Controller
      */
     public function update(Request $request, Product $raw_material)
     {
+        $this->requireAnyRole(['admin', 'super admin']);
+
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'unit' => 'required|string|max:50',
@@ -123,6 +156,8 @@ class RawMaterialController extends Controller
      */
     public function storeLabel(Request $request, Product $raw_material)
     {
+        $this->requireAnyRole(['admin', 'super admin']);
+
         if ($raw_material->type !== 'raw') {
             abort(404);
         }
@@ -166,6 +201,8 @@ class RawMaterialController extends Controller
      */
     public function printLabel(RawMaterialPendingLabel $label)
     {
+        $this->requireAnyRole(['admin', 'super admin']);
+
         $label->loadMissing('product');
 
         return Inertia::render('Admin/RawMaterials/PrintLabel', [
@@ -184,6 +221,8 @@ class RawMaterialController extends Controller
 
     public function receiveByBarcodeForm()
     {
+        $this->requireAnyRole(['cashier', 'admin', 'super admin']);
+
         return Inertia::render('Admin/RawMaterials/ReceiveByBarcode');
     }
 
@@ -192,6 +231,8 @@ class RawMaterialController extends Controller
      */
     public function receiveByBarcode(Request $request)
     {
+        $this->requireAnyRole(['cashier', 'admin', 'super admin']);
+
         $data = $request->validate([
             'label_code' => 'required|string|max:64',
         ]);
@@ -239,6 +280,8 @@ class RawMaterialController extends Controller
      */
     public function addQuantityForm(Product $raw_material)
     {
+        $this->requireAnyRole(['admin', 'super admin']);
+
         return Inertia::render('Admin/RawMaterials/AddQuantity', [
             'rawMaterial' => $raw_material,
         ]);
@@ -249,6 +292,8 @@ class RawMaterialController extends Controller
      */
     public function addQuantity(Request $request, Product $raw_material)
     {
+        $this->requireAnyRole(['admin', 'super admin']);
+
         $data = $request->validate([
             'quantity_units' => 'required|numeric|min:0.001',
             'note' => 'nullable|string|max:255',
@@ -276,6 +321,8 @@ class RawMaterialController extends Controller
      */
     public function destroy(Product $raw_material)
     {
+        $this->requireAnyRole(['super admin']);
+
         // Add check if material is used in any finished product before deleting
         $raw_material->delete();
 

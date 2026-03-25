@@ -3,8 +3,8 @@
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4 no-print">
       <h1 class="text-3xl font-bold text-gray-800">🛢️ إدارة المواد الخام</h1>
       <div class="flex flex-wrap gap-2">
-        <a :href="route('admin.raw-materials.pending-receive')" class="btn-blue">📥 سحب المنتجات</a>
-        <a :href="route('admin.raw-materials.create')" class="btn-primary">➕ إضافة مادة خام</a>
+        <a v-if="canReceive" :href="route('admin.raw-materials.pending-receive')" class="btn-blue">📥 سحب المنتجات</a>
+        <a v-if="canAddRaw" :href="route('admin.raw-materials.create')" class="btn-primary">➕ إضافة مادة خام</a>
       </div>
     </div>
 
@@ -52,10 +52,9 @@
             <td class="p-4 block sm:table-cell" data-label="حد التنبيه">{{ formatAlertThreshold(material) }}</td>
             <td class="p-4 block sm:table-cell" data-label="الإجراءات">
               <div class="flex flex-wrap justify-center items-center gap-2">
-                <button type="button" @click="openPrintModal(material)" class="btn-blue-outline">🏷️ طباعة كود</button>
-                <button @click="goToAddQuantity(material.id)" class="btn-green">➕ إضافة كمية</button>
-                <a :href="route('admin.raw-materials.edit', material.id)" class="btn-yellow">✏️ تعديل</a>
-                <button @click="deleteMaterial(material.id)" class="btn-red">🗑️ حذف</button>
+                <button v-if="canPrint" type="button" @click="openPrintModal(material)" class="btn-blue-outline">🏷️ طباعة كود</button>
+                <a v-if="canEdit" :href="route('admin.raw-materials.edit', material.id)" class="btn-yellow">✏️ تعديل</a>
+                <button v-if="canDelete" @click="deleteMaterial(material.id)" class="btn-red">🗑️ حذف</button>
               </div>
             </td>
           </tr>
@@ -138,6 +137,35 @@ export default {
   props: {
     rawMaterials: Array,
   },
+  computed: {
+    userRoles() {
+      return this.$page?.props?.auth?.user?.roles || [];
+    },
+    isSuperAdmin() {
+      return this.userRoles.includes('super admin');
+    },
+    isAdmin() {
+      return this.userRoles.includes('admin');
+    },
+    isCashier() {
+      return this.userRoles.includes('cashier');
+    },
+    canReceive() {
+      return this.isCashier || this.isAdmin || this.isSuperAdmin;
+    },
+    canAddRaw() {
+      return this.isSuperAdmin;
+    },
+    canPrint() {
+      return this.isAdmin || this.isSuperAdmin;
+    },
+    canEdit() {
+      return this.isAdmin || this.isSuperAdmin;
+    },
+    canDelete() {
+      return this.isSuperAdmin;
+    },
+  },
   data() {
     return {
       rawMaterialsLocal: this.rawMaterials,
@@ -217,9 +245,6 @@ export default {
           const msg = err?.response?.data?.message || 'حدث خطأ أثناء تكويد الباركود.';
           alert(msg);
         });
-    },
-    goToAddQuantity(id) {
-      Inertia.get(route("admin.raw-materials.add-quantity", id));
     },
     deleteMaterial(id) {
       if (confirm("هل أنت متأكد من حذف هذه المادة الخام؟")) {
