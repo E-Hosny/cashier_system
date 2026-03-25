@@ -8,7 +8,7 @@
       </div>
     </div>
 
-    <div class="bg-white shadow-lg rounded-xl overflow-x-auto no-print">
+    <div v-if="!isCashier" class="bg-white shadow-lg rounded-xl overflow-x-auto no-print">
       <table class="w-full text-end">
         <thead class="bg-gray-200 hidden sm:table-header-group">
           <tr>

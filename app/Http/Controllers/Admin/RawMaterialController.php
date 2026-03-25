@@ -43,6 +43,14 @@ class RawMaterialController extends Controller
     {
         $this->requireAnyRole(['admin', 'super admin', 'cashier']);
 
+        $user = auth()->user();
+        // Cashier should only use "pending-receive" (sحب المنتجات) without seeing the raw materials table.
+        if ($user?->hasRole('cashier') && ! $user->hasRole('admin') && ! $user->hasRole('super admin')) {
+            return Inertia::render('Admin/RawMaterials/Index', [
+                'rawMaterials' => [],
+            ]);
+        }
+
         $rawMaterials = Product::where('type', 'raw')->latest()->get();
         $pendingSums = RawMaterialPendingLabel::query()
             ->where('status', RawMaterialPendingLabel::STATUS_PENDING)
