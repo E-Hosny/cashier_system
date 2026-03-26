@@ -21,7 +21,90 @@
       </select>
     </div>
 
-    <div v-if="!isCashier" class="bg-white shadow-lg rounded-xl overflow-x-auto no-print">
+    <!-- Mobile cards (best UX on phones) -->
+    <div v-if="!isCashier" class="sm:hidden space-y-3 no-print">
+      <div
+        v-for="material in rawMaterialsLocal"
+        :key="material.id"
+        class="bg-white shadow rounded-xl border p-4"
+        :class="isStockLow(material) ? 'border-red-200 bg-red-50' : 'border-gray-200'"
+      >
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="text-lg font-bold text-gray-800 truncate">{{ material.name }}</div>
+            <div class="text-sm text-gray-600 mt-1">
+              <span class="font-medium">الفئة:</span>
+              <span>{{ material.category?.name || '—' }}</span>
+            </div>
+          </div>
+          <div class="text-sm text-gray-600 whitespace-nowrap">
+            <span class="font-medium">حد التنبيه:</span>
+            <span>{{ formatAlertThreshold(material) }}</span>
+          </div>
+        </div>
+
+        <div class="mt-3 grid grid-cols-2 gap-3 text-sm">
+          <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+            <div class="text-gray-600 mb-1">عدد وحدات القطعة</div>
+            <div class="font-semibold text-gray-800">
+              {{ formatQuantityPerUnit(material) }}
+              <span v-if="material.consume_unit" class="text-gray-500 font-normal">{{ material.consume_unit }}</span>
+            </div>
+          </div>
+
+          <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+            <div class="text-gray-600 mb-1">سعر المادة الخام</div>
+            <div class="font-semibold text-blue-700">
+              <template v-if="material.purchase_price != null">
+                {{ material.purchase_price }} جنيه
+                <span v-if="material.unit" class="text-gray-500 font-normal">/ {{ material.unit }}</span>
+              </template>
+              <template v-else>لم يتم تحديد السعر</template>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-3 bg-white rounded-lg p-3 border border-gray-200">
+          <div class="text-gray-600 mb-1 text-sm">الكمية الحالية (المخزون)</div>
+          <div class="font-mono font-bold text-gray-900">
+            <template v-if="material.quantity_per_unit">
+              {{ formatStockUnits(material) }} {{ material.unit }}
+              <span class="text-gray-600 font-normal">({{ formatStockConsume(material) }} {{ material.consume_unit }})</span>
+              <span v-if="material.pending_pieces > 0" class="block text-amber-800 text-sm font-semibold mt-1">
+                قيد الاستلام: {{ formatPendingPieces(material) }} {{ material.unit }}
+              </span>
+            </template>
+            <template v-else>
+              {{ material.stock }} {{ material.consume_unit }}
+              <span v-if="material.purchase_unit && material.consume_unit && material.stock" class="text-gray-600 font-normal">
+                ({{ (material.stock / ((material.purchase_unit === 'لتر' && material.consume_unit === 'مللي') ? 1000 : (material.purchase_unit === 'كجم' && material.consume_unit === 'جرام') ? 1000 : 1)).toFixed(2) }} {{ material.purchase_unit }})
+              </span>
+              <span v-if="material.pending_pieces > 0" class="block text-amber-800 text-sm font-semibold mt-1">
+                قيد الاستلام: {{ formatPendingPieces(material) }} {{ material.unit }}
+              </span>
+            </template>
+          </div>
+        </div>
+
+        <div class="mt-3 bg-gray-50 rounded-lg p-3 border border-gray-200">
+          <div class="text-gray-600 mb-1 text-sm">معلومات التسعير</div>
+          <div v-if="material.unit_consume_price" class="text-sm">
+            <div class="font-semibold text-green-700">{{ material.unit_consume_price }} جنيه / {{ material.consume_unit }}</div>
+            <div class="text-xs text-gray-600 mt-1">سعر وحدة الاستهلاك محسوب تلقائياً</div>
+          </div>
+          <div v-else class="text-gray-500 text-sm">لم يتم تحديد السعر</div>
+        </div>
+
+        <div class="mt-4 flex flex-wrap gap-2 justify-end">
+          <button v-if="canPrint" type="button" @click="openPrintModal(material)" class="btn-blue-outline">🏷️ طباعة كود</button>
+          <a v-if="canEdit" :href="route('admin.raw-materials.edit', material.id)" class="btn-yellow">✏️ تعديل</a>
+          <button v-if="canDelete" @click="deleteMaterial(material.id)" class="btn-red">🗑️ حذف</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Desktop table -->
+    <div v-if="!isCashier" class="hidden sm:block bg-white shadow-lg rounded-xl overflow-x-auto no-print">
       <table class="w-full min-w-[1180px] text-end">
         <thead class="bg-gray-200 hidden sm:table-header-group">
           <tr>
