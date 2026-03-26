@@ -28,7 +28,7 @@
             <th class="p-4">اسم المادة</th>
             <th class="p-4">الفئة</th>
             <th class="p-4">عدد وحدات القطعة</th>
-            <th class="p-4">الكمية الحالية (المخزون)</th>
+            <th class="p-4 min-w-[320px]">الكمية الحالية (المخزون)</th>
             <th class="p-4">سعر المادة الخام</th>
             <th class="p-4">معلومات التسعير</th>
             <th class="p-4">حد التنبيه</th>
@@ -43,7 +43,7 @@
               {{ formatQuantityPerUnit(material) }}
               <span v-if="material.consume_unit" class="text-gray-500">{{ material.consume_unit }}</span>
             </td>
-            <td class="p-4 block sm:table-cell font-mono font-bold" data-label="الكمية الحالية (المخزون)">
+            <td class="p-4 block sm:table-cell font-mono font-bold min-w-[320px]" data-label="الكمية الحالية (المخزون)">
               <template v-if="material.quantity_per_unit">
                 {{ formatStockUnits(material) }} {{ material.unit }}
                 <span class="text-gray-600 font-normal">({{ formatStockConsume(material) }} {{ material.consume_unit }})</span>
