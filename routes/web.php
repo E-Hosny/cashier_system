@@ -9,6 +9,7 @@ use App\Http\Controllers\CashierController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\RawMaterialController;
+use App\Http\Controllers\Admin\RawMaterialCategoryController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\EmployeeController;
 use App\Http\Controllers\ExpenseController;
@@ -63,6 +64,11 @@ Route::middleware([
 
     // Users Management (super admin only)
     Route::middleware(['super_admin'])->group(function () {
+        Route::get('/raw-material-categories', [RawMaterialCategoryController::class, 'index'])->name('admin.raw-material-categories.index');
+        Route::post('/raw-material-categories', [RawMaterialCategoryController::class, 'store'])->name('admin.raw-material-categories.store');
+        Route::put('/raw-material-categories/{category}', [RawMaterialCategoryController::class, 'update'])->name('admin.raw-material-categories.update');
+        Route::delete('/raw-material-categories/{category}', [RawMaterialCategoryController::class, 'destroy'])->name('admin.raw-material-categories.destroy');
+
         Route::resource('users', UserController::class, ['as' => 'admin'])->except(['show']);
         Route::post('/users/{user}/reset-password', [UserController::class, 'resetPassword'])->name('admin.users.reset-password');
     });

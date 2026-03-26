@@ -13,6 +13,16 @@
           <input id="name" v-model="form.name" type="text" class="input-style" placeholder="مثال: صوص توت، كرتونة أكواب" required />
         </div>
 
+        <!-- فئة المادة الخام -->
+        <div>
+          <label for="category_id" class="block text-gray-700 font-medium mb-2">فئة المادة الخام (اختياري)</label>
+          <select id="category_id" v-model="form.category_id" class="input-style">
+            <option value="">— بدون فئة —</option>
+            <option v-for="c in rawMaterialCategories" :key="c.id" :value="c.id">{{ c.name }}</option>
+          </select>
+          <p class="text-sm text-gray-500 mt-1">أضف فئات من «فئات المواد الخام» في قائمة المواد الخام.</p>
+        </div>
+
         <!-- 2. سعر القطعة الواحدة -->
         <div>
           <label for="price_per_piece" class="block text-gray-700 font-medium mb-2">٢ – سعر القطعة الواحدة (بالجنيه)</label>
@@ -78,10 +88,17 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 
 export default {
   layout: AppLayout,
+  props: {
+    rawMaterialCategories: {
+      type: Array,
+      default: () => [],
+    },
+  },
   data() {
     return {
       form: {
         name: '',
+        category_id: '',
         price_per_piece: null,
         consume_unit: '',
         quantity_per_unit: null,
@@ -113,6 +130,7 @@ export default {
       const stock_alert_threshold = (thresholdPieces != null && qpu) ? (thresholdPieces * qpu) : null;
       const submitData = {
         name: this.form.name,
+        category_id: this.form.category_id === '' ? null : this.form.category_id,
         unit: this.form.unit,
         price_per_piece: this.form.price_per_piece,
         consume_unit: this.form.consume_unit,

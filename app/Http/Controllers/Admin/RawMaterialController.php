@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Category;
 use App\Models\Product;
 use App\Models\RawMaterialPendingLabel;
 use App\Models\StockMovement;
@@ -39,7 +40,7 @@ class RawMaterialController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
         $this->requireAnyRole(['admin', 'super admin', 'cashier']);
 
@@ -48,10 +49,17 @@ class RawMaterialController extends Controller
         if ($user?->hasRole('cashier') && ! $user->hasRole('admin') && ! $user->hasRole('super admin')) {
             return Inertia::render('Admin/RawMaterials/Index', [
                 'rawMaterials' => [],
+                'rawMaterialCategories' => [],
+                'filters' => ['category_id' => ''],
             ]);
         }
 
-        $rawMaterials = Product::where('type', 'raw')->latest()->get();
+        $query = Product::where('type', 'raw')->with('category')->latest();
+        if ($request->filled('category_id')) {
+            $query->where('category_id', $request->integer('category_id'));
+        }
+
+        $rawMaterials = $query->get();
         $pendingSums = RawMaterialPendingLabel::query()
             ->where('status', RawMaterialPendingLabel::STATUS_PENDING)
             ->selectRaw('product_id, SUM(piece_count) as total')
@@ -65,6 +73,10 @@ class RawMaterialController extends Controller
 
         return Inertia::render('Admin/RawMaterials/Index', [
             'rawMaterials' => $rawMaterials,
+            'rawMaterialCategories' => Category::forRawMaterials()->orderBy('name')->get(['id', 'name']),
+            'filters' => [
+                'category_id' => $request->get('category_id', '') !== '' ? (string) $request->get('category_id') : '',
+            ],
         ]);
     }
 
@@ -75,7 +87,9 @@ class RawMaterialController extends Controller
     {
         $this->requireAnyRole(['super admin']);
 
-        return Inertia::render('Admin/RawMaterials/Create');
+        return Inertia::render('Admin/RawMaterials/Create', [
+            'rawMaterialCategories' => Category::forRawMaterials()->orderBy('name')->get(['id', 'name']),
+        ]);
     }
 
     /**
@@ -84,6 +98,10 @@ class RawMaterialController extends Controller
     public function store(Request $request)
     {
         $this->requireAnyRole(['super admin']);
+
+        $request->merge([
+            'category_id' => $request->filled('category_id') ? (int) $request->category_id : null,
+        ]);
 
         $data = $request->validate([
             'name' => 'required|string|max:255',
@@ -94,6 +112,18 @@ class RawMaterialController extends Controller
             'stock' => 'required|numeric|min:0',
             'stock_alert_threshold' => 'nullable|numeric|min:0',
             'unit_consume_price' => 'required|numeric|min:0',
+            'category_id' => [
+                'nullable',
+                'integer',
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    if ($value === null || $value === '') {
+                        return;
+                    }
+                    if (! Category::forRawMaterials()->whereKey((int) $value)->exists()) {
+                        $fail('فئة المواد الخام غير صالحة.');
+                    }
+                },
+            ],
         ]);
 
         $data['type'] = 'raw';
@@ -126,6 +156,7 @@ class RawMaterialController extends Controller
 
         return Inertia::render('Admin/RawMaterials/Edit', [
             'rawMaterial' => $raw_material,
+            'rawMaterialCategories' => Category::forRawMaterials()->orderBy('name')->get(['id', 'name']),
         ]);
     }
 
@@ -136,6 +167,10 @@ class RawMaterialController extends Controller
     {
         $this->requireAnyRole(['admin', 'super admin']);
 
+        $request->merge([
+            'category_id' => $request->filled('category_id') ? (int) $request->category_id : null,
+        ]);
+
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'unit' => 'required|string|max:50',
@@ -145,6 +180,18 @@ class RawMaterialController extends Controller
             'stock' => 'required|numeric|min:0',
             'stock_alert_threshold' => 'nullable|numeric|min:0',
             'unit_consume_price' => 'required|numeric|min:0',
+            'category_id' => [
+                'nullable',
+                'integer',
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    if ($value === null || $value === '') {
+                        return;
+                    }
+                    if (! Category::forRawMaterials()->whereKey((int) $value)->exists()) {
+                        $fail('فئة المواد الخام غير صالحة.');
+                    }
+                },
+            ],
         ]);
 
         $data['purchase_unit'] = $data['unit'];

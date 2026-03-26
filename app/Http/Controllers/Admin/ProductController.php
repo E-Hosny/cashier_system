@@ -32,7 +32,7 @@ class ProductController extends Controller
         }
 
         $products = $query->latest()->get()->append(['sizes_in_arabic', 'available_sizes']);
-        $categories = Category::latest()->get();
+        $categories = Category::forProducts()->latest()->get();
 
         return Inertia::render('Admin/Products/Index', [
             'products' => $products,
@@ -52,7 +52,7 @@ class ProductController extends Controller
 
     public function create()
     {
-        $categories = Category::latest()->get();
+        $categories = Category::forProducts()->latest()->get();
         $rawMaterials = Product::where('type', 'raw')->get(['id', 'name', 'unit']);
         $sizes = [
             ['value' => 'small', 'label' => 'صغير'],
@@ -70,7 +70,7 @@ class ProductController extends Controller
 
     public function edit(Product $product)
     {
-        $categories = Category::latest()->get();
+        $categories = Category::forProducts()->latest()->get();
         $rawMaterials = Product::where('type', 'raw')->get(['id', 'name', 'unit']);
         $sizes = [
             ['value' => 'small', 'label' => 'صغير'],

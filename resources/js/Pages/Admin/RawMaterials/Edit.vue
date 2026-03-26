@@ -13,6 +13,14 @@
           <input id="name" v-model="form.name" type="text" class="input-style" placeholder="مثال: صوص توت، كرتونة أكواب" required />
         </div>
 
+        <div>
+          <label for="category_id" class="block text-gray-700 font-medium mb-2">فئة المادة الخام (اختياري)</label>
+          <select id="category_id" v-model="form.category_id" class="input-style">
+            <option value="">— بدون فئة —</option>
+            <option v-for="c in rawMaterialCategories" :key="c.id" :value="c.id">{{ c.name }}</option>
+          </select>
+        </div>
+
         <!-- 2. سعر القطعة الواحدة -->
         <div>
           <label for="price_per_piece" class="block text-gray-700 font-medium mb-2">٢ – سعر القطعة الواحدة (بالجنيه)</label>
@@ -80,6 +88,10 @@ export default {
   layout: AppLayout,
   props: {
     rawMaterial: Object,
+    rawMaterialCategories: {
+      type: Array,
+      default: () => [],
+    },
   },
   data() {
     const qpu = this.rawMaterial.quantity_per_unit ? parseFloat(this.rawMaterial.quantity_per_unit) : null;
@@ -89,6 +101,7 @@ export default {
     return {
       form: {
         name: this.rawMaterial.name,
+        category_id: this.rawMaterial.category_id != null ? this.rawMaterial.category_id : '',
         price_per_piece: this.rawMaterial.purchase_price != null ? parseFloat(this.rawMaterial.purchase_price) : null,
         consume_unit: this.rawMaterial.consume_unit || '',
         quantity_per_unit: qpu,
@@ -120,6 +133,7 @@ export default {
       const stock_alert_threshold = (thresholdPieces != null && qpu) ? (thresholdPieces * qpu) : thresholdPieces;
       const submitData = {
         name: this.form.name,
+        category_id: this.form.category_id === '' ? null : this.form.category_id,
         unit: this.form.unit,
         price_per_piece: this.form.price_per_piece,
         consume_unit: this.form.consume_unit,

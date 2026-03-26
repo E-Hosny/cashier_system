@@ -11,7 +11,21 @@ class Category extends Model
     use BelongsToTenant;
     use HasFactory;
 
-    protected $fillable = ['name', 'tenant_id'];
+    public const SCOPE_PRODUCT = 'product';
+
+    public const SCOPE_RAW = 'raw';
+
+    protected $fillable = ['name', 'tenant_id', 'scope'];
+
+    public function scopeForProducts($query)
+    {
+        return $query->where('scope', self::SCOPE_PRODUCT);
+    }
+
+    public function scopeForRawMaterials($query)
+    {
+        return $query->where('scope', self::SCOPE_RAW);
+    }
 
     protected static function booted()
     {

@@ -4,8 +4,21 @@
       <h1 class="text-3xl font-bold text-gray-800">🛢️ إدارة المواد الخام</h1>
       <div class="flex flex-wrap gap-2">
         <a v-if="canReceive" :href="route('admin.raw-materials.pending-receive')" class="btn-blue">📥 سحب المنتجات</a>
+        <a v-if="canManageRawCategories" :href="route('admin.raw-material-categories.index')" class="btn-gray">📁 فئات المواد الخام</a>
         <a v-if="canAddRaw" :href="route('admin.raw-materials.create')" class="btn-primary">➕ إضافة مادة خام</a>
       </div>
+    </div>
+
+    <div v-if="showTableTools" class="mb-4 flex flex-wrap items-center gap-3 no-print">
+      <label class="text-gray-700 font-medium whitespace-nowrap">تصفية حسب الفئة:</label>
+      <select
+        v-model="filterCategoryId"
+        class="border border-gray-300 rounded-lg p-2 min-w-[200px]"
+        @change="applyCategoryFilter"
+      >
+        <option value="">الكل</option>
+        <option v-for="c in rawMaterialCategories" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
+      </select>
     </div>
 
     <div v-if="!isCashier" class="bg-white shadow-lg rounded-xl overflow-x-auto no-print">
@@ -13,6 +26,7 @@
         <thead class="bg-gray-200 hidden sm:table-header-group">
           <tr>
             <th class="p-4">اسم المادة</th>
+            <th class="p-4">الفئة</th>
             <th class="p-4">الكمية الحالية (المخزون)</th>
             <th class="p-4">وحدة القياس</th>
             <th class="p-4">معلومات التسعير</th>
@@ -23,6 +37,7 @@
         <tbody>
           <tr v-for="material in rawMaterialsLocal" :key="material.id" class="block sm:table-row border-t sm:border-t-0 border-gray-200 hover:bg-gray-50" :class="{'bg-red-100 hover:bg-red-200': isStockLow(material)}">
             <td class="p-4 block sm:table-cell" data-label="اسم المادة">{{ material.name }}</td>
+            <td class="p-4 block sm:table-cell text-gray-700" data-label="الفئة">{{ material.category?.name || '—' }}</td>
             <td class="p-4 block sm:table-cell font-mono font-bold" data-label="الكمية الحالية (المخزون)">
               <template v-if="material.quantity_per_unit">
                 {{ formatStockUnits(material) }} {{ material.unit }}
@@ -136,6 +151,14 @@ export default {
   layout: AppLayout,
   props: {
     rawMaterials: Array,
+    rawMaterialCategories: {
+      type: Array,
+      default: () => [],
+    },
+    filters: {
+      type: Object,
+      default: () => ({ category_id: '' }),
+    },
   },
   computed: {
     userRoles() {
@@ -165,9 +188,16 @@ export default {
     canDelete() {
       return this.isSuperAdmin;
     },
+    canManageRawCategories() {
+      return this.isSuperAdmin;
+    },
+    showTableTools() {
+      return !this.isCashier && (this.isAdmin || this.isSuperAdmin);
+    },
   },
   data() {
     return {
+      filterCategoryId: this.filters?.category_id != null && this.filters.category_id !== '' ? String(this.filters.category_id) : '',
       rawMaterialsLocal: this.rawMaterials,
       printModal: {
         open: false,
@@ -186,8 +216,23 @@ export default {
         this.rawMaterialsLocal = val;
       },
     },
+    filters: {
+      deep: true,
+      handler(val) {
+        const id = val?.category_id;
+        this.filterCategoryId = id != null && id !== '' ? String(id) : '';
+      },
+    },
   },
   methods: {
+    applyCategoryFilter() {
+      const id = this.filterCategoryId;
+      Inertia.get(
+        route('admin.raw-materials.index'),
+        id ? { category_id: id } : {},
+        { preserveState: true, replace: true }
+      );
+    },
     openPrintModal(material) {
       this.printModal = {
         open: true,
@@ -287,6 +332,9 @@ export default {
 <style scoped>
 .btn-primary {
   @apply bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition shadow-md;
+}
+.btn-gray {
+  @apply bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition shadow-md;
 }
 .btn-blue {
   @apply bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded-lg transition shadow-md;
