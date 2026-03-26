@@ -27,6 +27,7 @@
           <tr>
             <th class="p-4">اسم المادة</th>
             <th class="p-4">الفئة</th>
+            <th class="p-4">عدد وحدات القطعة</th>
             <th class="p-4">الكمية الحالية (المخزون)</th>
             <th class="p-4">وحدة القياس</th>
             <th class="p-4">معلومات التسعير</th>
@@ -38,6 +39,10 @@
           <tr v-for="material in rawMaterialsLocal" :key="material.id" class="block sm:table-row border-t sm:border-t-0 border-gray-200 hover:bg-gray-50" :class="{'bg-red-100 hover:bg-red-200': isStockLow(material)}">
             <td class="p-4 block sm:table-cell" data-label="اسم المادة">{{ material.name }}</td>
             <td class="p-4 block sm:table-cell text-gray-700" data-label="الفئة">{{ material.category?.name || '—' }}</td>
+            <td class="p-4 block sm:table-cell text-gray-700" data-label="عدد وحدات القطعة">
+              {{ formatQuantityPerUnit(material) }}
+              <span v-if="material.consume_unit" class="text-gray-500">{{ material.consume_unit }}</span>
+            </td>
             <td class="p-4 block sm:table-cell font-mono font-bold" data-label="الكمية الحالية (المخزون)">
               <template v-if="material.quantity_per_unit">
                 {{ formatStockUnits(material) }} {{ material.unit }}
@@ -313,6 +318,11 @@ export default {
       const p = parseFloat(material.pending_pieces);
       if (Number.isNaN(p)) return '0';
       return p % 1 === 0 ? p : p.toFixed(2);
+    },
+    formatQuantityPerUnit(material) {
+      const q = parseFloat(material.quantity_per_unit);
+      if (!q && q !== 0) return '—';
+      return q % 1 === 0 ? q : q.toFixed(2);
     },
     formatAlertThreshold(material) {
       if (material.stock_alert_threshold == null || material.stock_alert_threshold === '') return 'لم يحدد';
