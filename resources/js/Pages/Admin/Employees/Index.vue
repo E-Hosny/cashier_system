@@ -2,7 +2,7 @@
   <AppLayout title="إدارة الموظفين">
     <template #header>
       <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-        👥 {{ isAdmin ? 'إدارة الموظفين' : 'الحضور والانصراف' }}
+        👥 {{ (isAdmin || isSuperAdmin) ? 'إدارة الموظفين' : 'الحضور والانصراف' }}
       </h2>
     </template>
 
@@ -12,15 +12,21 @@
           <!-- رأس الصفحة -->
           <div class="mb-6 flex justify-between items-center">
             <div>
-              <h3 class="text-lg font-semibold text-gray-900">{{ isAdmin ? 'قائمة الموظفين' : 'الحضور والانصراف' }}</h3>
-              <p class="text-sm text-gray-600">{{ isAdmin ? 'إدارة حضور وانصراف الموظفين' : 'تسجيل حضور وانصراف الموظفين' }}</p>
+              <h3 class="text-lg font-semibold text-gray-900">{{ (isAdmin || isSuperAdmin) ? 'قائمة الموظفين' : 'الحضور والانصراف' }}</h3>
+              <p class="text-sm text-gray-600">{{ (isAdmin || isSuperAdmin) ? 'إدارة حضور وانصراف الموظفين' : 'تسجيل حضور وانصراف الموظفين' }}</p>
             </div>
-            <div v-if="isAdmin">
+            <div v-if="isAdmin || isSuperAdmin" class="flex gap-2">
               <Link
                 :href="route('admin.employees.create')"
                 class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition duration-200"
               >
                 ➕ إضافة موظف جديد
+              </Link>
+              <Link
+                :href="route('admin.employees.salary-calculator')"
+                class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition duration-200"
+              >
+                💰 حاسبة الرواتب
               </Link>
             </div>
           </div>
@@ -44,6 +50,12 @@
             <div class="bg-purple-50 p-4 rounded-lg">
               <div class="text-purple-600 text-2xl font-bold">{{ formatPrice(updatedTotalTodayAmount) }}</div>
               <div class="text-purple-800 text-sm">إجمالي الرواتب اليوم</div>
+              <div v-if="updatedTotalTodayDiscounts > 0" class="text-xs text-red-600 mt-1">
+                خصومات: -{{ formatPrice(updatedTotalTodayDiscounts) }}
+              </div>
+              <div v-if="updatedTotalTodayDiscounts > 0" class="text-xs text-gray-600 mt-1">
+                المبلغ الأصلي: {{ formatPrice(updatedTotalTodayAmount + updatedTotalTodayDiscounts) }}
+              </div>
             </div>
             <div class="bg-orange-50 p-4 rounded-lg">
               <div class="text-orange-600 text-2xl font-bold">{{ updatedTotalTodayHours.toFixed(2) }}</div>
@@ -58,17 +70,18 @@
                 <tr class="text-gray-700">
                   <th class="p-4 text-right">الموظف</th>
                   <th class="p-4 text-right">الوظيفة</th>
-                  <th class="p-4 text-right">سعر الساعة</th>
+                  <th v-if="isAdmin" class="p-4 text-right">سعر الساعة</th>
                   <th class="p-4 text-right">الحالة</th>
                   <th class="p-4 text-right">سجلات الحضور اليوم</th>
                   <th class="p-4 text-right">الساعات اليوم</th>
                   <th class="p-4 text-right">المبلغ اليوم</th>
+                  <th class="p-4 text-right">حالة الراتب</th>
                   <th class="p-4 text-right">الإجراءات</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="employees.length === 0" class="border-t">
-                  <td colspan="8" class="text-center p-6 text-gray-500">
+                  <td :colspan="isAdmin ? '9' : '8'" class="text-center p-6 text-gray-500">
                     لا يوجد موظفين مسجلين
                   </td>
                 </tr>
@@ -78,7 +91,7 @@
                     <div class="text-sm text-gray-500">{{ employee.phone || 'لا يوجد رقم' }}</div>
                   </td>
                   <td class="p-4 text-gray-600">{{ employee.position || 'غير محدد' }}</td>
-                  <td class="p-4 font-bold text-green-600">{{ formatPrice(employee.hourly_rate) }}</td>
+                  <td v-if="isAdmin" class="p-4 font-bold text-green-600">{{ formatPrice(employee.hourly_rate) }}</td>
                   <td class="p-4">
                     <span
                       :class="[
@@ -109,8 +122,42 @@
                   <td class="p-4 font-bold text-blue-600">
                     {{ employee.today_hours.toFixed(2) }} ساعة
                   </td>
-                  <td class="p-4 font-bold text-green-600">
-                    {{ formatPrice(employee.today_amount) }}
+                  <td class="p-4">
+                    <div class="font-bold text-green-600">
+                      {{ formatPrice(employee.today_amount) }}
+                    </div>
+                    <div v-if="employee.today_discount_total > 0" class="text-xs text-red-600 mt-1 space-y-1">
+                      <!-- إذا كان هناك أكثر من خصم، نعرض الإجمالي -->
+                      <div v-if="employee.today_discounts && employee.today_discounts.length > 1">
+                        خصومات: -{{ formatPrice(employee.today_discount_total) }}
+                      </div>
+                      <!-- عرض تفاصيل الخصومات -->
+                      <div v-if="employee.today_discounts && employee.today_discounts.length > 0" class="mt-1 space-y-1">
+                        <div v-for="discount in employee.today_discounts" :key="discount.id" class="border-r-2 border-red-300 pr-2">
+                          <div class="font-medium">-{{ formatPrice(discount.amount) }}</div>
+                          <div v-if="discount.reason" class="text-gray-600 text-xs mt-0.5">
+                            {{ discount.reason }}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="p-4">
+                    <div class="flex flex-col gap-2">
+                      <span
+                        :class="[
+                          'px-3 py-1 rounded-full text-xs font-medium inline-block',
+                          employee.is_salary_delivered
+                            ? 'bg-green-100 text-green-800'
+                            : (employee.today_amount > 0 ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-600')
+                        ]"
+                      >
+                        {{ employee.is_salary_delivered ? '✅ تم التسليم' : (employee.today_amount > 0 ? '⏳ في الانتظار' : '❌ لا يوجد مبلغ') }}
+                      </span>
+                      <div v-if="employee.is_salary_delivered && employee.today_delivery_status" class="text-xs text-gray-500">
+                        تاريخ التسليم: {{ formatDeliveryDate(employee.today_delivery_status.delivered_at) }}
+                      </div>
+                    </div>
                   </td>
                   <td class="p-4">
                     <div class="flex gap-2 flex-wrap">
@@ -134,6 +181,28 @@
                         🚪 انصراف
                       </button>
 
+                      <!-- زر تسليم الراتب (يظهر فقط بعد الانصراف) -->
+                      <button
+                        v-if="canManageEmployees && employee.today_amount > 0 && !employee.is_salary_delivered && !employee.is_present"
+                        @click="deliverSalary(employee)"
+                        :disabled="loading"
+                        class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm font-medium disabled:opacity-50"
+                        title="تسليم راتب اليوم (متاح فقط بعد الانصراف)"
+                      >
+                        💰 تسليم
+                      </button>
+
+                      <!-- زر إلغاء تسليم الراتب (للأدمن فقط) -->
+                      <button
+                        v-if="isAdmin && employee.is_salary_delivered"
+                        @click="undoSalaryDelivery(employee)"
+                        :disabled="loading"
+                        class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-sm font-medium disabled:opacity-50"
+                        title="إلغاء تسليم الراتب (للأدمن فقط)"
+                      >
+                        ↩️ إلغاء التسليم
+                      </button>
+
                       <!-- زر التعديل -->
                       <Link
                         v-if="isAdmin"
@@ -143,6 +212,16 @@
                         ✏️ تعديل
                       </Link>
 
+                      <!-- زر الخصم -->
+                      <button
+                        v-if="canManageEmployees"
+                        @click="openDiscountModal(employee)"
+                        :disabled="loading"
+                        class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-sm font-medium disabled:opacity-50"
+                        title="إضافة خصم من راتب اليوم"
+                      >
+                        💸 خصم
+                      </button>
 
                     </div>
                   </td>
@@ -151,6 +230,60 @@
             </table>
           </div>
 
+          <!-- Modal إضافة خصم -->
+          <div v-if="showDiscountModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" @click.self="closeDiscountModal">
+            <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white" dir="rtl">
+              <div class="mt-3">
+                <h3 class="text-lg font-bold text-gray-900 mb-4">إضافة خصم - {{ selectedEmployee?.name }}</h3>
+                
+                <form @submit.prevent="submitDiscount">
+                  <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                      مبلغ الخصم <span class="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      v-model="discountForm.amount"
+                      step="0.01"
+                      min="0.01"
+                      required
+                      class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  
+                  <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                      السبب (اختياري)
+                    </label>
+                    <textarea
+                      v-model="discountForm.reason"
+                      rows="3"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      placeholder="أدخل سبب الخصم..."
+                    ></textarea>
+                  </div>
+                  
+                  <div class="flex gap-2 justify-end">
+                    <button
+                      type="button"
+                      @click="closeDiscountModal"
+                      class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition duration-200"
+                    >
+                      إلغاء
+                    </button>
+                    <button
+                      type="submit"
+                      :disabled="loading || !discountForm.amount || discountForm.amount <= 0"
+                      class="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
+                    >
+                      إضافة خصم
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
 
         </div>
       </div>
@@ -176,11 +309,26 @@ export default {
   data() {
     return {
       loading: false,
+      showDiscountModal: false,
+      selectedEmployee: null,
+      discountForm: {
+        amount: '',
+        reason: '',
+      },
     };
   },
     computed: {
     isAdmin() {
       return this.$page.props.auth.user?.roles?.includes('admin');
+    },
+    isSuperAdmin() {
+      return this.$page.props.auth.user?.roles?.includes('super admin');
+    },
+    canManageEmployees() {
+      return this.$page.props.auth.user?.permissions?.includes('manage employee attendance') ||
+             this.$page.props.auth.user?.roles?.includes('admin') ||
+             this.$page.props.auth.user?.roles?.includes('cashier') ||
+             this.$page.props.auth.user?.roles?.includes('super admin');
     },
     presentEmployees() {
       return this.employees.filter(emp => emp.is_present);
@@ -195,6 +343,9 @@ export default {
     updatedTotalTodayHours() {
       return this.employees.reduce((total, emp) => total + (emp.today_hours || 0), 0);
     },
+    updatedTotalTodayDiscounts() {
+      return this.employees.reduce((total, emp) => total + (emp.today_discount_total || 0), 0);
+    },
   },
   methods: {
     formatPrice(price) {
@@ -204,6 +355,17 @@ export default {
       if (!timeString) return '-';
       const time = new Date(timeString);
       return time.toLocaleTimeString('ar-EG', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    },
+    formatDeliveryDate(dateString) {
+      if (!dateString) return '-';
+      const date = new Date(dateString);
+      return date.toLocaleString('ar-EG', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
       });
@@ -304,7 +466,143 @@ export default {
         this.loading = false;
       }
     },
+    
+    async deliverSalary(employee) {
+      if (!confirm(`هل تريد تسليم راتب ${employee.name} بمبلغ ${this.formatPrice(employee.today_amount)} ؟`)) {
+        return;
+      }
 
+      this.loading = true;
+      try {
+        const response = await fetch(route('admin.employees.deliver-salary', employee.id), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+          },
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          // تحديث حالة الموظف
+          employee.is_salary_delivered = true;
+          employee.today_delivery_status = data.delivery;
+          employee.delivery_status_text = data.delivery.status_text;
+
+          alert(`تم تسليم الراتب بنجاح!\n\nالموظف: ${employee.name}\nالمبلغ: ${this.formatPrice(data.delivery.total_amount)}\nالساعات: ${data.delivery.hours_worked} ساعة`);
+        } else {
+          alert(data.message || 'حدث خطأ أثناء تسليم الراتب');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        alert('حدث خطأ في الاتصال بالخادم');
+      } finally {
+        this.loading = false;
+      }
+    },
+    
+    async undoSalaryDelivery(employee) {
+      if (!confirm(`هل تريد إلغاء تسليم راتب ${employee.name} بمبلغ ${this.formatPrice(employee.today_amount)} ؟`)) {
+        return;
+      }
+
+      this.loading = true;
+      try {
+        const response = await fetch(route('admin.employees.undo-salary-delivery', employee.id), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+          },
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          // تحديث حالة الموظف
+          employee.is_salary_delivered = false;
+          employee.today_delivery_status = data.delivery;
+          employee.delivery_status_text = data.delivery.status_text;
+
+          alert(`تم إلغاء تسليم الراتب بنجاح!\n\nالموظف: ${employee.name}\nالمبلغ: ${this.formatPrice(data.delivery.total_amount)}`);
+        } else {
+          alert(data.message || 'حدث خطأ أثناء إلغاء تسليم الراتب');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        alert('حدث خطأ في الاتصال بالخادم');
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    // فتح modal إضافة خصم
+    openDiscountModal(employee) {
+      this.selectedEmployee = employee;
+      this.discountForm = {
+        amount: '',
+        reason: '',
+      };
+      this.showDiscountModal = true;
+    },
+
+    // إغلاق modal إضافة خصم
+    closeDiscountModal() {
+      this.showDiscountModal = false;
+      this.selectedEmployee = null;
+      this.discountForm = {
+        amount: '',
+        reason: '',
+      };
+    },
+
+    // إضافة خصم
+    async submitDiscount() {
+      if (!this.selectedEmployee) return;
+
+      if (!this.discountForm.amount || this.discountForm.amount <= 0) {
+        alert('يرجى إدخال مبلغ خصم صحيح');
+        return;
+      }
+
+      this.loading = true;
+      try {
+        const response = await fetch(route('admin.employees.add-discount', this.selectedEmployee.id), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+          },
+          body: JSON.stringify({
+            amount: parseFloat(this.discountForm.amount),
+            reason: this.discountForm.reason || null,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          // تحديث المبلغ اليومي للموظف
+          this.selectedEmployee.today_amount = data.employee.today_amount;
+          
+          alert(`تم إضافة الخصم بنجاح!\n\nالمبلغ الأصلي: ${this.formatPrice(parseFloat(this.discountForm.amount) + data.employee.today_amount)}\nمبلغ الخصم: ${this.formatPrice(this.discountForm.amount)}\nالمبلغ النهائي: ${this.formatPrice(data.employee.today_amount)}`);
+          
+          // إغلاق الـ modal
+          this.closeDiscountModal();
+          
+          // إعادة تحميل الصفحة لتحديث البيانات
+          window.location.reload();
+        } else {
+          alert(data.message || 'حدث خطأ أثناء إضافة الخصم');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        alert('حدث خطأ في الاتصال بالخادم');
+      } finally {
+        this.loading = false;
+      }
+    },
 
   },
   };

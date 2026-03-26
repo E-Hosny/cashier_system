@@ -13,6 +13,7 @@ class RoleSeeder extends Seeder
         // إنشاء الأدوار (أو الحصول عليها إذا كانت موجودة)
         $adminRole = Role::firstOrCreate(['name' => 'admin']);
         $cashierRole = Role::firstOrCreate(['name' => 'cashier']);
+        $superAdminRole = Role::firstOrCreate(['name' => 'super admin']);
 
         // إنشاء الصلاحيات (أو الحصول عليها إذا كانت موجودة)
         Permission::firstOrCreate(['name' => 'view sales reports']);
@@ -20,10 +21,12 @@ class RoleSeeder extends Seeder
         Permission::firstOrCreate(['name' => 'use cashier']);
         Permission::firstOrCreate(['name' => 'manage users']);
         Permission::firstOrCreate(['name' => 'manage employee attendance']);
+        Permission::firstOrCreate(['name' => 'view product sales analysis']);
 
         // منح الصلاحيات للأدوار
         $adminRole->givePermissionTo(['view sales reports', 'manage products', 'use cashier', 'manage users', 'manage employee attendance']);
         $cashierRole->givePermissionTo(['use cashier', 'manage employee attendance']);
+        $superAdminRole->givePermissionTo(['view sales reports', 'manage products', 'use cashier', 'manage users', 'manage employee attendance', 'view product sales analysis']);
     }
 }
 

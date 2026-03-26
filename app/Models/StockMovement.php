@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class StockMovement extends Model
 {
+    use BelongsToTenant;
     use HasFactory;
 
     protected $fillable = [
@@ -15,7 +17,13 @@ class StockMovement extends Model
         'type',
         'related_order_id',
         'related_purchase_id',
+        'tenant_id',
     ];
+
+    protected static function booted()
+    {
+        static::bootBelongsToTenant();
+    }
 
     public function product()
     {

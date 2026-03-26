@@ -1,75 +1,75 @@
 <template>
   <div class="container mx-auto p-6" dir="rtl">
     <div class="flex justify-between items-center mb-8">
-        <h1 class="text-3xl font-bold text-gray-800">🔄 تعديل المادة الخام</h1>
-        <a :href="route('admin.raw-materials.index')" class="btn-gray">➡️ العودة إلى القائمة</a>
+      <h1 class="text-3xl font-bold text-gray-800">🔄 تعديل المادة الخام</h1>
+      <a :href="route('admin.raw-materials.index')" class="btn-gray">➡️ العودة إلى القائمة</a>
     </div>
 
-    <div class="bg-white shadow-md rounded-xl p-6 border">
+    <div class="bg-white shadow-md rounded-xl p-6 border max-w-2xl">
       <form @submit.prevent="submit" class="space-y-6">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          
-          <div>
-            <label for="name" class="block text-gray-700 mb-2">اسم المادة الخام</label>
-            <input id="name" v-model="form.name" type="text" class="input-style" required />
-          </div>
-
-          <div>
-            <label for="unit" class="block text-gray-700 mb-2">وحدة القياس (تظهر في المخزون)</label>
-            <input id="unit" v-model="form.unit" type="text" class="input-style" placeholder="مثال: لتر، كجم، قطعة" required />
-          </div>
-
-          <div>
-            <label for="stock" class="block text-gray-700 mb-2">الكمية الحالية في المخزون</label>
-            <input id="stock" v-model="form.stock" type="number" step="0.01" class="input-style" required />
-          </div>
-
-          <div>
-            <label for="stock_alert_threshold" class="block text-gray-700 mb-2">حد التنبيه (اختياري)</label>
-            <input id="stock_alert_threshold" v-model="form.stock_alert_threshold" type="number" step="0.01" class="input-style" />
-            <p class="text-sm text-gray-500 mt-1">سيتم تنبيهك عند وصول المخزون إلى هذا الحد.</p>
-          </div>
-
+        <!-- 1. اسم المادة الخام -->
+        <div>
+          <label for="name" class="block text-gray-700 font-medium mb-2">١ – اسم المادة الخام</label>
+          <input id="name" v-model="form.name" type="text" class="input-style" placeholder="مثال: صوص توت، كرتونة أكواب" required />
         </div>
 
-        <!-- قسم التسعير الذكي -->
-        <div class="border-t pt-6">
-          <h3 class="text-lg font-semibold text-gray-800 mb-4">💰 معلومات الشراء والتسعير (بالجنيه)</h3>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label class="block text-gray-700 mb-2">وحدة الشراء</label>
-              <select v-model="form.purchase_unit" class="input-style" required>
-                <option value="">اختر وحدة الشراء</option>
-                <option value="لتر">لتر</option>
-                <option value="كجم">كجم</option>
-                <option value="قطعة">قطعة</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-gray-700 mb-2">الكمية المشتراة</label>
-              <input v-model="form.purchase_quantity" type="number" step="0.001" class="input-style" placeholder="مثال: 1" required />
-            </div>
-            <div>
-              <label class="block text-gray-700 mb-2">سعر الشراء (بالجنيه)</label>
-              <input v-model="form.purchase_price" type="number" step="0.01" class="input-style" placeholder="مثال: 100" required />
-            </div>
-            <div>
-              <label class="block text-gray-700 mb-2">وحدة الاستهلاك</label>
-              <select v-model="form.consume_unit" class="input-style" required>
-                <option value="">اختر وحدة الاستهلاك</option>
-                <option value="مللي">مللي</option>
-                <option value="جرام">جرام</option>
-                <option value="قطعة">قطعة</option>
-              </select>
-            </div>
-          </div>
-          <div class="mt-6">
-            <div class="bg-gray-100 rounded-lg p-4">
-              <span class="font-bold text-green-700">سعر وحدة الاستهلاك:</span>
-              <span class="font-mono text-lg">{{ unitConsumePrice }} جنيه / {{ form.consume_unit || '-' }}</span>
-              <span v-if="form.purchase_unit && form.consume_unit" class="text-xs text-gray-500 ml-2">(يحسب تلقائياً)</span>
-            </div>
-          </div>
+        <div>
+          <label for="category_id" class="block text-gray-700 font-medium mb-2">فئة المادة الخام (اختياري)</label>
+          <select id="category_id" v-model="form.category_id" class="input-style">
+            <option value="">— بدون فئة —</option>
+            <option v-for="c in rawMaterialCategories" :key="c.id" :value="c.id">{{ c.name }}</option>
+          </select>
+        </div>
+
+        <!-- 2. سعر القطعة الواحدة -->
+        <div>
+          <label for="price_per_piece" class="block text-gray-700 font-medium mb-2">٢ – سعر القطعة الواحدة (بالجنيه)</label>
+          <input id="price_per_piece" v-model.number="form.price_per_piece" type="number" step="0.01" min="0" class="input-style" placeholder="مثال: 75" required />
+        </div>
+
+        <!-- 3. وحدة الاستهلاك -->
+        <div>
+          <label for="consume_unit" class="block text-gray-700 font-medium mb-2">٣ – وحدة الاستهلاك</label>
+          <select id="consume_unit" v-model="form.consume_unit" class="input-style" required>
+            <option value="">اختر وحدة الاستهلاك</option>
+            <option value="مللي">مللي</option>
+            <option value="جرام">جرام</option>
+            <option value="كوب">كوب</option>
+            <option value="قطعة">قطعة</option>
+          </select>
+        </div>
+
+        <!-- 4. عدد وحدات القطعة -->
+        <div>
+          <label for="quantity_per_unit" class="block text-gray-700 font-medium mb-2">٤ – عدد وحدات القطعة ({{ form.consume_unit || '—' }} في كل قطعة)</label>
+          <input id="quantity_per_unit" v-model.number="form.quantity_per_unit" type="number" step="any" min="0.001" class="input-style" placeholder="مثال: 750 إذا القطعة = 750 مللي" required />
+          <p class="text-sm text-gray-500 mt-1">القطعة الواحدة = هذا العدد من {{ form.consume_unit || 'وحدة الاستهلاك' }}</p>
+        </div>
+
+        <!-- سعر وحدة الاستهلاك (محسوب) -->
+        <div v-if="form.price_per_piece && form.quantity_per_unit" class="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+          <span class="font-bold text-emerald-800">سعر وحدة الاستهلاك (محسوب تلقائياً):</span>
+          <span class="font-mono text-lg text-emerald-700 mr-2">{{ unitConsumePrice }} جنيه / {{ form.consume_unit }}</span>
+        </div>
+
+        <!-- 5. عدد القطع في المخزون -->
+        <div>
+          <label for="stock_units" class="block text-gray-700 font-medium mb-2">٥ – عدد القطع في المخزون</label>
+          <input id="stock_units" v-model.number="form.stock_units" type="number" step="0.01" min="0" class="input-style" required />
+          <p class="text-sm font-semibold text-green-700 mt-2">الإجمالي المتاح: {{ stockInConsumeUnit }} {{ form.consume_unit }}</p>
+        </div>
+
+        <!-- 6. وحدة القياس (للعرض في المخزون) -->
+        <div>
+          <label for="unit" class="block text-gray-700 font-medium mb-2">٦ – وحدة القياس (تظهر في المخزون)</label>
+          <input id="unit" v-model="form.unit" type="text" class="input-style" placeholder="مثال: قطعة، كرتونة" required />
+        </div>
+
+        <!-- 7. حد التنبيه (بالقطعة) -->
+        <div>
+          <label for="stock_alert_threshold" class="block text-gray-700 font-medium mb-2">٧ – حد التنبيه (بالقطعة، اختياري)</label>
+          <input id="stock_alert_threshold" v-model="form.stock_alert_threshold" type="number" step="any" min="0" class="input-style" :placeholder="'مثال: 2 ' + (form.unit || 'قطعة')" />
+          <p class="text-sm text-gray-500 mt-1">سيتم تنبيهك عند وصول عدد القطع في المخزون إلى هذا الحد أو أقل.</p>
         </div>
 
         <button type="submit" class="btn-primary w-full !mt-8">
@@ -81,57 +81,71 @@
 </template>
 
 <script>
-import { Inertia } from "@inertiajs/inertia";
+import { Inertia } from '@inertiajs/inertia';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
-const conversionFactors = {
-  'لتر': { 'مللي': 1000, 'لتر': 1 },
-  'كجم': { 'جرام': 1000, 'كجم': 1 },
-  'قطعة': { 'قطعة': 1 }
-};
-
 export default {
-    layout: AppLayout,
-    props: {
-        rawMaterial: Object,
+  layout: AppLayout,
+  props: {
+    rawMaterial: Object,
+    rawMaterialCategories: {
+      type: Array,
+      default: () => [],
     },
-    data() {
-        return {
-            form: {
-                name: this.rawMaterial.name,
-                unit: this.rawMaterial.unit,
-                stock: this.rawMaterial.stock,
-                stock_alert_threshold: this.rawMaterial.stock_alert_threshold,
-                purchase_unit: this.rawMaterial.purchase_unit || '',
-                purchase_quantity: this.rawMaterial.purchase_quantity || null,
-                purchase_price: this.rawMaterial.purchase_price || null,
-                consume_unit: this.rawMaterial.consume_unit || '',
-            },
-        };
+  },
+  data() {
+    const qpu = this.rawMaterial.quantity_per_unit ? parseFloat(this.rawMaterial.quantity_per_unit) : null;
+    const stock = parseFloat(this.rawMaterial.stock) || 0;
+    const rawThreshold = this.rawMaterial.stock_alert_threshold != null ? parseFloat(this.rawMaterial.stock_alert_threshold) : null;
+    const thresholdInUnits = (qpu && rawThreshold != null) ? (rawThreshold / qpu) : rawThreshold;
+    return {
+      form: {
+        name: this.rawMaterial.name,
+        category_id: this.rawMaterial.category_id != null ? this.rawMaterial.category_id : '',
+        price_per_piece: this.rawMaterial.purchase_price != null ? parseFloat(this.rawMaterial.purchase_price) : null,
+        consume_unit: this.rawMaterial.consume_unit || '',
+        quantity_per_unit: qpu,
+        stock_units: qpu ? (stock / qpu) : null,
+        unit: this.rawMaterial.unit || 'قطعة',
+        stock_alert_threshold: thresholdInUnits,
+      },
+    };
+  },
+  computed: {
+    stockInConsumeUnit() {
+      if (!this.form.quantity_per_unit || this.form.stock_units == null) return '0';
+      const total = (parseFloat(this.form.stock_units) || 0) * (parseFloat(this.form.quantity_per_unit) || 0);
+      return total % 1 === 0 ? total : total.toFixed(2);
     },
-    computed: {
-      unitConsumePrice() {
-        const { purchase_unit, purchase_quantity, purchase_price, consume_unit } = this.form;
-        if (!purchase_unit || !purchase_quantity || !purchase_price || !consume_unit) return 0;
-        const factor = (conversionFactors[purchase_unit] && conversionFactors[purchase_unit][consume_unit]) || 1;
-        const totalConsumeUnits = purchase_quantity * factor;
-        if (!totalConsumeUnits) return 0;
-        return (purchase_price / totalConsumeUnits).toFixed(4);
-      }
+    unitConsumePrice() {
+      const p = parseFloat(this.form.price_per_piece);
+      const q = parseFloat(this.form.quantity_per_unit);
+      if (!p || !q) return '0.0000';
+      return (p / q).toFixed(4);
     },
-    mounted() {
-      console.log('rawMaterial:', this.rawMaterial);
+  },
+  methods: {
+    submit() {
+      const stock = (parseFloat(this.form.stock_units) || 0) * (parseFloat(this.form.quantity_per_unit) || 0);
+      const unitConsumePrice = (parseFloat(this.form.price_per_piece) || 0) / (parseFloat(this.form.quantity_per_unit) || 1);
+      const qpu = parseFloat(this.form.quantity_per_unit) || 0;
+      const thresholdPieces = this.form.stock_alert_threshold != null && this.form.stock_alert_threshold !== '' ? parseFloat(this.form.stock_alert_threshold) : null;
+      const stock_alert_threshold = (thresholdPieces != null && qpu) ? (thresholdPieces * qpu) : thresholdPieces;
+      const submitData = {
+        name: this.form.name,
+        category_id: this.form.category_id === '' ? null : this.form.category_id,
+        unit: this.form.unit,
+        price_per_piece: this.form.price_per_piece,
+        consume_unit: this.form.consume_unit,
+        quantity_per_unit: this.form.quantity_per_unit,
+        stock,
+        stock_alert_threshold: stock_alert_threshold,
+        unit_consume_price: unitConsumePrice,
+      };
+      Inertia.put(route('admin.raw-materials.update', this.rawMaterial.id), submitData);
     },
-    methods: {
-        submit() {
-            const submitData = {
-                ...this.form,
-                unit_consume_price: this.unitConsumePrice
-            };
-            Inertia.put(route("admin.raw-materials.update", this.rawMaterial.id), submitData);
-        }
-    }
-}
+  },
+};
 </script>
 
 <style scoped>
@@ -144,10 +158,4 @@ export default {
 .btn-gray {
   @apply bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition;
 }
-.btn-green {
-  @apply bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition;
-}
-.btn-red {
-  @apply bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition;
-}
-</style> 
+</style>

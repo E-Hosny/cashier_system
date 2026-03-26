@@ -2,12 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
 
 class CashierShift extends Model
 {
+    use BelongsToTenant;
     use HasFactory;
 
     protected $fillable = [
@@ -21,7 +23,13 @@ class CashierShift extends Model
         'difference',
         'notes',
         'status',
+        'tenant_id',
     ];
+
+    protected static function booted()
+    {
+        static::bootBelongsToTenant();
+    }
 
     protected $casts = [
         'start_time' => 'datetime',

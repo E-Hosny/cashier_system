@@ -12,8 +12,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('orders', function (Blueprint $table) {
-            $table->string('invoice_number')->nullable()->after('id');
-            $table->index('invoice_number');
+            $table->string('invoice_number')->nullable()->after('status');
+        });
+        
+        // إضافة فهرس فريد لرقم الفاتورة لمنع التكرار
+        Schema::table('orders', function (Blueprint $table) {
+            $table->unique('invoice_number', 'orders_invoice_number_unique');
         });
     }
 
@@ -23,7 +27,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('orders', function (Blueprint $table) {
-            $table->dropIndex(['invoice_number']);
+            $table->dropUnique('orders_invoice_number_unique');
             $table->dropColumn('invoice_number');
         });
     }

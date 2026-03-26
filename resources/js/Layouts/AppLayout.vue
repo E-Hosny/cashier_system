@@ -78,23 +78,35 @@ const logout = () => {
                                     المواد الخام
                                 </NavLink>
                                 <NavLink 
-                                    v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('admin')"
+                                    v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('super admin')"
                                     :href="route('admin.users.index')" 
                                     :active="route().current('admin.users.*')"
                                 >
                                     إدارة المستخدمين
                                 </NavLink>
+                                <NavLink 
+                                    v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('super admin')"
+                                    :href="route('admin.display-screen.index')" 
+                                    :active="route().current('admin.display-screen.*')"
+                                >
+                                    عرض الشاشة
+                                </NavLink>
                                 <NavLink :href="route('cashier.index')" :active="route().current('cashier.index')">
                                     الكاشير
                                 </NavLink>
-                                <NavLink :href="route('offline.index')" :active="route().current('offline.index')">
-                                    📱 الطلبات المحفوظة
-                                </NavLink>
+
                                 <NavLink :href="route('purchases.index')" :active="route().current('purchases.index')">
                                     المشتريات
                                 </NavLink>
                                 <NavLink :href="route('expenses.index')" :active="route().current('expenses.index')">
                                     المصروفات
+                                </NavLink>
+                                <NavLink 
+                                    v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('admin')"
+                                    :href="route('admin.feedback.index')" 
+                                    :active="route().current('admin.feedback.*')"
+                                >
+                                    ⭐ التقييمات
                                 </NavLink>
                             </div>
                         </div>
@@ -285,12 +297,20 @@ const logout = () => {
                                 المواد الخام
                             </ResponsiveNavLink>
                             <ResponsiveNavLink 
-                                v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('admin')"
+                                v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('super admin')"
                                 :href="route('admin.users.index')" 
                                 :active="route().current('admin.users.*')"
                                 @click="showingSidebar = false"
                             >
                                 إدارة المستخدمين
+                            </ResponsiveNavLink>
+                            <ResponsiveNavLink 
+                                v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('super admin')"
+                                :href="route('admin.display-screen.index')" 
+                                :active="route().current('admin.display-screen.*')"
+                                @click="showingSidebar = false"
+                            >
+                                عرض الشاشة
                             </ResponsiveNavLink>
                             <ResponsiveNavLink :href="route('cashier.index')" :active="route().current('cashier.index')" @click="showingSidebar = false">
                                 الكاشير

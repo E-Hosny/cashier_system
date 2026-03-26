@@ -5,7 +5,8 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 
 const page = usePage();
 const canViewReports = computed(() => page.props.canViewReports);
-const canManageAttendance = computed(() => page.props.auth.user?.roles?.includes('admin') || page.props.auth.user?.roles?.includes('cashier'));
+const canManageAttendance = computed(() => !!page.props.canManageAttendance);
+const canManageFeedback = computed(() => !!page.props.canManageFeedback);
 </script>
 
 <template>
@@ -91,6 +92,19 @@ const canManageAttendance = computed(() => page.props.auth.user?.roles?.includes
                             </div>
                             <h3 class="text-lg font-semibold text-gray-700">الفواتير</h3>
                             <p class="text-sm text-gray-500">عرض فواتير اليوم الحالي</p>
+                        </div>
+                    </a>
+
+                    <!-- Card 7: التقييمات -->
+                    <a v-if="canManageFeedback" 
+                       href="/admin/feedback" 
+                       class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
+                        <div class="flex flex-col items-center">
+                            <div class="text-yellow-500 text-4xl mb-4">
+                                ⭐
+                            </div>
+                            <h3 class="text-lg font-semibold text-gray-700">التقييمات</h3>
+                            <p class="text-sm text-gray-500">إدارة تقييمات العملاء</p>
                         </div>
                     </a>
 

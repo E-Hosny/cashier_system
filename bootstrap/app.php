@@ -19,7 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'admin' => \App\Http\Middleware\AdminMiddleware::class,
-            'check.connection' => \App\Http\Middleware\CheckConnection::class,
+            'super_admin' => \App\Http\Middleware\SuperAdminMiddleware::class,
             'employee.attendance' => \App\Http\Middleware\EmployeeAttendanceMiddleware::class,
         ]);
     })

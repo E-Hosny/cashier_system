@@ -55,7 +55,7 @@ class PurchaseController extends Controller
         ]);
 
         $purchase = Purchase::create([
-            'tenant_id' => auth()->user()->tenant_id ?? auth()->id(),
+            'tenant_id' => auth()->user()->tenant_id,
             'supplier_name' => $request->supplier_name,
             'description' => $request->description,
             'quantity' => $request->quantity,

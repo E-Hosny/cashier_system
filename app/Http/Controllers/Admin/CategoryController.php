@@ -12,28 +12,31 @@ class CategoryController extends Controller
     public function index()
     {
         return Inertia::render('Admin/Categories/Index', [
-            'categories' => Category::latest()->get(),
+            'categories' => Category::forProducts()->latest()->get(),
         ]);
     }
 
     public function store(Request $request)
     {
         $request->validate(['name' => 'required|string|max:255']);
-        Category::create(['name' => $request->name]);
+        Category::create([
+            'name' => $request->name,
+            'scope' => Category::SCOPE_PRODUCT,
+        ]);
         return redirect()->route('admin.categories.index')->with('message', 'تمت إضافة الفئة بنجاح');
     }
 
     public function update(Request $request, $id)
     {
         $request->validate(['name' => 'required|string|max:255']);
-        $category = Category::findOrFail($id);
+        $category = Category::forProducts()->findOrFail($id);
         $category->update(['name' => $request->name]);
         return redirect()->route('admin.categories.index')->with('message', 'تم تحديث الفئة بنجاح');
     }
 
     public function destroy($id)
     {
-        $category = Category::findOrFail($id);
+        $category = Category::forProducts()->findOrFail($id);
         $category->delete();
         return redirect()->route('admin.categories.index')->with('message', 'تم حذف الفئة بنجاح');
     }

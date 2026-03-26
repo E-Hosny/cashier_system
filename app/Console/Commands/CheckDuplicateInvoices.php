@@ -3,104 +3,175 @@
 namespace App\Console\Commands;
 
 use App\Models\Order;
-use App\Models\OfflineOrder;
+
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use App\Services\InvoiceNumberService;
 
 class CheckDuplicateInvoices extends Command
 {
-    protected $signature = 'invoices:check-duplicates';
-    protected $description = 'فحص الفواتير المكررة في النظام';
+    protected $signature = 'invoices:check-duplicates {--fix : إصلاح الفواتير المكررة تلقائياً}';
+    protected $description = 'فحص وإصلاح الفواتير المكررة في النظام';
 
+    /**
+     * فحص شامل للفواتير المكررة
+     */
     public function handle()
     {
-        $this->info('=== فحص الفواتير المكررة ===');
+        $this->info('=== فحص شامل للفواتير المكررة ===');
         $this->newLine();
 
+        $shouldFix = $this->option('fix');
+        
         // فحص الفواتير العادية
         $this->info('1. فحص الفواتير العادية:');
         $duplicates = Order::select('invoice_number', 'created_at', DB::raw('COUNT(*) as count'))
             ->whereNotNull('invoice_number')
-            ->groupBy('invoice_number', 'created_at')
+            ->groupBy('invoice_number')
             ->having('count', '>', 1)
             ->get();
 
         if ($duplicates->isEmpty()) {
-            $this->info('لا توجد فواتير مكررة في الجدول العادي');
+            $this->info('✅ لا توجد فواتير مكررة في الجدول العادي');
         } else {
+            $this->warn("❌ تم العثور على " . $duplicates->count() . " فواتير مكررة:");
             foreach ($duplicates as $dup) {
-                $this->warn("رقم الفاتورة: {$dup->invoice_number} | التاريخ: {$dup->created_at} | العدد: {$dup->count}");
+                $this->warn("رقم الفاتورة: {$dup->invoice_number} | العدد: {$dup->count}");
+            }
+            
+            if ($shouldFix) {
+                $this->fixDuplicateOrders($duplicates);
             }
         }
 
         $this->newLine();
 
-        // فحص الفواتير الأوفلاين
-        $this->info('2. فحص الفواتير الأوفلاين:');
-        $offlineDuplicates = OfflineOrder::select('invoice_number', 'created_at', DB::raw('COUNT(*) as count'))
-            ->whereNotNull('invoice_number')
-            ->groupBy('invoice_number', 'created_at')
-            ->having('count', '>', 1)
-            ->get();
 
-        if ($offlineDuplicates->isEmpty()) {
-            $this->info('لا توجد فواتير مكررة في الجدول الأوفلاين');
-        } else {
-            foreach ($offlineDuplicates as $dup) {
-                $this->warn("رقم الفاتورة: {$dup->invoice_number} | التاريخ: {$dup->created_at} | العدد: {$dup->count}");
-            }
-        }
 
         $this->newLine();
 
-        // فحص جميع الفواتير
-        $this->info('3 فحص جميع الفواتير (عادية + أوفلاين):');
-        
-        $allInvoices = collect();
-        
-        // جمع الفواتير العادية
-        $orders = Order::select('invoice_number', 'created_at')
-            ->whereNotNull('invoice_number')
-            ->get();
-        $allInvoices = $allInvoices->merge($orders);
-        
-        // جمع الفواتير الأوفلاين
-        $offlineOrders = OfflineOrder::select('invoice_number', 'created_at')
-            ->whereNotNull('invoice_number')
-            ->get();
-        $allInvoices = $allInvoices->merge($offlineOrders);
-        
-        // تجميع حسب رقم الفاتورة
-        $groupedInvoices = $allInvoices->groupBy('invoice_number')
-            ->filter(function ($group) {
-                return $group->count() > 1;
-            });
-
-        if ($groupedInvoices->isEmpty()) {
-            $this->info('لا توجد فواتير مكررة في النظام');
-        } else {
-            foreach ($groupedInvoices as $invoiceNumber => $orders) {
-                $this->error("رقم الفاتورة: {$invoiceNumber} | العدد: {$orders->count()}");
-                foreach ($orders as $order) {
-                    $this->line("  - التاريخ: {$order->created_at}");
-                }
-            }
-        }
+        // فحص الطلبات المتطابقة تماماً (نفس المحتوى والتوقيت)
+        $this->info('3. فحص الطلبات المتطابقة تماماً:');
+        $this->checkDuplicateContentOrders($shouldFix);
 
         $this->newLine();
 
-        // إحصائيات عامة
-        $this->info('4.إحصائيات عامة:');      $totalOrders = Order::count();
-        $totalOfflineOrders = OfflineOrder::count();
-        $ordersWithInvoice = Order::whereNotNull('invoice_number')->count();
-        $offlineOrdersWithInvoice = OfflineOrder::whereNotNull('invoice_number')->count();
-
-        $this->line("إجمالي الطلبات العادية: {$totalOrders}");
-        $this->line("إجمالي الطلبات الأوفلاين: {$totalOfflineOrders}");
-        $this->line("الطلبات العادية مع أرقام فواتير: {$ordersWithInvoice}");
-        $this->line("الطلبات الأوفلاين مع أرقام فواتير: {$offlineOrdersWithInvoice}");
+        // فحص تضارب الأرقام بين الجدولين
+        $this->info('4. فحص تضارب الأرقام بين الجدولين:');
+        $this->checkCrossTableConflicts($shouldFix);
 
         $this->newLine();
-        $this->info('تم الانتهاء من الفحص');
+        $this->info('=== انتهى الفحص ===');
     }
+    
+    /**
+     * إصلاح الفواتير المكررة في جدول الطلبات العادية
+     */
+    private function fixDuplicateOrders($duplicates)
+    {
+        $this->info('🔧 إصلاح الفواتير المكررة في الجدول العادي...');
+        
+        foreach ($duplicates as $duplicate) {
+            $orders = Order::where('invoice_number', $duplicate->invoice_number)
+                ->orderBy('created_at', 'asc')
+                ->get();
+            
+            // الاحتفاظ بالطلب الأول وتغيير باقي الطلبات
+            $firstOrder = $orders->first();
+            $otherOrders = $orders->skip(1);
+            
+            foreach ($otherOrders as $order) {
+                $newInvoiceNumber = InvoiceNumberService::generateInvoiceNumber();
+                $order->update(['invoice_number' => $newInvoiceNumber]);
+                $this->info("تم تغيير رقم فاتورة الطلب {$order->id} إلى: {$newInvoiceNumber}");
+            }
+        }
+        
+        $this->info('✅ تم إصلاح الفواتير المكررة في الجدول العادي');
+    }
+    
+
+
+    /**
+     * فحص الطلبات المتطابقة تماماً
+     */
+    private function checkDuplicateContentOrders($shouldFix)
+    {
+        // البحث عن طلبات متطابقة في المحتوى والتوقيت
+        $duplicateContent = DB::select("
+            SELECT 
+                o1.id as order1_id,
+                o2.id as order2_id,
+                o1.invoice_number as invoice1,
+                o2.invoice_number as invoice2,
+                o1.total,
+                o1.created_at,
+                COUNT(oi1.id) as items_count
+            FROM orders o1
+            JOIN orders o2 ON o1.id != o2.id 
+                AND o1.total = o2.total 
+                AND ABS(TIMESTAMPDIFF(SECOND, o1.created_at, o2.created_at)) <= 30
+                AND o1.user_id = o2.user_id
+            JOIN order_items oi1 ON o1.id = oi1.order_id
+            JOIN order_items oi2 ON o2.id = oi2.order_id
+            WHERE oi1.product_name = oi2.product_name 
+                AND oi1.quantity = oi2.quantity 
+                AND oi1.price = oi2.price
+            GROUP BY o1.id, o2.id, o1.total, o1.created_at
+            HAVING COUNT(oi1.id) = (
+                SELECT COUNT(*) FROM order_items WHERE order_id = o1.id
+            )
+        ");
+
+        if (empty($duplicateContent)) {
+            $this->info('✅ لا توجد طلبات متطابقة تماماً في المحتوى');
+        } else {
+            $this->warn("❌ تم العثور على " . count($duplicateContent) . " مجموعة طلبات متطابقة تماماً:");
+            
+            foreach ($duplicateContent as $dup) {
+                $this->warn("   - الطلب {$dup->order1_id} (فاتورة: {$dup->invoice1})");
+                $this->warn("   - الطلب {$dup->order2_id} (فاتورة: {$dup->invoice2})");
+                $this->warn("   - المبلغ: {$dup->total} | العناصر: {$dup->items_count}");
+                $this->newLine();
+            }
+            
+            if ($shouldFix) {
+                $this->fixDuplicateContentOrders($duplicateContent);
+            }
+        }
+    }
+
+
+
+    /**
+     * إصلاح الطلبات المتطابقة تماماً
+     */
+    private function fixDuplicateContentOrders($duplicateContent)
+    {
+        $this->info('🔧 إصلاح الطلبات المتطابقة تماماً...');
+        
+        $fixedCount = 0;
+        foreach ($duplicateContent as $dup) {
+            try {
+                // الاحتفاظ بالطلب الأقدم وحذف الأحدث
+                $orderToDelete = Order::find($dup->order2_id);
+                if ($orderToDelete) {
+                    // حذف عناصر الطلب أولاً
+                    $orderToDelete->items()->delete();
+                    
+                    // حذف الطلب
+                    $orderToDelete->delete();
+                    
+                    $this->info("   ✅ تم حذف الطلب المكرر {$dup->order2_id}");
+                    $fixedCount++;
+                }
+            } catch (\Exception $e) {
+                $this->error("   ❌ فشل في حذف الطلب {$dup->order2_id}: " . $e->getMessage());
+            }
+        }
+        
+        $this->info("✅ تم إصلاح {$fixedCount} طلب مكرر");
+    }
+
+
 } 
