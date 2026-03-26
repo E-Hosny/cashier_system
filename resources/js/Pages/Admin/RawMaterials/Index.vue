@@ -22,7 +22,7 @@
     </div>
 
     <div v-if="!isCashier" class="bg-white shadow-lg rounded-xl overflow-x-auto no-print">
-      <table class="w-full text-end">
+      <table class="w-full min-w-[1180px] text-end">
         <thead class="bg-gray-200 hidden sm:table-header-group">
           <tr>
             <th class="p-4">اسم المادة</th>
@@ -71,7 +71,7 @@
             </td>
             <td class="p-4 block sm:table-cell" data-label="حد التنبيه">{{ formatAlertThreshold(material) }}</td>
             <td class="p-4 block sm:table-cell" data-label="الإجراءات">
-              <div class="flex flex-wrap justify-center items-center gap-2">
+              <div class="flex flex-nowrap justify-center items-center gap-2 whitespace-nowrap">
                 <button v-if="canPrint" type="button" @click="openPrintModal(material)" class="btn-blue-outline">🏷️ طباعة كود</button>
                 <a v-if="canEdit" :href="route('admin.raw-materials.edit', material.id)" class="btn-yellow">✏️ تعديل</a>
                 <button v-if="canDelete" @click="deleteMaterial(material.id)" class="btn-red">🗑️ حذف</button>
