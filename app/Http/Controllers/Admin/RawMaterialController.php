@@ -106,12 +106,12 @@ class RawMaterialController extends Controller
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'unit' => 'required|string|max:50',
-            'price_per_piece' => 'required|numeric|min:0',
+            'price_per_piece' => 'nullable|numeric|min:0',
             'consume_unit' => 'required|string|in:مللي,جرام,قطعة,كوب',
             'quantity_per_unit' => 'required|numeric|min:0.001',
             'stock' => 'required|numeric|min:0',
             'stock_alert_threshold' => 'nullable|numeric|min:0',
-            'unit_consume_price' => 'required|numeric|min:0',
+            'unit_consume_price' => 'nullable|numeric|min:0',
             'category_id' => [
                 'nullable',
                 'integer',

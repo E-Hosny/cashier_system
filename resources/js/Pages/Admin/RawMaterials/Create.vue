@@ -25,8 +25,16 @@
 
         <!-- 2. سعر القطعة الواحدة -->
         <div>
-          <label for="price_per_piece" class="block text-gray-700 font-medium mb-2">٢ – سعر القطعة الواحدة (بالجنيه)</label>
-          <input id="price_per_piece" v-model.number="form.price_per_piece" type="number" step="0.01" min="0" class="input-style" placeholder="مثال: 75" required />
+          <label for="price_per_piece" class="block text-gray-700 font-medium mb-2">٢ – سعر القطعة الواحدة (بالجنيه) (اختياري)</label>
+          <input
+            id="price_per_piece"
+            v-model.number="form.price_per_piece"
+            type="number"
+            step="0.01"
+            min="0"
+            class="input-style"
+            placeholder="مثال: 75"
+          />
         </div>
 
         <!-- 3. وحدة الاستهلاك -->
@@ -124,7 +132,10 @@ export default {
   methods: {
     submit() {
       const stock = (parseFloat(this.form.stock_units) || 0) * (parseFloat(this.form.quantity_per_unit) || 0);
-      const unitConsumePrice = (parseFloat(this.form.price_per_piece) || 0) / (parseFloat(this.form.quantity_per_unit) || 1);
+      const unitConsumePrice =
+        this.form.price_per_piece != null && this.form.price_per_piece !== ''
+          ? (parseFloat(this.form.price_per_piece) || 0) / (parseFloat(this.form.quantity_per_unit) || 1)
+          : null;
       const qpu = parseFloat(this.form.quantity_per_unit) || 0;
       const thresholdPieces = this.form.stock_alert_threshold != null && this.form.stock_alert_threshold !== '' ? parseFloat(this.form.stock_alert_threshold) : null;
       const stock_alert_threshold = (thresholdPieces != null && qpu) ? (thresholdPieces * qpu) : null;
