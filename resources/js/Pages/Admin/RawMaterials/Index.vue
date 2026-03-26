@@ -1,5 +1,5 @@
 <template>
-  <div class="container mx-auto p-4 sm:p-6" dir="rtl">
+  <div class="mx-auto max-w-screen-2xl w-full p-4 sm:p-6" dir="rtl">
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4 no-print">
       <h1 class="text-3xl font-bold text-gray-800">🛢️ إدارة المواد الخام</h1>
       <div class="flex flex-wrap gap-2">
