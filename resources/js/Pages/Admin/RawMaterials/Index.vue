@@ -29,7 +29,7 @@
             <th class="p-4">الفئة</th>
             <th class="p-4">عدد وحدات القطعة</th>
             <th class="p-4">الكمية الحالية (المخزون)</th>
-            <th class="p-4">وحدة القياس</th>
+            <th class="p-4">سعر المادة الخام</th>
             <th class="p-4">معلومات التسعير</th>
             <th class="p-4">حد التنبيه</th>
             <th class="p-4 text-center">الإجراءات</th>
@@ -61,7 +61,13 @@
                 </span>
               </template>
             </td>
-            <td class="p-4 block sm:table-cell" data-label="وحدة القياس">{{ material.unit }}</td>
+            <td class="p-4 block sm:table-cell" data-label="سعر المادة الخام">
+              <div v-if="material.purchase_price != null" class="font-semibold text-blue-700">
+                {{ material.purchase_price }} جنيه
+                <span v-if="material.unit" class="text-gray-500 font-normal">/ {{ material.unit }}</span>
+              </div>
+              <div v-else class="text-gray-500">لم يتم تحديد السعر</div>
+            </td>
             <td class="p-4 block sm:table-cell" data-label="معلومات التسعير">
               <div v-if="material.unit_consume_price" class="text-sm">
                 <div class="font-semibold text-green-700">{{ material.unit_consume_price }} جنيه / {{ material.consume_unit }}</div>
