@@ -31,15 +31,15 @@
                 </td>
                 <td class="p-4 block sm:table-cell font-bold text-red-700" data-label="تكلفة المواد الخام">
                   <span v-if="getIngredientsForSize(product, variant.size).length === 0">-</span>
-                  <span v-else>{{ getCostPrice(product, variant.size) }} جنيه</span>
+                  <span v-else>{{ formatMoney(variant.ingredients_cost ?? getCostPrice(product, variant.size)) }} جنيه</span>
                 </td>
                 <td class="p-4 block sm:table-cell font-bold" :class="variant && variant.size ? getProfitClass(product, variant.size) : ''" data-label="هامش الربح">
                   <span v-if="getIngredientsForSize(product, variant.size).length === 0">-</span>
-                  <span v-else>{{ getProfitAmount(product, variant.size) }} جنيه</span>
+                  <span v-else>{{ formatMoney(variant.profit_amount ?? getProfitAmount(product, variant.size)) }} جنيه</span>
                 </td>
                 <td class="p-4 block sm:table-cell font-bold" :class="variant && variant.size ? getProfitClass(product, variant.size) : ''" data-label="نسبة الربح">
                   <span v-if="getIngredientsForSize(product, variant.size).length === 0">-</span>
-                  <span v-else>{{ getProfitMargin(product, variant.size) }}%</span>
+                  <span v-else>{{ formatMoney(variant.profit_margin ?? getProfitMargin(product, variant.size)) }}%</span>
                 </td>
                 <td class="p-4 block sm:table-cell" data-label="تفاصيل المكونات">
                   <template v-if="getIngredientsForSize(product, variant.size).length > 0">
@@ -117,6 +117,11 @@ export default {
     };
   },
   methods: {
+    formatMoney(value) {
+      const n = typeof value === 'number' ? value : parseFloat(value);
+      if (Number.isNaN(n)) return value ?? '-';
+      return n.toFixed(2).replace(/\.00$/, '');
+    },
     translateSize(size) {
       const translations = {
         'small': 'صغير',

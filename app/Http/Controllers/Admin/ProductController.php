@@ -200,7 +200,18 @@ class ProductController extends Controller
     {
         $products = Product::where('type', 'finished')
             ->with(['ingredients' => function ($query) {
-                $query->select('products.id', 'products.name', 'products.unit', 'products.purchase_unit', 'products.purchase_quantity', 'products.purchase_price', 'products.consume_unit', 'products.unit_consume_price');
+                // لازم نحمّل `type` عشان `getUnitPrice()` داخل Product model يشتغل بشكل صحيح
+                $query->select(
+                    'products.id',
+                    'products.name',
+                    'products.type',
+                    'products.unit',
+                    'products.purchase_unit',
+                    'products.purchase_quantity',
+                    'products.purchase_price',
+                    'products.consume_unit',
+                    'products.unit_consume_price'
+                );
             }])
             ->get();
 
