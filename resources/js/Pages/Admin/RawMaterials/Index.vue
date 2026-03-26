@@ -26,8 +26,8 @@
       <div
         v-for="material in rawMaterialsLocal"
         :key="material.id"
-        class="bg-white shadow rounded-xl border p-4"
-        :class="isStockLow(material) ? 'border-red-200 bg-red-50' : 'border-gray-200'"
+        class="shadow rounded-xl border p-4"
+        :class="isStockLow(material) ? 'border-red-200 bg-red-100' : 'border-gray-200 bg-white'"
       >
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
