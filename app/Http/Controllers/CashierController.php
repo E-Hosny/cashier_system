@@ -34,7 +34,8 @@ class CashierController extends Controller
         }
         return $product;
     });
-    $categories = Category::all();
+    // فقط فئات المنتجات النهائية — لا تُعرض فئات المواد الخام على شاشة الكاشير
+    $categories = Category::forProducts()->orderBy('name')->get();
     return Inertia::render('Cashier', [
         'products' => $products,
         'categories' => $categories,
