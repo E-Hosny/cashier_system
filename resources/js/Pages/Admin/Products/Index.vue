@@ -6,7 +6,7 @@
         <a v-if="hasSuperAdminRole" :href="route('admin.products.sales-analysis')" class="btn-blue text-center">📈 تحليل المنتجات</a>
         <a :href="route('admin.products.cost-analysis')" class="btn-blue text-center">💰 تحليل التكلفة</a>
         <a :href="route('admin.products.export')" class="btn-green text-center">📊 تصدير Excel</a>
-        <a :href="route('admin.products.create')" class="btn-primary text-center">➕ إضافة منتج جديد</a>
+        <a v-if="hasSuperAdminRole" :href="route('admin.products.create')" class="btn-primary text-center">➕ إضافة منتج جديد</a>
         <a :href="route('admin.categories.index')" class="btn-green text-center">📁 إدارة الفئات</a>
       </div>
     </div>
@@ -90,9 +90,9 @@
               <td class="p-4 block sm:table-cell" data-label="الفئة">{{ product.category?.name || "بدون فئة" }}</td>
               <td class="p-4 block sm:table-cell" data-label="الإجراءات">
                 <div class="flex justify-center items-center gap-2">
-                  <a :href="buildEditUrl(product.id)" class="btn-yellow">✏️ تعديل</a>
+                  <a v-if="hasSuperAdminRole" :href="buildEditUrl(product.id)" class="btn-yellow">✏️ تعديل</a>
                   <button
-                    v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('admin')"
+                    v-if="hasSuperAdminRole"
                     @click="deleteProduct(product.id)"
                     class="btn-red"
                   >

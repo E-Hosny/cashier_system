@@ -47,7 +47,24 @@ Route::middleware([
     Route::get('/barista', [BaristaController::class, 'index'])->name('barista.index');
 
     // Products
-    Route::resource('products', ProductController::class, ['names' => 'admin.products'])->except(['show']);
+    // عرض المنتجات متاح للجميع (ضمن صفحة النظام مع تسجيل الدخول)
+    // بينما الإضافة/التعديل/الحذف تكون لـ "super admin" فقط.
+    Route::get('/products', [ProductController::class, 'index'])->name('admin.products.index');
+    Route::get('/products/create', [ProductController::class, 'create'])
+        ->middleware('super_admin')
+        ->name('admin.products.create');
+    Route::post('/products', [ProductController::class, 'store'])
+        ->middleware('super_admin')
+        ->name('admin.products.store');
+    Route::get('/products/{product}/edit', [ProductController::class, 'edit'])
+        ->middleware('super_admin')
+        ->name('admin.products.edit');
+    Route::match(['put', 'patch'], '/products/{product}', [ProductController::class, 'update'])
+        ->middleware('super_admin')
+        ->name('admin.products.update');
+    Route::delete('/products/{product}', [ProductController::class, 'destroy'])
+        ->middleware('super_admin')
+        ->name('admin.products.destroy');
     Route::get('/products/export', [ProductController::class, 'export'])->name('admin.products.export');
     Route::get('/products/cost-analysis', [ProductController::class, 'costAnalysis'])->name('admin.products.cost-analysis');
     Route::get('/products/sales-analysis', [ProductController::class, 'salesAnalysis'])->name('admin.products.sales-analysis')->middleware('super_admin');
