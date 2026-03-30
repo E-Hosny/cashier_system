@@ -89,7 +89,18 @@
                       <div class="font-extrabold text-gray-800 text-sm">
                         🍽️ الريسبي - {{ getSelectedSizeLabel(product) }}
                       </div>
-                      <div class="text-[11px] text-gray-500 whitespace-nowrap">حسب المنتج والمقاس</div>
+                      <div
+                        class="text-[11px] text-gray-600 whitespace-nowrap"
+                        v-if="getSelectedSizeNote(product)"
+                      >
+                        {{ getSelectedSizeNote(product) }}
+                      </div>
+                      <div
+                        class="text-[11px] text-gray-500 whitespace-nowrap"
+                        v-else
+                      >
+                        حسب المنتج والمقاس
+                      </div>
                     </div>
 
                     <div
@@ -144,6 +155,19 @@ export default {
     },
   },
   methods: {
+    getSizeNote(size) {
+      const notes = {
+        small: 'كوب 12',
+        medium: 'كوب 14',
+        large: 'كوب 16',
+        extra_large: 'كان 500 مللي',
+      };
+      return notes[size] || '';
+    },
+    getSelectedSizeNote(product) {
+      const v = this.getSelectedVariant(product);
+      return this.getSizeNote(v?.size);
+    },
     initializeProducts() {
       this.liveProducts = this.products.map((p) => ({
         ...p,
