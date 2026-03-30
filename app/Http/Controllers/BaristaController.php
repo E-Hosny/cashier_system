@@ -8,8 +8,26 @@ use Inertia\Inertia;
 
 class BaristaController extends Controller
 {
+    private function requireAnyRole(array $roles): void
+    {
+        $user = auth()->user();
+        if (! $user) {
+            abort(403, 'غير مصرح لك بالوصول لهذه الصفحة');
+        }
+
+        foreach ($roles as $role) {
+            if ($user->hasRole($role)) {
+                return;
+            }
+        }
+
+        abort(403, 'غير مصرح لك بالوصول لهذه الصفحة');
+    }
+
     public function index()
     {
+        $this->requireAnyRole(['super admin', 'admin', 'barista']);
+
         $products = Product::where('type', 'finished')
             ->latest()
             ->get()

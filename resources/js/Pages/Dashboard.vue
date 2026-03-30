@@ -7,6 +7,10 @@ const page = usePage();
 const canViewReports = computed(() => page.props.canViewReports);
 const canManageAttendance = computed(() => !!page.props.canManageAttendance);
 const canManageFeedback = computed(() => !!page.props.canManageFeedback);
+const canUseBarista = computed(() => {
+  const roles = page.props?.auth?.user?.roles || [];
+  return roles.includes('super admin') || roles.includes('admin') || roles.includes('barista');
+});
 </script>
 
 <template>
@@ -109,7 +113,7 @@ const canManageFeedback = computed(() => !!page.props.canManageFeedback);
                     </a>
 
                     <!-- Card: الريسبي -->
-                    <a href="/barista" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
+                    <a v-if="canUseBarista" href="/barista" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
                       <div class="flex flex-col items-center">
                         <div class="text-indigo-500 text-4xl mb-4">
                           🧑‍🍳
