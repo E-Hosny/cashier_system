@@ -68,8 +68,14 @@ class ProductController extends Controller
         ]);
     }
 
-    public function edit(Product $product)
+    public function edit(Request $request, Product $product)
     {
+        // حفظ الفلاتر اللي المستخدم جاي منها (عشان نرجع لنفس الصفحة بعد الحفظ)
+        $backFilters = [
+            'category_id' => $request->query('category_id', ''),
+            'searchTerm' => $request->query('searchTerm', ''),
+        ];
+
         $categories = Category::forProducts()->latest()->get();
         $rawMaterials = Product::where('type', 'raw')->get(['id', 'name', 'unit']);
         $sizes = [
@@ -88,6 +94,7 @@ class ProductController extends Controller
             'sizes' => $sizes,
             'rawMaterials' => $rawMaterials,
             'ingredients_by_size' => $ingredients_by_size,
+            'backFilters' => $backFilters,
         ]);
     }
 
@@ -130,7 +137,15 @@ class ProductController extends Controller
             }
         }
 
-        return redirect()->route('admin.products.index')->with('success', 'تمت إضافة المنتج بنجاح!');
+        $redirectParams = [];
+        if ($request->filled('back_category_id')) {
+            $redirectParams['category_id'] = $request->input('back_category_id');
+        }
+        if ($request->filled('back_searchTerm')) {
+            $redirectParams['searchTerm'] = $request->input('back_searchTerm');
+        }
+
+        return redirect()->route('admin.products.index', $redirectParams)->with('success', 'تمت إضافة المنتج بنجاح!');
     }
 
     public function update(Request $request, Product $product)
@@ -178,7 +193,15 @@ class ProductController extends Controller
             }
         }
 
-        return redirect()->route('admin.products.index')->with('success', 'تم تحديث المنتج بنجاح!');
+        $redirectParams = [];
+        if ($request->filled('back_category_id')) {
+            $redirectParams['category_id'] = $request->input('back_category_id');
+        }
+        if ($request->filled('back_searchTerm')) {
+            $redirectParams['searchTerm'] = $request->input('back_searchTerm');
+        }
+
+        return redirect()->route('admin.products.index', $redirectParams)->with('success', 'تم تحديث المنتج بنجاح!');
     }
 
     private function mapIngredients($ingredients)

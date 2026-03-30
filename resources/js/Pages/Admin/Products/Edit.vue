@@ -2,7 +2,7 @@
   <div class="container mx-auto p-6" dir="rtl">
     <div class="flex justify-between items-center mb-8">
         <h1 class="text-3xl font-bold text-gray-800">🔄 تعديل المنتج</h1>
-        <a :href="route('admin.products.index')" class="btn-gray">➡️ العودة إلى المنتجات</a>
+        <a :href="buildIndexHref()" class="btn-gray">➡️ العودة إلى المنتجات</a>
     </div>
 
     <form @submit.prevent="submitProduct" class="space-y-8">
@@ -107,6 +107,10 @@ export default {
         sizes: Array,
         rawMaterials: Array,
         ingredients_by_size: Object,
+        backFilters: {
+            type: Object,
+            default: () => ({}),
+        },
     },
     data() {
         return {
@@ -134,6 +138,14 @@ export default {
         };
     },
     methods: {
+        buildIndexHref() {
+            const base = route('admin.products.index');
+            const params = new URLSearchParams();
+            if (this.backFilters?.category_id) params.set('category_id', this.backFilters.category_id);
+            if (this.backFilters?.searchTerm) params.set('searchTerm', this.backFilters.searchTerm);
+            const qs = params.toString();
+            return qs ? `${base}?${qs}` : base;
+        },
         handleFileUpload(event) {
             this.form.image = event.target.files[0];
         },
@@ -172,6 +184,9 @@ export default {
             formData.append("_method", "PUT");
             formData.append("name", this.form.name);
             formData.append("category_id", this.form.category_id || '');
+            // تمرير فلاتر صفحة Index لصفحة index بعد الحفظ
+            formData.append('back_category_id', this.backFilters?.category_id || '');
+            formData.append('back_searchTerm', this.backFilters?.searchTerm || '');
             if (this.form.image) {
                 formData.append("image", this.form.image);
             }

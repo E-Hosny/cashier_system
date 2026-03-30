@@ -90,7 +90,7 @@
               <td class="p-4 block sm:table-cell" data-label="الفئة">{{ product.category?.name || "بدون فئة" }}</td>
               <td class="p-4 block sm:table-cell" data-label="الإجراءات">
                 <div class="flex justify-center items-center gap-2">
-                  <a :href="route('admin.products.edit', product.id)" class="btn-yellow">✏️ تعديل</a>
+                  <a :href="buildEditUrl(product.id)" class="btn-yellow">✏️ تعديل</a>
                   <button
                     v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('admin')"
                     @click="deleteProduct(product.id)"
@@ -166,6 +166,14 @@ export default {
       if (confirm("هل أنت متأكد من حذف هذا المنتج؟")) {
         Inertia.delete(route("admin.products.destroy", id));
       }
+    },
+    buildEditUrl(productId) {
+      const base = route('admin.products.edit', productId);
+      const params = new URLSearchParams();
+      if (this.selectedCategory) params.set('category_id', this.selectedCategory);
+      if (this.searchTerm) params.set('searchTerm', this.searchTerm);
+      const qs = params.toString();
+      return qs ? `${base}?${qs}` : base;
     },
     translateSize(size) {
       return this.sizeTranslations[size] || size;
