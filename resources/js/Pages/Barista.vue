@@ -1,5 +1,5 @@
 <template>
-  <div class="h-screen flex flex-col" dir="rtl">
+  <div class="min-h-dvh flex flex-col" dir="rtl">
     <!-- Header -->
     <div class="flex-shrink-0 bg-white border-b border-gray-200 p-2 px-4">
       <div class="flex justify-between items-center gap-2">
@@ -8,32 +8,34 @@
       </div>
     </div>
 
-    <div class="flex-1 flex overflow-hidden">
+    <div class="flex-1 flex flex-col lg:flex-row overflow-hidden">
       <!-- الفئات -->
-      <div class="w-64 bg-gray-50 border-l border-gray-200 flex-shrink-0 flex flex-col">
+      <div class="w-full lg:w-72 bg-gray-50 border-b lg:border-b-0 lg:border-l border-gray-200 flex-shrink-0 flex flex-col">
         <div class="p-3 flex-shrink-0">
-          <h3 class="text-base font-semibold text-gray-800 mb-3 text-center">📋 الفئات</h3>
+          <h3 class="text-base font-semibold text-gray-800 text-center">📋 الفئات</h3>
         </div>
 
-        <div class="flex-1 overflow-y-auto px-3 pb-3">
-          <div class="space-y-1">
-            <div
-              class="cursor-pointer px-3 py-2 bg-blue-100 hover:bg-blue-200 rounded-lg text-center font-bold text-blue-800 shadow transition-colors text-sm"
+        <div class="flex-1 lg:overflow-y-auto overflow-x-auto px-3 pb-3">
+          <div class="flex lg:flex-col gap-2 lg:gap-1 lg:space-y-1 min-w-max lg:min-w-0">
+            <button
+              type="button"
+              class="cursor-pointer px-3 py-2 bg-blue-100 hover:bg-blue-200 rounded-lg text-center font-bold text-blue-800 shadow transition-colors text-sm whitespace-nowrap"
               :class="{ 'bg-blue-300': selectedCategoryId === null }"
               @click="selectCategory(null)"
             >
               كل المنتجات
-            </div>
+            </button>
 
-            <div
+            <button
               v-for="cat in categories"
               :key="cat.id"
-              class="cursor-pointer px-3 py-2 bg-white hover:bg-gray-100 rounded-lg text-center font-semibold shadow transition-colors border border-gray-200 text-sm"
+              type="button"
+              class="cursor-pointer px-3 py-2 bg-white hover:bg-gray-100 rounded-lg text-center font-semibold shadow transition-colors border border-gray-200 text-sm whitespace-nowrap"
               :class="{ 'bg-green-200 border-green-300': selectedCategoryId === cat.id }"
               @click="selectCategory(cat.id)"
             >
               {{ cat.name }}
-            </div>
+            </button>
           </div>
         </div>
       </div>
