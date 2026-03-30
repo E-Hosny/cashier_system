@@ -49,6 +49,16 @@
                   <input type="number" v-model="variant.price" class="input-style" placeholder="السعر" step="0.01" required />
                 </div>
               </div>
+
+              <div v-if="variant.is_active" class="mt-3">
+                <label class="block text-sm font-medium text-gray-600 mb-1">وصف الباريستا (الريسبي)</label>
+                <textarea
+                  v-model="variant.barista_description"
+                  class="input-style"
+                  rows="3"
+                  placeholder=""
+                ></textarea>
+              </div>
               
               <!-- Ingredients for this variant -->
               <div v-if="variant.is_active" class="mt-4 pt-4 border-t">
@@ -126,6 +136,7 @@ export default {
                         label: sizeInfo.label,
                         price: existingVariant ? existingVariant.price : '',
                         is_active: existingVariant ? true : false,
+                        barista_description: existingVariant && existingVariant.barista_description ? existingVariant.barista_description : '',
                         ingredients: existingIngredients.map(ing => ({
                             id: ing.id,
                             quantity: ing.pivot.quantity_consumed,
@@ -194,6 +205,10 @@ export default {
             activeVariants.forEach((variant, v_index) => {
                 formData.append(`size_variants[${v_index}][size]`, variant.size);
                 formData.append(`size_variants[${v_index}][price]`, variant.price);
+                formData.append(
+                  `size_variants[${v_index}][barista_description]`,
+                  variant.barista_description || ''
+                );
                 variant.ingredients.forEach((ing, i_index) => {
                     const unit = ing.unit === 'custom' ? ing.custom_unit : ing.unit;
                     formData.append(`size_variants[${v_index}][ingredients][${i_index}][id]`, ing.id);

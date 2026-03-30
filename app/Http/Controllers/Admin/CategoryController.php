@@ -18,19 +18,33 @@ class CategoryController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate(['name' => 'required|string|max:255']);
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'show_on_barista' => 'nullable|boolean',
+        ]);
+
+        $showOnBarista = $request->input('show_on_barista', true);
         Category::create([
             'name' => $request->name,
             'scope' => Category::SCOPE_PRODUCT,
+            'show_on_barista' => $showOnBarista,
         ]);
         return redirect()->route('admin.categories.index')->with('message', 'تمت إضافة الفئة بنجاح');
     }
 
     public function update(Request $request, $id)
     {
-        $request->validate(['name' => 'required|string|max:255']);
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'show_on_barista' => 'nullable|boolean',
+        ]);
+
+        $showOnBarista = $request->input('show_on_barista', true);
         $category = Category::forProducts()->findOrFail($id);
-        $category->update(['name' => $request->name]);
+        $category->update([
+            'name' => $request->name,
+            'show_on_barista' => $showOnBarista,
+        ]);
         return redirect()->route('admin.categories.index')->with('message', 'تم تحديث الفئة بنجاح');
     }
 

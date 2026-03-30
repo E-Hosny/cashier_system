@@ -14,6 +14,8 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\EmployeeController;
 use App\Http\Controllers\ExpenseController;
 
+use App\Http\Controllers\BaristaController;
+
 use App\Http\Controllers\CashierShiftController;
 use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\Admin\FeedbackController as AdminFeedbackController;
@@ -40,6 +42,9 @@ Route::middleware([
             'canManageFeedback' => Auth::user()->hasRole('admin') || Auth::user()->hasRole('super admin'),
         ]);
     })->name('dashboard');
+
+    // Barista (الريسبي)
+    Route::get('/barista', [BaristaController::class, 'index'])->name('barista.index');
 
     // Products
     Route::resource('products', ProductController::class, ['names' => 'admin.products'])->except(['show']);

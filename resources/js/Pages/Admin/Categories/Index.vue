@@ -11,6 +11,10 @@
       </h2>
       <form @submit.prevent="submitCategory" class="flex flex-col sm:flex-row gap-4 mb-6">
         <input v-model="form.name" type="text" class="input-style flex-1" placeholder="اسم الفئة الجديدة" required />
+        <label class="flex items-center gap-2 self-center text-sm text-gray-700">
+          <input type="checkbox" v-model="form.show_on_barista" class="h-4 w-4" />
+          يظهر في شاشة الباريستا
+        </label>
         <button type="submit" class="btn-green">
           {{ editingCategory ? '💾 حفظ التعديل' : '➕ إضافة' }}
         </button>
@@ -55,6 +59,7 @@ export default {
       categoriesList: [...this.categories],
       form: {
         name: "",
+        show_on_barista: true,
       },
       editingCategory: null,
     };
@@ -90,6 +95,7 @@ export default {
     },
     editCategory(cat) {
       this.form.name = cat.name;
+      this.form.show_on_barista = cat.show_on_barista != null ? cat.show_on_barista : true;
       this.editingCategory = cat;
     },
     cancelEdit() {
@@ -97,6 +103,7 @@ export default {
     },
     resetForm() {
         this.form.name = "";
+      this.form.show_on_barista = true;
         this.editingCategory = null;
     },
     deleteCategory(id) {

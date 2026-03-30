@@ -15,7 +15,11 @@ class Category extends Model
 
     public const SCOPE_RAW = 'raw';
 
-    protected $fillable = ['name', 'tenant_id', 'scope'];
+    protected $fillable = ['name', 'tenant_id', 'scope', 'show_on_barista'];
+
+    protected $casts = [
+        'show_on_barista' => 'boolean',
+    ];
 
     public function scopeForProducts($query)
     {
