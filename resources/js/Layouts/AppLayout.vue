@@ -1,6 +1,6 @@
 <script setup>
-import { ref } from 'vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import ApplicationMark from '@/Components/ApplicationMark.vue';
 import Banner from '@/Components/Banner.vue';
 import Dropdown from '@/Components/Dropdown.vue';
@@ -13,6 +13,18 @@ defineProps({
 });
 
 const showingSidebar = ref(false);
+const page = usePage();
+const userRoles = computed(() => page.props.auth?.user?.roles || []);
+const isBaristaOnly = computed(() =>
+    userRoles.value.includes('barista') &&
+    !userRoles.value.includes('admin') &&
+    !userRoles.value.includes('super admin')
+);
+const canUseBarista = computed(() =>
+    userRoles.value.includes('barista') ||
+    userRoles.value.includes('admin') ||
+    userRoles.value.includes('super admin')
+);
 
 const switchToTeam = (team) => {
     router.put(route('current-team.update'), {
@@ -68,13 +80,13 @@ const logout = () => {
 
                             <!-- Navigation Links -->
                             <div class="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
-                                <NavLink :href="route('dashboard')" :active="route().current('dashboard')">
+                                <NavLink v-if="!isBaristaOnly" :href="route('dashboard')" :active="route().current('dashboard')">
                                     لوحة التحكم
                                 </NavLink>
-                                <NavLink :href="route('admin.products.index')" :active="route().current('admin.products.index')">
+                                <NavLink v-if="!isBaristaOnly" :href="route('admin.products.index')" :active="route().current('admin.products.index')">
                                     المنتجات النهائية
                                 </NavLink>
-                                <NavLink :href="route('admin.raw-materials.index')" :active="route().current('admin.raw-materials.index')">
+                                <NavLink v-if="!isBaristaOnly" :href="route('admin.raw-materials.index')" :active="route().current('admin.raw-materials.index')">
                                     المواد الخام
                                 </NavLink>
                                 <NavLink 
@@ -91,14 +103,14 @@ const logout = () => {
                                 >
                                     عرض الشاشة
                                 </NavLink>
-                                <NavLink :href="route('cashier.index')" :active="route().current('cashier.index')">
+                                <NavLink v-if="!isBaristaOnly" :href="route('cashier.index')" :active="route().current('cashier.index')">
                                     الكاشير
                                 </NavLink>
 
-                                <NavLink :href="route('purchases.index')" :active="route().current('purchases.index')">
+                                <NavLink v-if="!isBaristaOnly" :href="route('purchases.index')" :active="route().current('purchases.index')">
                                     المشتريات
                                 </NavLink>
-                                <NavLink :href="route('expenses.index')" :active="route().current('expenses.index')">
+                                <NavLink v-if="!isBaristaOnly" :href="route('expenses.index')" :active="route().current('expenses.index')">
                                     المصروفات
                                 </NavLink>
                                 <NavLink 
@@ -107,6 +119,9 @@ const logout = () => {
                                     :active="route().current('admin.feedback.*')"
                                 >
                                     ⭐ التقييمات
+                                </NavLink>
+                                <NavLink v-if="canUseBarista" :href="route('barista.index')" :active="route().current('barista.index')">
+                                    الريسبي
                                 </NavLink>
                             </div>
                         </div>
@@ -287,13 +302,13 @@ const logout = () => {
                     <div class="flex-1 overflow-y-auto">
                         <!-- Responsive Navigation Links -->
                         <div class="pt-2 pb-3 space-y-1">
-                            <ResponsiveNavLink :href="route('dashboard')" :active="route().current('dashboard')" @click="showingSidebar = false">
+                            <ResponsiveNavLink v-if="!isBaristaOnly" :href="route('dashboard')" :active="route().current('dashboard')" @click="showingSidebar = false">
                                 لوحة التحكم
                             </ResponsiveNavLink>
-                            <ResponsiveNavLink :href="route('admin.products.index')" :active="route().current('admin.products.index')" @click="showingSidebar = false">
+                            <ResponsiveNavLink v-if="!isBaristaOnly" :href="route('admin.products.index')" :active="route().current('admin.products.index')" @click="showingSidebar = false">
                                 المنتجات النهائية
                             </ResponsiveNavLink>
-                            <ResponsiveNavLink :href="route('admin.raw-materials.index')" :active="route().current('admin.raw-materials.index')" @click="showingSidebar = false">
+                            <ResponsiveNavLink v-if="!isBaristaOnly" :href="route('admin.raw-materials.index')" :active="route().current('admin.raw-materials.index')" @click="showingSidebar = false">
                                 المواد الخام
                             </ResponsiveNavLink>
                             <ResponsiveNavLink 
@@ -312,14 +327,17 @@ const logout = () => {
                             >
                                 عرض الشاشة
                             </ResponsiveNavLink>
-                            <ResponsiveNavLink :href="route('cashier.index')" :active="route().current('cashier.index')" @click="showingSidebar = false">
+                            <ResponsiveNavLink v-if="!isBaristaOnly" :href="route('cashier.index')" :active="route().current('cashier.index')" @click="showingSidebar = false">
                                 الكاشير
                             </ResponsiveNavLink>
-                            <ResponsiveNavLink :href="route('purchases.index')" :active="route().current('purchases.index')" @click="showingSidebar = false">
+                            <ResponsiveNavLink v-if="!isBaristaOnly" :href="route('purchases.index')" :active="route().current('purchases.index')" @click="showingSidebar = false">
                                 المشتريات
                             </ResponsiveNavLink>
-                            <ResponsiveNavLink :href="route('expenses.index')" :active="route().current('expenses.index')" @click="showingSidebar = false">
+                            <ResponsiveNavLink v-if="!isBaristaOnly" :href="route('expenses.index')" :active="route().current('expenses.index')" @click="showingSidebar = false">
                                 المصروفات
+                            </ResponsiveNavLink>
+                            <ResponsiveNavLink v-if="canUseBarista" :href="route('barista.index')" :active="route().current('barista.index')" @click="showingSidebar = false">
+                                الريسبي
                             </ResponsiveNavLink>
                         </div>
 

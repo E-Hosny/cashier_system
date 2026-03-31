@@ -11,6 +11,10 @@ const canUseBarista = computed(() => {
   const roles = page.props?.auth?.user?.roles || [];
   return roles.includes('super admin') || roles.includes('admin') || roles.includes('barista');
 });
+const isBaristaOnly = computed(() => {
+  const roles = page.props?.auth?.user?.roles || [];
+  return roles.includes('barista') && !roles.includes('admin') && !roles.includes('super admin');
+});
 </script>
 
 <template>
@@ -23,7 +27,7 @@ const canUseBarista = computed(() => {
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <!-- Card 1: الكاشير -->
-                    <a href="/cashier" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
+                    <a v-if="!isBaristaOnly" href="/cashier" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
                         <div class="flex flex-col items-center">
                             <div class="text-blue-500 text-4xl mb-4">
                                 🏪
@@ -34,7 +38,7 @@ const canUseBarista = computed(() => {
                     </a>
 
                     <!-- Card 2: المنتجات -->
-                    <a href="/products" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
+                    <a v-if="!isBaristaOnly" href="/products" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
                         <div class="flex flex-col items-center">
                             <div class="text-green-500 text-4xl mb-4">
                                 📦
@@ -45,7 +49,7 @@ const canUseBarista = computed(() => {
                     </a>
 
                     <!-- Card 3: تقارير المبيعات -->
-                    <a v-if="canViewReports" href="/sales-report" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
+                    <a v-if="!isBaristaOnly && canViewReports" href="/sales-report" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
                         <div class="flex flex-col items-center">
                             <div class="text-red-500 text-4xl mb-4">
                                 📊
@@ -56,7 +60,7 @@ const canUseBarista = computed(() => {
                     </a>
 
                     <!-- Card 4: المشتريات -->
-                    <a href="/purchases" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
+                    <a v-if="!isBaristaOnly" href="/purchases" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
                         <div class="flex flex-col items-center">
                             <div class="text-yellow-500 text-4xl mb-4">
                                 🛒
@@ -67,7 +71,7 @@ const canUseBarista = computed(() => {
                     </a>
 
                     <!-- Card 5: المصروفات -->
-                    <a href="/expenses" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
+                    <a v-if="!isBaristaOnly" href="/expenses" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
                         <div class="flex flex-col items-center">
                             <div class="text-purple-500 text-4xl mb-4">
                                 💸
@@ -78,7 +82,7 @@ const canUseBarista = computed(() => {
                     </a>
 
                     <!-- Card 6: الموظفين -->
-                    <a v-if="canManageAttendance" href="/employees" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
+                    <a v-if="!isBaristaOnly && canManageAttendance" href="/employees" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
                         <div class="flex flex-col items-center">
                             <div class="text-orange-500 text-4xl mb-4">
                                 👥
@@ -89,7 +93,7 @@ const canUseBarista = computed(() => {
                     </a>
 
                     <!-- Card 6: الفواتير -->
-                    <a href="/invoices" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
+                    <a v-if="!isBaristaOnly" href="/invoices" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
                         <div class="flex flex-col items-center">
                             <div class="text-indigo-500 text-4xl mb-4">
                                 🧾
@@ -100,7 +104,7 @@ const canUseBarista = computed(() => {
                     </a>
 
                     <!-- Card 7: التقييمات -->
-                    <a v-if="canManageFeedback" 
+                    <a v-if="!isBaristaOnly && canManageFeedback" 
                        href="/admin/feedback" 
                        class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
                         <div class="flex flex-col items-center">
