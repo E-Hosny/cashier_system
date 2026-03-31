@@ -67,10 +67,38 @@
                         <div v-for="(ingredient, i_index) in variant.ingredients" :key="i_index" class="flex gap-4 items-end mb-4">
                             <div class="flex-1">
                                 <label class="block text-gray-700 mb-1 text-sm">المادة الخام</label>
-                                <select v-model="ingredient.raw_material_id" class="input-style">
-                                    <option disabled value="">اختر المادة الخام</option>
-                                    <option v-for="material in rawMaterials" :key="material.id" :value="material.id">{{ material.name }} ({{ material.unit }})</option>
-                                </select>
+                                <div class="relative">
+                                    <input
+                                      v-model="ingredient.raw_material_query"
+                                      type="text"
+                                      class="input-style"
+                                      placeholder="اختر/اكتب المادة الخام"
+                                      @focus="openMaterialDropdown(ingredient)"
+                                      @click="openMaterialDropdown(ingredient)"
+                                      @input="onMaterialInput(ingredient)"
+                                      @blur="closeMaterialDropdown(ingredient)"
+                                    />
+                                    <div
+                                      v-if="ingredient.is_material_open"
+                                      class="absolute z-30 mt-1 w-full max-h-56 overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg"
+                                    >
+                                        <button
+                                          v-for="material in filteredRawMaterials(ingredient.raw_material_query)"
+                                          :key="material.id"
+                                          type="button"
+                                          class="w-full px-3 py-2 text-right hover:bg-gray-100 text-sm"
+                                          @mousedown.prevent="selectMaterial(ingredient, material)"
+                                        >
+                                          {{ materialOptionLabel(material) }}
+                                        </button>
+                                        <div
+                                          v-if="filteredRawMaterials(ingredient.raw_material_query).length === 0"
+                                          class="px-3 py-2 text-sm text-gray-500"
+                                        >
+                                          لا توجد نتائج
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             <div class="w-1/4">
                                 <label class="block text-gray-700 mb-1 text-sm">الكمية المستهلكة</label>
@@ -139,7 +167,7 @@ export default {
             this.form.image = event.target.files[0];
         },
         addIngredient(variant) {
-            variant.ingredients.push({ raw_material_id: '', quantity_consumed: '', unit: 'مللي', custom_unit: '' });
+            variant.ingredients.push({ raw_material_id: '', quantity_consumed: '', unit: 'مللي', custom_unit: '', raw_material_query: '', is_material_open: false });
         },
         removeIngredient(variant, index) {
             variant.ingredients.splice(index, 1);
@@ -149,6 +177,41 @@ export default {
         },
         deactivateAllSizes() {
             this.form.size_variants.forEach(v => v.is_active = false);
+        },
+        filteredRawMaterials(searchTerm) {
+            const term = (searchTerm || '').trim().toLowerCase();
+            if (!term) return this.rawMaterials;
+
+            return this.rawMaterials.filter((material) =>
+                material.name?.toLowerCase().includes(term) ||
+                material.unit?.toLowerCase().includes(term)
+            );
+        },
+        materialOptionLabel(material) {
+            return `${material.name} (${material.unit})`;
+        },
+        onMaterialInput(ingredient) {
+            ingredient.is_material_open = true;
+            this.syncIngredientMaterialId(ingredient);
+        },
+        syncIngredientMaterialId(ingredient) {
+            const selected = this.rawMaterials.find(
+                (m) => this.materialOptionLabel(m) === ingredient.raw_material_query
+            );
+            ingredient.raw_material_id = selected ? selected.id : '';
+        },
+        openMaterialDropdown(ingredient) {
+            ingredient.is_material_open = true;
+        },
+        closeMaterialDropdown(ingredient) {
+            setTimeout(() => {
+                ingredient.is_material_open = false;
+            }, 120);
+        },
+        selectMaterial(ingredient, material) {
+            ingredient.raw_material_query = this.materialOptionLabel(material);
+            ingredient.raw_material_id = material.id;
+            ingredient.is_material_open = false;
         },
         submit() {
             const activeVariants = this.form.size_variants.filter(v => v.is_active);
