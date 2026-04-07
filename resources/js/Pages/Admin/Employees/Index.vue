@@ -103,6 +103,9 @@
                   <td class="p-4">
                     <div class="font-semibold">{{ employee.name }}</div>
                     <div class="text-sm text-gray-500">{{ employee.phone || 'لا يوجد رقم' }}</div>
+                    <div v-if="employee.attendance_dependency_employee_name" class="text-xs text-amber-700 mt-1">
+                      مرتبط حضور مع: {{ employee.attendance_dependency_employee_name }}
+                    </div>
                   </td>
                   <td class="p-4 text-gray-600">{{ employee.position || 'غير محدد' }}</td>
                   <td v-if="isAdmin" class="p-4 font-bold text-green-600">{{ formatPrice(employee.hourly_rate) }}</td>

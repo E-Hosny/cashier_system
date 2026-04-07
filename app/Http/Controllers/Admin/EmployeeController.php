@@ -33,7 +33,9 @@ class EmployeeController extends Controller
 
         $isViewingTodayBusinessDay = $selectedAnchor === $maxAnchor;
 
-        $employees = Employee::where('is_active', true)->get();
+        $employees = Employee::where('is_active', true)
+            ->with('attendanceDependencyEmployee:id,name')
+            ->get();
 
         // إضافة معلومات الحضور والرواتب ليوم العمل المحدد (7 ص → 7 ص)
         $employees->each(function ($employee) use ($selectedAnchor, $isViewingTodayBusinessDay) {
@@ -49,6 +51,7 @@ class EmployeeController extends Controller
             $employee->today_delivery_status = $employee->getSalaryDeliveryForDate($selectedAnchor);
             $employee->is_salary_delivered = $employee->today_delivery_status && $employee->today_delivery_status->isDelivered();
             $employee->delivery_status_text = $employee->today_delivery_status ? $employee->today_delivery_status->status_text : 'غير محدد';
+            $employee->attendance_dependency_employee_name = optional($employee->attendanceDependencyEmployee)->name;
         });
 
         $totalTodayAmount = $employees->sum('today_amount');
@@ -71,7 +74,10 @@ class EmployeeController extends Controller
      */
     public function create()
     {
-        return Inertia::render('Admin/Employees/Create');
+        return Inertia::render('Admin/Employees/Create', [
+            'employees' => Employee::where('is_active', true)->select('id', 'name')->orderBy('name')->get(),
+            'canManageAttendanceDependency' => auth()->user()?->hasRole('super admin') ?? false,
+        ]);
     }
 
     /**
@@ -79,15 +85,20 @@ class EmployeeController extends Controller
      */
     public function store(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'name' => 'required|string|max:255',
             'hourly_rate' => 'required|numeric|min:0',
             'phone' => 'nullable|string|max:20',
             'position' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
+            'attendance_dependency_employee_id' => 'nullable|exists:employees,id',
         ]);
 
-        Employee::create($request->all());
+        if (! (auth()->user()?->hasRole('super admin') ?? false)) {
+            $validated['attendance_dependency_employee_id'] = null;
+        }
+
+        Employee::create($validated);
 
         return redirect()->route('admin.employees.index')
             ->with('success', 'تم إضافة الموظف بنجاح');
@@ -100,6 +111,12 @@ class EmployeeController extends Controller
     {
         return Inertia::render('Admin/Employees/Edit', [
             'employee' => $employee,
+            'employees' => Employee::where('is_active', true)
+                ->where('id', '!=', $employee->id)
+                ->select('id', 'name')
+                ->orderBy('name')
+                ->get(),
+            'canManageAttendanceDependency' => auth()->user()?->hasRole('super admin') ?? false,
         ]);
     }
 
@@ -108,16 +125,21 @@ class EmployeeController extends Controller
      */
     public function update(Request $request, Employee $employee)
     {
-        $request->validate([
+        $validated = $request->validate([
             'name' => 'required|string|max:255',
             'hourly_rate' => 'required|numeric|min:0',
             'phone' => 'nullable|string|max:20',
             'position' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
             'is_active' => 'boolean',
+            'attendance_dependency_employee_id' => 'nullable|exists:employees,id|different:' . $employee->id,
         ]);
 
-        $employee->update($request->all());
+        if (! (auth()->user()?->hasRole('super admin') ?? false)) {
+            unset($validated['attendance_dependency_employee_id']);
+        }
+
+        $employee->update($validated);
 
         return redirect()->route('admin.employees.index')
             ->with('success', 'تم تحديث بيانات الموظف بنجاح');
@@ -145,6 +167,14 @@ class EmployeeController extends Controller
                 'success' => false,
                 'message' => 'الموظف موجود بالفعل في العمل'
             ], 400);
+        }
+
+        $blockingEmployee = $employee->getAttendanceBlockingEmployee();
+        if ($blockingEmployee) {
+            return response()->json([
+                'success' => false,
+                'message' => "لا يمكن تسجيل حضور {$employee->name} الآن لأن {$blockingEmployee->name} ما زال في العمل.",
+            ], 422);
         }
 
         // إنشاء سجل حضور جديد

@@ -19,6 +19,7 @@ class Employee extends Model
         'phone',
         'position',
         'notes',
+        'attendance_dependency_employee_id',
         'tenant_id',
     ];
 
@@ -54,6 +55,45 @@ class Employee extends Model
     public function discounts()
     {
         return $this->hasMany(EmployeeDiscount::class);
+    }
+
+    /**
+     * الموظف الذي يعتمد عليه هذا الموظف في السماح بالحضور.
+     */
+    public function attendanceDependencyEmployee()
+    {
+        return $this->belongsTo(Employee::class, 'attendance_dependency_employee_id');
+    }
+
+    /**
+     * الموظفون الذين يعتمدون على هذا الموظف.
+     */
+    public function dependents()
+    {
+        return $this->hasMany(Employee::class, 'attendance_dependency_employee_id');
+    }
+
+    /**
+     * إرجاع موظف يمنع تسجيل الحضور (سواء كان هو المعتمد عليه أو الموظف الحالي معتمد عليه).
+     */
+    public function getAttendanceBlockingEmployee(): ?Employee
+    {
+        $dependencyId = $this->attendance_dependency_employee_id;
+        if ($dependencyId) {
+            $dependencyEmployee = Employee::find($dependencyId);
+            if ($dependencyEmployee && $dependencyEmployee->isCurrentlyPresent()) {
+                return $dependencyEmployee;
+            }
+        }
+
+        $dependentEmployee = Employee::where('attendance_dependency_employee_id', $this->id)
+            ->get()
+            ->first(fn (Employee $emp) => $emp->isCurrentlyPresent());
+        if ($dependentEmployee) {
+            return $dependentEmployee;
+        }
+
+        return null;
     }
 
     /**

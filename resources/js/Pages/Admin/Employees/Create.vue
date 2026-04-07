@@ -91,6 +91,23 @@
               <div v-if="errors.notes" class="text-red-500 text-sm mt-1">{{ errors.notes }}</div>
             </div>
 
+            <div v-if="canManageAttendanceDependency" class="mb-6">
+              <label class="block text-gray-700 text-sm font-bold mb-2">
+                ربط الحضور بموظف آخر (اختياري)
+              </label>
+              <select
+                v-model="form.attendance_dependency_employee_id"
+                class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option :value="null">بدون ربط</option>
+                <option v-for="item in employees" :key="item.id" :value="item.id">{{ item.name }}</option>
+              </select>
+              <p class="text-xs text-gray-500 mt-1">
+                عند الربط، لا يمكن تسجيل حضور هذا الموظف إذا كان الموظف المرتبط ما زال في العمل.
+              </p>
+              <div v-if="errors.attendance_dependency_employee_id" class="text-red-500 text-sm mt-1">{{ errors.attendance_dependency_employee_id }}</div>
+            </div>
+
             <!-- أزرار الإجراءات -->
             <div class="flex gap-4">
               <button
@@ -144,12 +161,21 @@ export default {
       phone: '',
       position: '',
       notes: '',
+      attendance_dependency_employee_id: null,
     });
 
     return { form };
   },
   props: {
     errors: Object,
+    employees: {
+      type: Array,
+      default: () => [],
+    },
+    canManageAttendanceDependency: {
+      type: Boolean,
+      default: false,
+    },
   },
   computed: {
     loading() {
