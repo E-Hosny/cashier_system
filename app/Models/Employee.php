@@ -20,6 +20,9 @@ class Employee extends Model
         'position',
         'notes',
         'attendance_dependency_employee_id',
+        'attendance_group_id',
+        'attendance_group_code',
+        'attendance_group_max_present',
         'tenant_id',
     ];
 
@@ -73,6 +76,11 @@ class Employee extends Model
         return $this->hasMany(Employee::class, 'attendance_dependency_employee_id');
     }
 
+    public function attendanceGroup()
+    {
+        return $this->belongsTo(AttendanceGroup::class, 'attendance_group_id');
+    }
+
     /**
      * إرجاع موظف يمنع تسجيل الحضور (سواء كان هو المعتمد عليه أو الموظف الحالي معتمد عليه).
      */
@@ -91,6 +99,54 @@ class Employee extends Model
             ->first(fn (Employee $emp) => $emp->isCurrentlyPresent());
         if ($dependentEmployee) {
             return $dependentEmployee;
+        }
+
+        return null;
+    }
+
+    /**
+     * عدد الحاضرين الآن داخل مجموعة الحضور لنفس الموظف.
+     */
+    public function getCurrentPresentCountInAttendanceGroup(): int
+    {
+        if ($this->attendance_group_id) {
+            return Employee::where('attendance_group_id', $this->attendance_group_id)
+                ->get()
+                ->filter(fn (Employee $emp) => $emp->isCurrentlyPresent())
+                ->count();
+        }
+
+        if (!$this->attendance_group_code) {
+            return 0;
+        }
+
+        return Employee::where('attendance_group_code', $this->attendance_group_code)
+            ->get()
+            ->filter(fn (Employee $emp) => $emp->isCurrentlyPresent())
+            ->count();
+    }
+
+    /**
+     * رسالة منع الحضور بسبب حد أقصى لمجموعة حضور.
+     */
+    public function getAttendanceGroupCapacityBlockMessage(): ?string
+    {
+        if ($this->attendance_group_id && $this->attendanceGroup) {
+            $presentCount = $this->getCurrentPresentCountInAttendanceGroup();
+            if ($presentCount >= (int) $this->attendanceGroup->max_present) {
+                return "لا يمكن تسجيل الحضور الآن. مجموعة ({$this->attendanceGroup->name}) وصلت للحد الأقصى ({$this->attendanceGroup->max_present}) حضور متزامن.";
+            }
+
+            return null;
+        }
+
+        if (!$this->attendance_group_code || !$this->attendance_group_max_present) {
+            return null;
+        }
+
+        $presentCount = $this->getCurrentPresentCountInAttendanceGroup();
+        if ($presentCount >= (int) $this->attendance_group_max_present) {
+            return "لا يمكن تسجيل الحضور الآن. مجموعة ({$this->attendance_group_code}) وصلت للحد الأقصى ({$this->attendance_group_max_present}) حضور متزامن.";
         }
 
         return null;

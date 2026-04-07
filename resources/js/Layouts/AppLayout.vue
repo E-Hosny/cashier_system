@@ -103,6 +103,13 @@ const logout = () => {
                                 >
                                     عرض الشاشة
                                 </NavLink>
+                                <NavLink
+                                    v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('super admin')"
+                                    :href="route('admin.employees.attendance-groups.index')"
+                                    :active="route().current('admin.employees.attendance-groups.*')"
+                                >
+                                    مجموعات الحضور
+                                </NavLink>
                                 <NavLink v-if="!isBaristaOnly" :href="route('cashier.index')" :active="route().current('cashier.index')">
                                     الكاشير
                                 </NavLink>
@@ -326,6 +333,14 @@ const logout = () => {
                                 @click="showingSidebar = false"
                             >
                                 عرض الشاشة
+                            </ResponsiveNavLink>
+                            <ResponsiveNavLink
+                                v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('super admin')"
+                                :href="route('admin.employees.attendance-groups.index')"
+                                :active="route().current('admin.employees.attendance-groups.*')"
+                                @click="showingSidebar = false"
+                            >
+                                مجموعات الحضور
                             </ResponsiveNavLink>
                             <ResponsiveNavLink v-if="!isBaristaOnly" :href="route('cashier.index')" :active="route().current('cashier.index')" @click="showingSidebar = false">
                                 الكاشير

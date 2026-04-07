@@ -106,6 +106,9 @@
                     <div v-if="employee.attendance_dependency_employee_name" class="text-xs text-amber-700 mt-1">
                       مرتبط حضور مع: {{ employee.attendance_dependency_employee_name }}
                     </div>
+                    <div v-if="employee.attendance_group_name && employee.attendance_group_max_present" class="text-xs text-indigo-700 mt-1">
+                      مجموعة: {{ employee.attendance_group_name }} (حد متزامن: {{ employee.attendance_group_max_present }})
+                    </div>
                   </td>
                   <td class="p-4 text-gray-600">{{ employee.position || 'غير محدد' }}</td>
                   <td v-if="isAdmin" class="p-4 font-bold text-green-600">{{ formatPrice(employee.hourly_rate) }}</td>

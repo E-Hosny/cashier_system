@@ -7,6 +7,7 @@ use App\Models\Employee;
 use App\Models\EmployeeAttendance;
 use App\Models\SalaryDelivery;
 use App\Models\EmployeeDiscount;
+use App\Models\AttendanceGroup;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Carbon\Carbon;
@@ -34,7 +35,7 @@ class EmployeeController extends Controller
         $isViewingTodayBusinessDay = $selectedAnchor === $maxAnchor;
 
         $employees = Employee::where('is_active', true)
-            ->with('attendanceDependencyEmployee:id,name')
+            ->with(['attendanceDependencyEmployee:id,name', 'attendanceGroup:id,name,max_present'])
             ->get();
 
         // إضافة معلومات الحضور والرواتب ليوم العمل المحدد (7 ص → 7 ص)
@@ -52,6 +53,8 @@ class EmployeeController extends Controller
             $employee->is_salary_delivered = $employee->today_delivery_status && $employee->today_delivery_status->isDelivered();
             $employee->delivery_status_text = $employee->today_delivery_status ? $employee->today_delivery_status->status_text : 'غير محدد';
             $employee->attendance_dependency_employee_name = optional($employee->attendanceDependencyEmployee)->name;
+            $employee->attendance_group_name = optional($employee->attendanceGroup)->name;
+            $employee->attendance_group_max_present = optional($employee->attendanceGroup)->max_present;
         });
 
         $totalTodayAmount = $employees->sum('today_amount');
@@ -76,6 +79,7 @@ class EmployeeController extends Controller
     {
         return Inertia::render('Admin/Employees/Create', [
             'employees' => Employee::where('is_active', true)->select('id', 'name')->orderBy('name')->get(),
+            'attendanceGroups' => AttendanceGroup::select('id', 'name', 'max_present')->orderBy('name')->get(),
             'canManageAttendanceDependency' => auth()->user()?->hasRole('super admin') ?? false,
         ]);
     }
@@ -92,10 +96,21 @@ class EmployeeController extends Controller
             'position' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
             'attendance_dependency_employee_id' => 'nullable|exists:employees,id',
+            'attendance_group_id' => 'nullable|exists:attendance_groups,id',
+            'attendance_group_code' => 'nullable|string|max:100',
+            'attendance_group_max_present' => 'nullable|integer|min:1|max:20',
         ]);
 
         if (! (auth()->user()?->hasRole('super admin') ?? false)) {
             $validated['attendance_dependency_employee_id'] = null;
+            $validated['attendance_group_id'] = null;
+            $validated['attendance_group_code'] = null;
+            $validated['attendance_group_max_present'] = null;
+        }
+
+        if (empty($validated['attendance_group_code'])) {
+            $validated['attendance_group_code'] = null;
+            $validated['attendance_group_max_present'] = null;
         }
 
         Employee::create($validated);
@@ -116,6 +131,7 @@ class EmployeeController extends Controller
                 ->select('id', 'name')
                 ->orderBy('name')
                 ->get(),
+            'attendanceGroups' => AttendanceGroup::select('id', 'name', 'max_present')->orderBy('name')->get(),
             'canManageAttendanceDependency' => auth()->user()?->hasRole('super admin') ?? false,
         ]);
     }
@@ -133,10 +149,21 @@ class EmployeeController extends Controller
             'notes' => 'nullable|string',
             'is_active' => 'boolean',
             'attendance_dependency_employee_id' => 'nullable|exists:employees,id|different:' . $employee->id,
+            'attendance_group_id' => 'nullable|exists:attendance_groups,id',
+            'attendance_group_code' => 'nullable|string|max:100',
+            'attendance_group_max_present' => 'nullable|integer|min:1|max:20',
         ]);
 
         if (! (auth()->user()?->hasRole('super admin') ?? false)) {
             unset($validated['attendance_dependency_employee_id']);
+            unset($validated['attendance_group_id']);
+            unset($validated['attendance_group_code']);
+            unset($validated['attendance_group_max_present']);
+        }
+
+        if (array_key_exists('attendance_group_code', $validated) && empty($validated['attendance_group_code'])) {
+            $validated['attendance_group_code'] = null;
+            $validated['attendance_group_max_present'] = null;
         }
 
         $employee->update($validated);
@@ -174,6 +201,14 @@ class EmployeeController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => "لا يمكن تسجيل حضور {$employee->name} الآن لأن {$blockingEmployee->name} ما زال في العمل.",
+            ], 422);
+        }
+
+        $groupBlockMessage = $employee->getAttendanceGroupCapacityBlockMessage();
+        if ($groupBlockMessage) {
+            return response()->json([
+                'success' => false,
+                'message' => $groupBlockMessage,
             ], 422);
         }
 

@@ -108,6 +108,23 @@
               <div v-if="errors.attendance_dependency_employee_id" class="text-red-500 text-sm mt-1">{{ errors.attendance_dependency_employee_id }}</div>
             </div>
 
+            <div v-if="canManageAttendanceDependency" class="mb-6">
+              <label class="block text-gray-700 text-sm font-bold mb-2">
+                مجموعة الحضور (اختياري)
+              </label>
+              <select
+                v-model="form.attendance_group_id"
+                class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option :value="null">بدون مجموعة</option>
+                <option v-for="group in attendanceGroups" :key="group.id" :value="group.id">
+                  {{ group.name }} (حد: {{ group.max_present }})
+                </option>
+              </select>
+              <p class="text-xs text-gray-500 mt-1">يمكنك إنشاء مجموعة جديدة من صفحة "مجموعات الحضور".</p>
+              <div v-if="errors.attendance_group_id" class="text-red-500 text-sm mt-1">{{ errors.attendance_group_id }}</div>
+            </div>
+
             <!-- أزرار الإجراءات -->
             <div class="flex gap-4">
               <button
@@ -162,6 +179,7 @@ export default {
       position: '',
       notes: '',
       attendance_dependency_employee_id: null,
+      attendance_group_id: null,
     });
 
     return { form };
@@ -175,6 +193,10 @@ export default {
     canManageAttendanceDependency: {
       type: Boolean,
       default: false,
+    },
+    attendanceGroups: {
+      type: Array,
+      default: () => [],
     },
   },
   computed: {
