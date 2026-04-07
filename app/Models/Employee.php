@@ -77,45 +77,116 @@ class Employee extends Model
     }
 
     /**
-     * الحصول على إجمالي ساعات العمل لليوم الحالي (من 7 صباحاً إلى 7 صباحاً للوم التالي)
+     * تاريخ بداية «يوم العمل» الحالي (من 7 ص إلى 7 ص): التقويم عند 7 ص يوم D يُعتبر يوم العمل D.
      */
-    public function getTodayHours()
+    public static function businessDayAnchorFromNow(): string
     {
         $now = Carbon::now();
-        $currentHour = $now->hour;
-        
-        // تحديد التاريخ الصحيح بناءً على الوقت الحالي
-        if ($currentHour < 7) {
-            // قبل الساعة 7 صباحاً - نحسب من 7 صباحاً اليوم السابق إلى 7 صباحاً اليوم الحالي
-            $startDate = $now->copy()->subDay()->setTime(7, 0, 0);
-            $endDate = $now->copy()->setTime(7, 0, 0);
-        } else {
-            // بعد الساعة 7 صباحاً - نحسب من 7 صباحاً اليوم الحالي إلى 7 صباحاً للوم التالي
-            $startDate = $now->copy()->setTime(7, 0, 0);
-            $endDate = $now->copy()->addDay()->setTime(7, 0, 0);
-        }
-        
-        // البحث عن سجلات الحضور في الفترة المحددة
+
+        return $now->hour < 7
+            ? $now->copy()->subDay()->toDateString()
+            : $now->toDateString();
+    }
+
+    /**
+     * حدود الفترة [بداية، نهاية) ليوم عمل مرتبط بتاريخ الربط (نفس يوم التقويم عند الساعة 7 ص).
+     *
+     * @return array{0: \Carbon\Carbon, 1: \Carbon\Carbon}
+     */
+    public static function businessDayBoundsForAnchor(string $anchorDate): array
+    {
+        $start = Carbon::parse($anchorDate)->setTime(7, 0, 0);
+        $end = $start->copy()->addDay();
+
+        return [$start, $end];
+    }
+
+    /**
+     * نص توضيحي لفترة يوم العمل حسب تاريخ الربط
+     */
+    public static function periodTextForAnchorDate(string $anchorDate): string
+    {
+        $d = Carbon::parse($anchorDate)->format('Y-m-d');
+        $next = Carbon::parse($anchorDate)->addDay()->format('Y-m-d');
+
+        return "من الساعة 7:00 صباحاً {$d} إلى الساعة 7:00 صباحاً {$next}";
+    }
+
+    /**
+     * إجمالي ساعات العمل ليوم عمل محدد (تاريخ الربط = نفس منطق الخصومات والراتب لليوم)
+     */
+    public function getHoursForBusinessDayAnchor(string $anchorDate): float
+    {
+        [$startDate, $endDate] = self::businessDayBoundsForAnchor($anchorDate);
+
         $attendances = $this->attendanceRecords()
             ->whereBetween('checkin_time', [$startDate, $endDate])
             ->get();
-        
+
         $totalHours = 0;
-        
+
         foreach ($attendances as $attendance) {
             $checkinTime = Carbon::parse($attendance->checkin_time);
             $checkoutTime = $attendance->checkout_time ?? Carbon::now();
             $checkoutTime = Carbon::parse($checkoutTime);
-            
-            // التأكد من أن وقت الانصراف لا يتجاوز نهاية الفترة
+
             if ($checkoutTime > $endDate) {
                 $checkoutTime = $endDate;
             }
-            
+
             $totalHours += $checkinTime->diffInHours($checkoutTime, true);
         }
-        
-        return $totalHours;
+
+        return (float) $totalHours;
+    }
+
+    /**
+     * سجلات الحضور ليوم عمل محدد
+     */
+    public function getAttendanceRecordsForBusinessDayAnchor(string $anchorDate)
+    {
+        [$startDate, $endDate] = self::businessDayBoundsForAnchor($anchorDate);
+
+        return $this->attendanceRecords()
+            ->whereBetween('checkin_time', [$startDate, $endDate])
+            ->orderBy('checkin_time', 'desc')
+            ->get();
+    }
+
+    /**
+     * خصومات يوم عمل محدد (حقل discount_date = تاريخ الربط)
+     */
+    public function getDiscountsForBusinessDayAnchor(string $anchorDate)
+    {
+        return $this->discounts()
+            ->where('discount_date', Carbon::parse($anchorDate)->toDateString())
+            ->orderBy('created_at', 'desc')
+            ->get();
+    }
+
+    public function getDiscountTotalForBusinessDayAnchor(string $anchorDate): float
+    {
+        return (float) $this->getDiscountsForBusinessDayAnchor($anchorDate)->sum('amount');
+    }
+
+    /**
+     * المبلغ بعد الخصومات ليوم عمل محدد
+     */
+    public function getAmountForBusinessDayAnchor(string $anchorDate): float
+    {
+        $hours = $this->getHoursForBusinessDayAnchor($anchorDate);
+        $baseAmount = $hours * (float) $this->hourly_rate;
+        $discountTotal = $this->getDiscountTotalForBusinessDayAnchor($anchorDate);
+
+        return max(0, $baseAmount - $discountTotal);
+    }
+
+    /**
+     * الحصول على إجمالي ساعات العمل لليوم الحالي (من 7 صباحاً إلى 7 صباحاً للوم التالي)
+     */
+    public function getTodayHours()
+    {
+        return $this->getHoursForBusinessDayAnchor(self::businessDayAnchorFromNow());
     }
 
     /**
@@ -123,24 +194,7 @@ class Employee extends Model
      */
     public function getTodayAttendanceRecords()
     {
-        $now = Carbon::now();
-        $currentHour = $now->hour;
-        
-        // تحديد التاريخ الصحيح بناءً على الوقت الحالي
-        if ($currentHour < 7) {
-            // قبل الساعة 7 صباحاً - نحسب من 7 صباحاً اليوم السابق إلى 7 صباحاً اليوم الحالي
-            $startDate = $now->copy()->subDay()->setTime(7, 0, 0);
-            $endDate = $now->copy()->setTime(7, 0, 0);
-        } else {
-            // بعد الساعة 7 صباحاً - نحسب من 7 صباحاً اليوم الحالي إلى 7 صباحاً للوم التالي
-            $startDate = $now->copy()->setTime(7, 0, 0);
-            $endDate = $now->copy()->addDay()->setTime(7, 0, 0);
-        }
-        
-        return $this->attendanceRecords()
-            ->whereBetween('checkin_time', [$startDate, $endDate])
-            ->orderBy('checkin_time', 'desc')
-            ->get();
+        return $this->getAttendanceRecordsForBusinessDayAnchor(self::businessDayAnchorFromNow());
     }
 
     /**
@@ -149,11 +203,7 @@ class Employee extends Model
      */
     public function getTodayAmount()
     {
-        $hours = $this->getTodayHours();
-        $baseAmount = $hours * $this->hourly_rate;
-        $discountTotal = $this->getTodayDiscountTotal();
-        $finalAmount = max(0, $baseAmount - $discountTotal); // التأكد من عدم وجود مبلغ سالب
-        return $finalAmount;
+        return $this->getAmountForBusinessDayAnchor(self::businessDayAnchorFromNow());
     }
 
     /**
@@ -161,20 +211,7 @@ class Employee extends Model
      */
     public function getTodayDiscounts()
     {
-        $now = Carbon::now();
-        $currentHour = $now->hour;
-        
-        // تحديد التاريخ الصحيح بناءً على الوقت الحالي (نفس منطق حساب الراتب)
-        if ($currentHour < 7) {
-            $targetDate = $now->copy()->subDay()->toDateString();
-        } else {
-            $targetDate = $now->copy()->toDateString();
-        }
-        
-        return $this->discounts()
-            ->where('discount_date', $targetDate)
-            ->orderBy('created_at', 'desc')
-            ->get();
+        return $this->getDiscountsForBusinessDayAnchor(self::businessDayAnchorFromNow());
     }
 
     /**
@@ -191,20 +228,7 @@ class Employee extends Model
      */
     public function getCurrentPeriodText()
     {
-        $now = Carbon::now();
-        $currentHour = $now->hour;
-        
-        if ($currentHour < 7) {
-            // قبل الساعة 7 صباحاً
-            $startDate = $now->copy()->subDay()->format('Y-m-d');
-            $endDate = $now->copy()->format('Y-m-d');
-            return "من الساعة 7:00 صباحاً {$startDate} إلى الساعة 7:00 صباحاً {$endDate}";
-        } else {
-            // بعد الساعة 7 صباحاً
-            $startDate = $now->copy()->format('Y-m-d');
-            $endDate = $now->copy()->addDay()->format('Y-m-d');
-            return "من الساعة 7:00 صباحاً {$startDate} إلى الساعة 7:00 صباحاً {$endDate}";
-        }
+        return self::periodTextForAnchorDate(self::businessDayAnchorFromNow());
     }
 
     /**
@@ -301,17 +325,7 @@ class Employee extends Model
      */
     public function getTodayDeliveryStatus()
     {
-        $now = Carbon::now();
-        $currentHour = $now->hour;
-        
-        // تحديد التاريخ الصحيح بناءً على الوقت الحالي
-        if ($currentHour < 7) {
-            $targetDate = $now->copy()->subDay()->toDateString();
-        } else {
-            $targetDate = $now->copy()->toDateString();
-        }
-        
-        return $this->getSalaryDeliveryForDate($targetDate);
+        return $this->getSalaryDeliveryForDate(self::businessDayAnchorFromNow());
     }
 
     /**

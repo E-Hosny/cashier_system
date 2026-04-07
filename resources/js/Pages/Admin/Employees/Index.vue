@@ -10,10 +10,22 @@
       <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
         <div class="bg-white overflow-hidden shadow-xl sm:rounded-lg p-6">
           <!-- رأس الصفحة -->
-          <div class="mb-6 flex justify-between items-center">
+          <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-start">
             <div>
               <h3 class="text-lg font-semibold text-gray-900">{{ (isAdmin || isSuperAdmin) ? 'قائمة الموظفين' : 'الحضور والانصراف' }}</h3>
               <p class="text-sm text-gray-600">{{ (isAdmin || isSuperAdmin) ? 'إدارة حضور وانصراف الموظفين' : 'تسجيل حضور وانصراف الموظفين' }}</p>
+              <p class="text-xs text-gray-500 mt-2 max-w-xl leading-relaxed">{{ currentPeriodText }}</p>
+            </div>
+            <div class="flex flex-col gap-1 shrink-0">
+              <label for="employee-day-picker" class="text-sm font-medium text-gray-700">يوم العمل <span class="text-gray-500 font-normal">(7 ص → 7 ص)</span></label>
+              <input
+                id="employee-day-picker"
+                type="date"
+                class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                :value="selectedDate"
+                :max="maxSelectableDate"
+                @change="onBusinessDayChange"
+              />
             </div>
             <div v-if="isAdmin || isSuperAdmin" class="flex gap-2">
               <Link
@@ -40,16 +52,18 @@
               <div class="text-blue-800 text-sm">إجمالي الموظفين</div>
             </div>
             <div class="bg-green-50 p-4 rounded-lg">
-              <div class="text-green-600 text-2xl font-bold">{{ presentEmployees.length }}</div>
-              <div class="text-green-800 text-sm">الموظفين الحاضرين</div>
+              <div class="text-green-600 text-2xl font-bold">{{ isViewingTodayBusinessDay ? presentEmployees.length : '—' }}</div>
+              <div class="text-green-800 text-sm">الموظفين الحاضرين الآن</div>
+              <div v-if="!isViewingTodayBusinessDay" class="text-xs text-gray-500 mt-1">لليوم الحالي فقط</div>
             </div>
             <div class="bg-yellow-50 p-4 rounded-lg">
-              <div class="text-yellow-600 text-2xl font-bold">{{ absentEmployees.length }}</div>
-              <div class="text-yellow-800 text-sm">الموظفين الغائبين</div>
+              <div class="text-yellow-600 text-2xl font-bold">{{ isViewingTodayBusinessDay ? absentEmployees.length : '—' }}</div>
+              <div class="text-yellow-800 text-sm">الموظفين الغائبين الآن</div>
+              <div v-if="!isViewingTodayBusinessDay" class="text-xs text-gray-500 mt-1">لليوم الحالي فقط</div>
             </div>
             <div class="bg-purple-50 p-4 rounded-lg">
               <div class="text-purple-600 text-2xl font-bold">{{ formatPrice(updatedTotalTodayAmount) }}</div>
-              <div class="text-purple-800 text-sm">إجمالي الرواتب اليوم</div>
+              <div class="text-purple-800 text-sm">{{ isViewingTodayBusinessDay ? 'إجمالي الرواتب اليوم' : 'إجمالي الرواتب للفترة المحددة' }}</div>
               <div v-if="updatedTotalTodayDiscounts > 0" class="text-xs text-red-600 mt-1">
                 خصومات: -{{ formatPrice(updatedTotalTodayDiscounts) }}
               </div>
@@ -59,7 +73,7 @@
             </div>
             <div class="bg-orange-50 p-4 rounded-lg">
               <div class="text-orange-600 text-2xl font-bold">{{ updatedTotalTodayHours.toFixed(2) }}</div>
-              <div class="text-orange-800 text-sm">إجمالي الساعات اليوم</div>
+              <div class="text-orange-800 text-sm">{{ isViewingTodayBusinessDay ? 'إجمالي الساعات اليوم' : 'إجمالي الساعات للفترة المحددة' }}</div>
             </div>
           </div>
 
@@ -72,9 +86,9 @@
                   <th class="p-4 text-right">الوظيفة</th>
                   <th v-if="isAdmin" class="p-4 text-right">سعر الساعة</th>
                   <th class="p-4 text-right">الحالة</th>
-                  <th class="p-4 text-right">سجلات الحضور اليوم</th>
-                  <th class="p-4 text-right">الساعات اليوم</th>
-                  <th class="p-4 text-right">المبلغ اليوم</th>
+                  <th class="p-4 text-right">سجلات الحضور</th>
+                  <th class="p-4 text-right">{{ isViewingTodayBusinessDay ? 'الساعات اليوم' : 'الساعات (الفترة)' }}</th>
+                  <th class="p-4 text-right">{{ isViewingTodayBusinessDay ? 'المبلغ اليوم' : 'المبلغ (الفترة)' }}</th>
                   <th class="p-4 text-right">حالة الراتب</th>
                   <th class="p-4 text-right">الإجراءات</th>
                 </tr>
@@ -94,6 +108,7 @@
                   <td v-if="isAdmin" class="p-4 font-bold text-green-600">{{ formatPrice(employee.hourly_rate) }}</td>
                   <td class="p-4">
                     <span
+                      v-if="isViewingTodayBusinessDay"
                       :class="[
                         'px-3 py-1 rounded-full text-xs font-medium',
                         employee.is_present
@@ -106,6 +121,7 @@
                     >
                       {{ employee.is_present ? '🟢 حاضر' : '🔴 غائب' }}
                     </span>
+                    <span v-else class="text-gray-400 text-sm">—</span>
                   </td>
                   <td class="p-4">
                     <div v-if="employee.today_attendance_records && employee.today_attendance_records.length > 0" class="space-y-1">
@@ -163,7 +179,7 @@
                     <div class="flex gap-2 flex-wrap">
                       <!-- زر الحضور -->
                       <button
-                        v-if="!employee.is_present"
+                        v-if="isViewingTodayBusinessDay && !employee.is_present"
                         @click="checkinEmployee(employee)"
                         :disabled="loading"
                         class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm font-medium disabled:opacity-50"
@@ -173,7 +189,7 @@
                       
                       <!-- زر الانصراف -->
                       <button
-                        v-if="employee.is_present"
+                        v-if="isViewingTodayBusinessDay && employee.is_present"
                         @click="checkoutEmployee(employee)"
                         :disabled="loading"
                         class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm font-medium disabled:opacity-50"
@@ -183,7 +199,7 @@
 
                       <!-- زر تسليم الراتب (يظهر فقط بعد الانصراف) -->
                       <button
-                        v-if="canManageEmployees && employee.today_amount > 0 && !employee.is_salary_delivered && !employee.is_present"
+                        v-if="isViewingTodayBusinessDay && canManageEmployees && employee.today_amount > 0 && !employee.is_salary_delivered && !employee.is_present"
                         @click="deliverSalary(employee)"
                         :disabled="loading"
                         class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm font-medium disabled:opacity-50"
@@ -194,7 +210,7 @@
 
                       <!-- زر إلغاء تسليم الراتب (للأدمن فقط) -->
                       <button
-                        v-if="isAdmin && employee.is_salary_delivered"
+                        v-if="isViewingTodayBusinessDay && isAdmin && employee.is_salary_delivered"
                         @click="undoSalaryDelivery(employee)"
                         :disabled="loading"
                         class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-sm font-medium disabled:opacity-50"
@@ -293,7 +309,7 @@
 
 <script>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Link, usePage } from '@inertiajs/vue3';
+import { Link, router } from '@inertiajs/vue3';
 
 export default {
   layout: AppLayout,
@@ -305,6 +321,9 @@ export default {
     totalTodayAmount: Number,
     totalTodayHours: Number,
     currentPeriodText: String,
+    selectedDate: String,
+    maxSelectableDate: String,
+    isViewingTodayBusinessDay: { type: Boolean, default: true },
   },
   data() {
     return {
@@ -348,6 +367,10 @@ export default {
     },
   },
   methods: {
+    onBusinessDayChange(e) {
+      const val = e.target.value;
+      router.get(route('admin.employees.index'), { date: val }, { preserveState: true, preserveScroll: true });
+    },
     formatPrice(price) {
       return price ? Number(price).toFixed(2) : "0.00";
     },
@@ -577,6 +600,7 @@ export default {
           body: JSON.stringify({
             amount: parseFloat(this.discountForm.amount),
             reason: this.discountForm.reason || null,
+            discount_date: this.selectedDate,
           }),
         });
 

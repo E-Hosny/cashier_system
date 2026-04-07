@@ -16,38 +16,53 @@ class EmployeeController extends Controller
     /**
      * عرض صفحة إدارة الموظفين
      */
-    public function index()
+    public function index(Request $request)
     {
+        $maxAnchor = Employee::businessDayAnchorFromNow();
+        $selectedAnchor = $maxAnchor;
+
+        if ($request->filled('date')) {
+            $request->validate([
+                'date' => 'date_format:Y-m-d',
+            ]);
+            $candidate = Carbon::parse($request->query('date'))->toDateString();
+            if ($candidate <= $maxAnchor) {
+                $selectedAnchor = $candidate;
+            }
+        }
+
+        $isViewingTodayBusinessDay = $selectedAnchor === $maxAnchor;
+
         $employees = Employee::where('is_active', true)->get();
 
-            // إضافة معلومات الحضور والرواتب الحالية لكل موظف
-    $employees->each(function ($employee) {
-        $employee->current_attendance = $employee->getCurrentAttendance();
-        $employee->is_present = $employee->isCurrentlyPresent();
-        $employee->today_hours = $employee->getTodayHours();
-        $employee->today_amount = $employee->getTodayAmount();
-        $employee->today_attendance_records = $employee->getTodayAttendanceRecords();
-        
-        // معلومات الخصومات اليومية
-        $employee->today_discounts = $employee->getTodayDiscounts();
-        $employee->today_discount_total = $employee->getTodayDiscountTotal();
-        
-        // معلومات تسليم الراتب
-        $employee->today_delivery_status = $employee->getTodayDeliveryStatus();
-        $employee->is_salary_delivered = $employee->today_delivery_status && $employee->today_delivery_status->isDelivered();
-        $employee->delivery_status_text = $employee->today_delivery_status ? $employee->today_delivery_status->status_text : 'غير محدد';
-    });
+        // إضافة معلومات الحضور والرواتب ليوم العمل المحدد (7 ص → 7 ص)
+        $employees->each(function ($employee) use ($selectedAnchor, $isViewingTodayBusinessDay) {
+            $employee->current_attendance = $employee->getCurrentAttendance();
+            $employee->is_present = $isViewingTodayBusinessDay && $employee->isCurrentlyPresent();
+            $employee->today_hours = $employee->getHoursForBusinessDayAnchor($selectedAnchor);
+            $employee->today_amount = $employee->getAmountForBusinessDayAnchor($selectedAnchor);
+            $employee->today_attendance_records = $employee->getAttendanceRecordsForBusinessDayAnchor($selectedAnchor);
 
-        // حساب إجمالي الرواتب لليوم الحالي
+            $employee->today_discounts = $employee->getDiscountsForBusinessDayAnchor($selectedAnchor);
+            $employee->today_discount_total = $employee->getDiscountTotalForBusinessDayAnchor($selectedAnchor);
+
+            $employee->today_delivery_status = $employee->getSalaryDeliveryForDate($selectedAnchor);
+            $employee->is_salary_delivered = $employee->today_delivery_status && $employee->today_delivery_status->isDelivered();
+            $employee->delivery_status_text = $employee->today_delivery_status ? $employee->today_delivery_status->status_text : 'غير محدد';
+        });
+
         $totalTodayAmount = $employees->sum('today_amount');
         $totalTodayHours = $employees->sum('today_hours');
-        $currentPeriodText = $employees->first() ? $employees->first()->getCurrentPeriodText() : '';
+        $currentPeriodText = Employee::periodTextForAnchorDate($selectedAnchor);
 
         return Inertia::render('Admin/Employees/Index', [
             'employees' => $employees,
             'totalTodayAmount' => $totalTodayAmount,
             'totalTodayHours' => $totalTodayHours,
             'currentPeriodText' => $currentPeriodText,
+            'selectedDate' => $selectedAnchor,
+            'maxSelectableDate' => $maxAnchor,
+            'isViewingTodayBusinessDay' => $isViewingTodayBusinessDay,
         ]);
     }
 
@@ -762,20 +777,23 @@ class EmployeeController extends Controller
      */
     public function addDiscount(Employee $employee, Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'amount' => 'required|numeric|min:0.01',
             'reason' => 'nullable|string|max:1000',
+            'discount_date' => 'nullable|date_format:Y-m-d',
         ]);
 
         try {
-            $now = Carbon::now();
-            $currentHour = $now->hour;
-            
-            // تحديد التاريخ الصحيح بناءً على الوقت الحالي (نفس منطق حساب الراتب)
-            if ($currentHour < 7) {
-                $targetDate = $now->copy()->subDay()->toDateString();
-            } else {
-                $targetDate = $now->copy()->toDateString();
+            $maxAnchor = Employee::businessDayAnchorFromNow();
+            $targetDate = isset($validated['discount_date'])
+                ? Carbon::parse($validated['discount_date'])->toDateString()
+                : $maxAnchor;
+
+            if ($targetDate > $maxAnchor) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'لا يمكن إضافة خصم لتاريخ بعد يوم العمل الحالي.',
+                ], 422);
             }
 
             // إنشاء سجل الخصم
@@ -790,9 +808,9 @@ class EmployeeController extends Controller
             // إعادة تحميل الموظف مع السجلات الجديدة
             $employee->refresh();
 
-            // حساب المبلغ المحدث بعد الخصم
-            $todayAmount = $employee->getTodayAmount();
-            $discountTotal = $employee->getTodayDiscountTotal();
+            // حساب المبلغ المحدث بعد الخصم لنفس يوم العمل
+            $todayAmount = $employee->getAmountForBusinessDayAnchor($targetDate);
+            $discountTotal = $employee->getDiscountTotalForBusinessDayAnchor($targetDate);
 
             return response()->json([
                 'success' => true,
