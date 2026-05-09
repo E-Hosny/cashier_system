@@ -126,7 +126,9 @@ class SalesReportController extends Controller
         $totalSales = $sales->sum('total_price');
 
         // جلب قوائم الفئات والمنتجات للتصفية
-        $categories = Category::orderBy('name')->get();
+        $categories = Category::forProducts()
+            ->orderBy('name')
+            ->get();
         $products = Product::where('type', 'finished')
             ->when($categoryId, function ($query) use ($categoryId) {
                 return $query->where('category_id', $categoryId);
