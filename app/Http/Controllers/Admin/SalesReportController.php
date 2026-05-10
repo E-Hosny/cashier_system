@@ -1,70 +1,69 @@
 <?php
 
 namespace App\Http\Controllers\Admin;
-use App\Http\Controllers\Controller;
 
-use Illuminate\Http\Request;
-use App\Models\OrderItem;
-use App\Models\Order;
-use App\Models\Product;
+use App\Http\Controllers\Controller;
+use App\Models\Branch;
 use App\Models\Category;
-use App\Models\SalaryDelivery;
 use App\Models\Employee;
+use App\Models\Expense;
+use App\Models\OrderItem;
+use App\Models\Product;
+use App\Models\SalaryDelivery;
+use App\Support\BranchContext;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
 class SalesReportController extends Controller
 {
     public function index(Request $request)
     {
-        // الحصول على فترة التواريخ من المستخدم أو تعيين التاريخ الصحيح بناءً على الوقت الحالي
         $now = Carbon::now();
         $currentHour = $now->hour;
-        
-        // تحديد التاريخ الافتراضي بناءً على الوقت الحالي
+
         if ($currentHour < 7) {
-            // قبل الساعة 7 صباحاً - نعرض مبيعات اليوم السابق
-            $defaultDate = $now->subDay()->toDateString();
-            \Log::info("قبل الساعة 7 - التاريخ الافتراضي: {$defaultDate}, الوقت الحالي: {$now->toDateTimeString()}");
+            $defaultDate = $now->copy()->subDay()->toDateString();
         } else {
-            // بعد الساعة 7 صباحاً - نعرض مبيعات اليوم الحالي
             $defaultDate = $now->toDateString();
-            \Log::info("بعد الساعة 7 - التاريخ الافتراضي: {$defaultDate}, الوقت الحالي: {$now->toDateTimeString()}");
         }
-        
+
         $dateFrom = $request->input('date_from', $defaultDate);
         $dateTo = $request->input('date_to', null);
         $categoryId = $request->input('category_id', null);
         $productId = $request->input('product_id', null);
-        
-        \Log::info("التاريخ النهائي المستخدم: {$dateFrom}, date_from من الطلب: " . $request->input('date_from', 'غير محدد'));
 
-        // بناء استعلام المبيعات
-        $salesQuery = OrderItem::whereHas('order', function ($query) use ($dateFrom, $dateTo) {
+        $user = Auth::user();
+        $salesReportHub = $user->hasRole('super admin') && BranchContext::id() === null;
+        $hubReportBranchId = $salesReportHub ? $this->normalizeReportBranchId($request) : null;
+        $aggregateAllBranches = $salesReportHub && $hubReportBranchId === null;
+
+        $salesQuery = OrderItem::whereHas('order', function ($query) use ($dateFrom, $dateTo, $hubReportBranchId) {
             if ($dateTo) {
-                // فترة من - إلى
                 $query->whereBetween('created_at', [
-                    Carbon::parse($dateFrom)->setTime(7, 0, 0), // بداية من الساعة 7 صباحاً
-                    Carbon::parse($dateTo)->setTime(7, 0, 0)    // إلى الساعة 7 صباحاً من اليوم التالي
+                    Carbon::parse($dateFrom)->setTime(7, 0, 0),
+                    Carbon::parse($dateTo)->setTime(7, 0, 0),
                 ]);
             } else {
-                // يوم واحد فقط - من الساعة 7 صباحاً إلى الساعة 7 صباحاً من اليوم التالي
                 $query->whereBetween('created_at', [
-                    Carbon::parse($dateFrom)->setTime(7, 0, 0), // بداية من الساعة 7 صباحاً
-                    Carbon::parse($dateFrom)->addDay()->setTime(7, 0, 0) // إلى الساعة 7 صباحاً من اليوم التالي
+                    Carbon::parse($dateFrom)->setTime(7, 0, 0),
+                    Carbon::parse($dateFrom)->addDay()->setTime(7, 0, 0),
                 ]);
             }
+            if ($hubReportBranchId !== null) {
+                $query->where('branch_id', $hubReportBranchId);
+            }
         })
-        ->with(['product.category']);
+            ->with(['product.category']);
 
-        // تصفية حسب الفئة إذا تم تحديدها
         if ($categoryId) {
             $salesQuery->whereHas('product', function ($query) use ($categoryId) {
                 $query->where('category_id', $categoryId);
             });
         }
 
-        // تصفية حسب المنتج إذا تم تحديده
         if ($productId) {
             $salesQuery->where('product_id', $productId);
         }
@@ -74,58 +73,55 @@ class SalesReportController extends Controller
             ->groupBy('product_id', 'size')
             ->get();
 
-        // حساب إجمالي المشتريات والمصروفات والرواتب
         if ($dateTo) {
             $totalPurchases = \App\Models\Purchase::whereBetween('purchase_date', [
                 Carbon::parse($dateFrom)->toDateString(),
-                Carbon::parse($dateTo)->toDateString()
+                Carbon::parse($dateTo)->toDateString(),
             ])->sum('total_amount');
 
-            $totalExpenses = \App\Models\Expense::whereBetween('created_at', [
-                Carbon::parse($dateFrom)->setTime(7, 0, 0), // بداية من الساعة 7 صباحاً
-                Carbon::parse($dateTo)->setTime(7, 0, 0)    // إلى الساعة 7 صباحاً من اليوم التالي
-            ])->sum('amount');
+            $totalExpenses = $this->expensesSumForReport(
+                Carbon::parse($dateFrom)->setTime(7, 0, 0),
+                Carbon::parse($dateTo)->setTime(7, 0, 0),
+                $salesReportHub,
+                $hubReportBranchId,
+            );
 
-            // حساب إجمالي الرواتب المسلمة فقط للموظفين في الفترة المحددة (بعد الخصم)
-            $totalSalaries = Employee::where('is_active', true)->get()->sum(function($employee) use ($dateFrom, $dateTo) {
-                // حساب المبلغ بعد الخصم لكل موظف في الفترة
-                $amount = $employee->getAmountForPeriod($dateFrom, $dateTo);
-                
-                // التحقق من أن الراتب تم تسليمه في هذه الفترة
-                $hasDelivered = SalaryDelivery::where('employee_id', $employee->id)
-                    ->where('status', 'delivered')
-                    ->whereBetween('salary_date', [$dateFrom, $dateTo])
-                    ->exists();
-                
-                // نرجع المبلغ بعد الخصم فقط إذا كان مسلماً
-                return $hasDelivered ? $amount : 0;
-            });
+            $totalSalaries = $this->sumDeliveredSalariesForReport($dateFrom, $dateTo, $hubReportBranchId);
         } else {
             $totalPurchases = \App\Models\Purchase::whereDate('purchase_date', $dateFrom)->sum('total_amount');
-            $totalExpenses = \App\Models\Expense::whereBetween('created_at', [
-                Carbon::parse($dateFrom)->setTime(7, 0, 0), // بداية من الساعة 7 صباحاً
-                Carbon::parse($dateFrom)->addDay()->setTime(7, 0, 0) // إلى الساعة 7 صباحاً من اليوم التالي
-            ])->sum('amount');
 
-            // حساب إجمالي الرواتب المسلمة فقط للموظفين في اليوم المحدد (بعد الخصم)
-            $totalSalaries = Employee::where('is_active', true)->get()->sum(function($employee) use ($dateFrom) {
-                // حساب المبلغ بعد الخصم لكل موظف في اليوم المحدد
-                $amount = $employee->getAmountForPeriod($dateFrom, $dateFrom);
-                
-                // التحقق من أن الراتب تم تسليمه في هذا اليوم
-                $delivered = SalaryDelivery::where('employee_id', $employee->id)
-                    ->where('status', 'delivered')
-                    ->where('salary_date', $dateFrom)
-                    ->exists();
-                
-                // نرجع المبلغ فقط إذا كان مسلماً
-                return $delivered ? $amount : 0;
-            });
+            $totalExpenses = $this->expensesSumForReport(
+                Carbon::parse($dateFrom)->setTime(7, 0, 0),
+                Carbon::parse($dateFrom)->addDay()->setTime(7, 0, 0),
+                $salesReportHub,
+                $hubReportBranchId,
+            );
+
+            $totalSalaries = $this->sumDeliveredSalariesForReport($dateFrom, null, $hubReportBranchId);
         }
 
         $totalSales = $sales->sum('total_price');
 
-        // جلب قوائم الفئات والمنتجات للتصفية
+        $branchSalesSummary = [];
+        $branchExpenseSummary = [];
+        $branchSalarySummary = [];
+        if ($aggregateAllBranches) {
+            $branchSalesSummary = $this->branchSalesTotals($dateFrom, $dateTo, $categoryId, $productId);
+            if ($dateTo) {
+                $branchExpenseSummary = $this->branchExpenseTotals(
+                    Carbon::parse($dateFrom)->setTime(7, 0, 0),
+                    Carbon::parse($dateTo)->setTime(7, 0, 0)
+                );
+                $branchSalarySummary = $this->branchSalaryTotals($dateFrom, $dateTo);
+            } else {
+                $branchExpenseSummary = $this->branchExpenseTotals(
+                    Carbon::parse($dateFrom)->setTime(7, 0, 0),
+                    Carbon::parse($dateFrom)->addDay()->setTime(7, 0, 0)
+                );
+                $branchSalarySummary = $this->branchSalaryTotals($dateFrom, null);
+            }
+        }
+
         $categories = Category::forProducts()
             ->orderBy('name')
             ->get();
@@ -149,6 +145,218 @@ class SalesReportController extends Controller
             'totalSalaries' => $totalSalaries,
             'categories' => $categories,
             'products' => $products,
+            'salesReportHub' => $salesReportHub,
+            'hub_report_branch_id' => $hubReportBranchId,
+            'reportBranches' => $salesReportHub
+                ? Branch::query()->orderBy('name')->get(['id', 'name'])->values()->all()
+                : [],
+            'aggregateAllBranches' => $aggregateAllBranches,
+            'branchSalesSummary' => $branchSalesSummary,
+            'branchExpenseSummary' => $branchExpenseSummary,
+            'branchSalarySummary' => $branchSalarySummary,
         ]);
+    }
+
+    protected function normalizeReportBranchId(Request $request): ?int
+    {
+        if (! $request->filled('report_branch_id')) {
+            return null;
+        }
+
+        $id = (int) $request->input('report_branch_id');
+        if ($id <= 0) {
+            return null;
+        }
+
+        $tenantId = Auth::user()->tenant_id;
+        $exists = Branch::query()->whereKey($id)->where('tenant_id', $tenantId)->exists();
+
+        return $exists ? $id : null;
+    }
+
+    protected function expensesSumForReport(Carbon $start, Carbon $end, bool $salesReportHub, ?int $hubReportBranchId): float
+    {
+        $query = Expense::query();
+        $user = Auth::user();
+
+        if ($salesReportHub) {
+            if ($hubReportBranchId !== null) {
+                $query->where('branch_id', $hubReportBranchId);
+            }
+        } elseif ($user->hasRole('super admin') && BranchContext::id() === null) {
+            $query->whereNull('branch_id');
+        } elseif (($bid = BranchContext::id()) !== null) {
+            $query->where('branch_id', $bid);
+        }
+
+        return (float) $query->whereBetween('created_at', [$start, $end])->sum('amount');
+    }
+
+    protected function sumDeliveredSalariesForReport(string $dateFrom, ?string $dateTo, ?int $hubReportBranchId): float
+    {
+        $q = Employee::query()->where('is_active', true);
+        if ($hubReportBranchId !== null) {
+            $q->where('branch_id', $hubReportBranchId);
+        }
+
+        return (float) $q->get()->sum(function (Employee $employee) use ($dateFrom, $dateTo) {
+            if ($dateTo) {
+                $amount = $employee->getAmountForPeriod($dateFrom, $dateTo);
+                $hasDelivered = SalaryDelivery::where('employee_id', $employee->id)
+                    ->where('status', 'delivered')
+                    ->whereBetween('salary_date', [$dateFrom, $dateTo])
+                    ->exists();
+
+                return $hasDelivered ? $amount : 0;
+            }
+
+            $amount = $employee->getAmountForPeriod($dateFrom, $dateFrom);
+            $delivered = SalaryDelivery::where('employee_id', $employee->id)
+                ->where('status', 'delivered')
+                ->where('salary_date', $dateFrom)
+                ->exists();
+
+            return $delivered ? $amount : 0;
+        });
+    }
+
+    /**
+     * توزيع المبيعات حسب الفرع — نفس منطق جدول المنتجات (مجموع بنود الطلبات)، وليس orders.total، لتطابق إجمالي التقرير.
+     */
+    protected function branchSalesTotals(string $dateFrom, ?string $dateTo, ?string $categoryId, ?string $productId): array
+    {
+        $query = OrderItem::query()
+            ->join('orders', 'order_items.order_id', '=', 'orders.id');
+
+        if ($dateTo) {
+            $query->whereBetween('orders.created_at', [
+                Carbon::parse($dateFrom)->setTime(7, 0, 0),
+                Carbon::parse($dateTo)->setTime(7, 0, 0),
+            ]);
+        } else {
+            $query->whereBetween('orders.created_at', [
+                Carbon::parse($dateFrom)->setTime(7, 0, 0),
+                Carbon::parse($dateFrom)->copy()->addDay()->setTime(7, 0, 0),
+            ]);
+        }
+
+        if ($categoryId) {
+            $query->join('products', 'order_items.product_id', '=', 'products.id')
+                ->where('products.category_id', $categoryId);
+        }
+
+        if ($productId) {
+            $query->where('order_items.product_id', $productId);
+        }
+
+        $rows = $query
+            ->selectRaw('orders.branch_id, SUM(order_items.quantity * order_items.price) as total_sales')
+            ->groupBy('orders.branch_id')
+            ->get();
+
+        $branchIds = $rows->pluck('branch_id')->filter();
+        $names = Branch::whereIn('id', $branchIds)->pluck('name', 'id');
+
+        return $rows->map(fn ($row) => [
+            'branch_id' => $row->branch_id,
+            'branch_name' => $row->branch_id === null
+                ? 'بدون فرع'
+                : ($names[$row->branch_id] ?? ('فرع #'.$row->branch_id)),
+            'total_sales' => (float) $row->total_sales,
+        ])->values()->all();
+    }
+
+    /**
+     * توزيع المصروفات حسب الفرع (نفس نطاق created_at لإجمالي المصروفات في التقرير).
+     *
+     * @return array<int, array{branch_id: int|null, branch_name: string, total_expenses: float}>
+     */
+    protected function branchExpenseTotals(Carbon $start, Carbon $end): array
+    {
+        $rows = Expense::query()
+            ->whereBetween('created_at', [$start, $end])
+            ->selectRaw('branch_id, SUM(amount) as total_expenses')
+            ->groupBy('branch_id')
+            ->get();
+
+        $branchIds = $rows->pluck('branch_id')->filter();
+        $names = Branch::whereIn('id', $branchIds)->pluck('name', 'id');
+
+        $mapped = $rows->map(fn ($row) => [
+            'branch_id' => $row->branch_id,
+            'branch_name' => $row->branch_id === null
+                ? 'مركزي'
+                : ($names[$row->branch_id] ?? ('فرع #'.$row->branch_id)),
+            'total_expenses' => (float) $row->total_expenses,
+        ]);
+
+        return $this->sortBranchSummaryRows($mapped);
+    }
+
+    /**
+     * توزيع الرواتب المسلمة حسب فرع الموظف (نفس منطق إجمالي الرواتب في التقرير).
+     *
+     * @return array<int, array{branch_id: int|null, branch_name: string, total_salaries: float}>
+     */
+    protected function branchSalaryTotals(string $dateFrom, ?string $dateTo): array
+    {
+        $amountsByBranchKey = [];
+
+        Employee::query()->where('is_active', true)->get()->each(function (Employee $employee) use ($dateFrom, $dateTo, &$amountsByBranchKey) {
+            if ($dateTo) {
+                $amount = $employee->getAmountForPeriod($dateFrom, $dateTo);
+                $hasDelivered = SalaryDelivery::where('employee_id', $employee->id)
+                    ->where('status', 'delivered')
+                    ->whereBetween('salary_date', [$dateFrom, $dateTo])
+                    ->exists();
+            } else {
+                $amount = $employee->getAmountForPeriod($dateFrom, $dateFrom);
+                $hasDelivered = SalaryDelivery::where('employee_id', $employee->id)
+                    ->where('status', 'delivered')
+                    ->where('salary_date', $dateFrom)
+                    ->exists();
+            }
+
+            if (! $hasDelivered) {
+                return;
+            }
+
+            $bid = $employee->branch_id;
+            $key = $bid === null ? '__null__' : (string) $bid;
+            if (! isset($amountsByBranchKey[$key])) {
+                $amountsByBranchKey[$key] = ['branch_id' => $bid, 'total_salaries' => 0.0];
+            }
+            $amountsByBranchKey[$key]['total_salaries'] += (float) $amount;
+        });
+
+        $branchIds = collect($amountsByBranchKey)->pluck('branch_id')->filter();
+        $names = Branch::whereIn('id', $branchIds)->pluck('name', 'id');
+
+        $mapped = collect($amountsByBranchKey)->map(function (array $row) use ($names) {
+            $bid = $row['branch_id'];
+
+            return [
+                'branch_id' => $bid,
+                'branch_name' => $bid === null
+                    ? 'بدون فرع'
+                    : ($names[$bid] ?? ('فرع #'.$bid)),
+                'total_salaries' => (float) $row['total_salaries'],
+            ];
+        });
+
+        return $this->sortBranchSummaryRows($mapped);
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, array{branch_name: string}>  $rows
+     * @return array<int, mixed>
+     */
+    protected function sortBranchSummaryRows(Collection $rows): array
+    {
+        return $rows->sortBy(function (array $row) {
+            $bid = $row['branch_id'] ?? null;
+
+            return [(int) ($bid !== null), $row['branch_name']];
+        })->values()->all();
     }
 }

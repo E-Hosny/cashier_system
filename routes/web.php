@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Foundation\Application;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use App\Http\Controllers\Admin\ProductController;
@@ -21,6 +22,8 @@ use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\Admin\FeedbackController as AdminFeedbackController;
 use App\Http\Controllers\Admin\DisplayScreenController;
 use App\Http\Controllers\Admin\AttendanceGroupController;
+use App\Http\Controllers\Admin\BranchController;
+use App\Http\Controllers\BranchContextController;
 
 Route::get('/', function () {
     return Inertia::render('Welcome', [
@@ -94,6 +97,14 @@ Route::middleware([
 
         Route::resource('users', UserController::class, ['as' => 'admin'])->except(['show']);
         Route::post('/users/{user}/reset-password', [UserController::class, 'resetPassword'])->name('admin.users.reset-password');
+
+        Route::post('/branch-context/select/{branch}', [BranchContextController::class, 'select'])->name('branch-context.select');
+        Route::post('/branch-context/clear', [BranchContextController::class, 'clear'])->name('branch-context.clear');
+
+        Route::get('/admin/branches', [BranchController::class, 'index'])->name('admin.branches.index');
+        Route::post('/admin/branches', [BranchController::class, 'store'])->name('admin.branches.store');
+        Route::put('/admin/branches/{branch}', [BranchController::class, 'update'])->name('admin.branches.update');
+        Route::delete('/admin/branches/{branch}', [BranchController::class, 'destroy'])->name('admin.branches.destroy');
     });
 
     // Display Screen (super admin only)
@@ -105,36 +116,49 @@ Route::middleware([
         Route::delete('/slides/{slide}', [DisplayScreenController::class, 'destroySlide'])->name('slides.destroy');
     });
 
-    // Employees Management (admin and cashier with attendance permission)
-    Route::middleware(['employee.attendance'])->group(function () {
-        Route::resource('employees', EmployeeController::class, ['as' => 'admin'])->except(['show']);
-        Route::post('/employees/{employee}/checkin', [EmployeeController::class, 'checkin'])->name('admin.employees.checkin');
-        Route::post('/employees/{employee}/checkout', [EmployeeController::class, 'checkout'])->name('admin.employees.checkout');
-        Route::get('/employees/{employee}/report', [EmployeeController::class, 'report'])->name('admin.employees.report');
-        Route::get('/employees/salary-calculator', [EmployeeController::class, 'salaryCalculator'])->name('admin.employees.salary-calculator');
-        Route::post('/employees/{employee}/calculate-salary', [EmployeeController::class, 'calculateSalary'])->name('admin.employees.calculate-salary');
-        Route::post('/employees/{employee}/deliver-salary', [EmployeeController::class, 'deliverSalary'])->name('admin.employees.deliver-salary');
-        Route::post('/employees/{employee}/undo-salary-delivery', [EmployeeController::class, 'undoSalaryDelivery'])->name('admin.employees.undo-salary-delivery');
-        Route::post('/employees/{employee}/deliver-salary-for-date', [EmployeeController::class, 'deliverSalaryForDate'])->name('admin.employees.deliver-salary-for-date');
-        Route::post('/employees/{employee}/deliver-salary-for-period', [EmployeeController::class, 'deliverSalaryForPeriod'])->name('admin.employees.deliver-salary-for-period');
-        Route::post('/employees/{employee}/undo-salary-delivery-for-date', [EmployeeController::class, 'undoSalaryDeliveryForDate'])->name('admin.employees.undo-salary-delivery-for-date');
-        Route::post('/employees/{employee}/add-discount', [EmployeeController::class, 'addDiscount'])->name('admin.employees.add-discount');
+    Route::middleware(['branch.context'])->group(function () {
+        // Employees Management (admin and cashier with attendance permission)
+        Route::middleware(['employee.attendance'])->group(function () {
+            Route::resource('employees', EmployeeController::class, ['as' => 'admin'])->except(['show']);
+            Route::post('/employees/{employee}/checkin', [EmployeeController::class, 'checkin'])->name('admin.employees.checkin');
+            Route::post('/employees/{employee}/checkout', [EmployeeController::class, 'checkout'])->name('admin.employees.checkout');
+            Route::get('/employees/{employee}/report', [EmployeeController::class, 'report'])->name('admin.employees.report');
+            Route::get('/employees/salary-calculator', [EmployeeController::class, 'salaryCalculator'])->name('admin.employees.salary-calculator');
+            Route::post('/employees/{employee}/calculate-salary', [EmployeeController::class, 'calculateSalary'])->name('admin.employees.calculate-salary');
+            Route::post('/employees/{employee}/deliver-salary', [EmployeeController::class, 'deliverSalary'])->name('admin.employees.deliver-salary');
+            Route::post('/employees/{employee}/undo-salary-delivery', [EmployeeController::class, 'undoSalaryDelivery'])->name('admin.employees.undo-salary-delivery');
+            Route::post('/employees/{employee}/deliver-salary-for-date', [EmployeeController::class, 'deliverSalaryForDate'])->name('admin.employees.deliver-salary-for-date');
+            Route::post('/employees/{employee}/deliver-salary-for-period', [EmployeeController::class, 'deliverSalaryForPeriod'])->name('admin.employees.deliver-salary-for-period');
+            Route::post('/employees/{employee}/undo-salary-delivery-for-date', [EmployeeController::class, 'undoSalaryDeliveryForDate'])->name('admin.employees.undo-salary-delivery-for-date');
+            Route::post('/employees/{employee}/add-discount', [EmployeeController::class, 'addDiscount'])->name('admin.employees.add-discount');
+        });
+
+        Route::middleware(['super_admin'])->prefix('employees/attendance-groups')->name('admin.employees.attendance-groups.')->group(function () {
+            Route::get('/', [AttendanceGroupController::class, 'index'])->name('index');
+            Route::post('/', [AttendanceGroupController::class, 'store'])->name('store');
+            Route::put('/{attendanceGroup}', [AttendanceGroupController::class, 'update'])->name('update');
+            Route::delete('/{attendanceGroup}', [AttendanceGroupController::class, 'destroy'])->name('destroy');
+        });
+
+        // Cashier & Invoices
+        Route::get('/cashier', [CashierController::class, 'index'])->name('cashier.index');
+        Route::post('/store-order', [CashierController::class, 'store'])->name('cashier.store');
+        Route::get('/invoice/{orderId}', [CashierController::class, 'invoice'])->name('invoice.show');
+        Route::get('/invoice-html/{orderId}', [CashierController::class, 'invoiceHtml']);
+        Route::get('/invoices', [CashierController::class, 'invoicesToday'])->name('invoices.today');
+
+        // Cashier Shifts
+        Route::prefix('cashier-shifts')->group(function () {
+            Route::post('/start', [CashierShiftController::class, 'startShift'])->name('cashier.shifts.start');
+            Route::post('/close', [CashierShiftController::class, 'closeShift'])->name('cashier.shifts.close');
+            Route::post('/handover', [CashierShiftController::class, 'handOverShift'])->name('cashier.shifts.handover');
+            Route::put('/{shift}/update-cash', [CashierShiftController::class, 'updateCashAmount'])->name('cashier.shifts.update-cash');
+            Route::get('/current', [CashierShiftController::class, 'getCurrentShift'])->name('cashier.shifts.current');
+            Route::get('/details', [CashierShiftController::class, 'getShiftDetails'])->name('cashier.shifts.details');
+            Route::get('/history', [CashierShiftController::class, 'getShiftHistory'])->name('cashier.shifts.history');
+            Route::get('/stats', [CashierShiftController::class, 'getShiftStats'])->name('cashier.shifts.stats');
+        });
     });
-
-    Route::middleware(['super_admin'])->prefix('employees/attendance-groups')->name('admin.employees.attendance-groups.')->group(function () {
-        Route::get('/', [AttendanceGroupController::class, 'index'])->name('index');
-        Route::post('/', [AttendanceGroupController::class, 'store'])->name('store');
-        Route::put('/{attendanceGroup}', [AttendanceGroupController::class, 'update'])->name('update');
-        Route::delete('/{attendanceGroup}', [AttendanceGroupController::class, 'destroy'])->name('destroy');
-    });
-
-    // Cashier & Invoices
-    Route::get('/cashier', [CashierController::class, 'index'])->name('cashier.index');
-    Route::post('/store-order', [CashierController::class, 'store'])->name('cashier.store');
-    Route::get('/invoice/{orderId}', [CashierController::class, 'invoice'])->name('invoice.show');
-    Route::get('/invoice-html/{orderId}', [CashierController::class, 'invoiceHtml']);
-    Route::get('/invoices', [CashierController::class, 'invoicesToday'])->name('invoices.today');
-
 
 
     // Sales Report
@@ -149,18 +173,6 @@ Route::middleware([
     Route::post('/expenses', [ExpenseController::class, 'store'])->name('expenses.store');
     Route::put('/expenses/{expense}', [ExpenseController::class, 'update'])->name('expenses.update');
     Route::delete('/expenses/{expense}', [ExpenseController::class, 'destroy'])->name('expenses.destroy');
-
-    // Cashier Shifts
-    Route::prefix('cashier-shifts')->group(function () {
-        Route::post('/start', [CashierShiftController::class, 'startShift'])->name('cashier.shifts.start');
-        Route::post('/close', [CashierShiftController::class, 'closeShift'])->name('cashier.shifts.close');
-        Route::post('/handover', [CashierShiftController::class, 'handOverShift'])->name('cashier.shifts.handover');
-        Route::put('/{shift}/update-cash', [CashierShiftController::class, 'updateCashAmount'])->name('cashier.shifts.update-cash');
-        Route::get('/current', [CashierShiftController::class, 'getCurrentShift'])->name('cashier.shifts.current');
-        Route::get('/details', [CashierShiftController::class, 'getShiftDetails'])->name('cashier.shifts.details');
-        Route::get('/history', [CashierShiftController::class, 'getShiftHistory'])->name('cashier.shifts.history');
-        Route::get('/stats', [CashierShiftController::class, 'getShiftStats'])->name('cashier.shifts.stats');
-    });
 
     // Feedback Management (Admin only)
     Route::middleware(['admin'])->group(function () {

@@ -17,6 +17,11 @@ class Tenant extends Model
         return $this->hasMany(User::class);
     }
 
+    public function branches(): HasMany
+    {
+        return $this->hasMany(Branch::class);
+    }
+
     /**
      * إنشاء slug تلقائي من الاسم إذا لم يُحدد
      */

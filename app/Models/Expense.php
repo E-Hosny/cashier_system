@@ -16,10 +16,16 @@ class Expense extends Model
         'amount',
         'expense_date',
         'tenant_id',
+        'branch_id',
     ];
 
     protected static function booted()
     {
         static::bootBelongsToTenant();
+    }
+
+    public function branch()
+    {
+        return $this->belongsTo(Branch::class);
     }
 } 

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToBranch;
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -9,6 +10,7 @@ use Carbon\Carbon;
 
 class CashierShift extends Model
 {
+    use BelongsToBranch;
     use BelongsToTenant;
     use HasFactory;
 
@@ -24,11 +26,13 @@ class CashierShift extends Model
         'notes',
         'status',
         'tenant_id',
+        'branch_id',
     ];
 
     protected static function booted()
     {
         static::bootBelongsToTenant();
+        static::bootBelongsToBranch();
     }
 
     protected $casts = [

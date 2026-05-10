@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Branch;
+use App\Support\BranchContext;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -35,16 +37,43 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $user = $request->user();
+
+        $branchContext = [
+            'activeBranchId' => BranchContext::id(),
+            'activeBranchName' => null,
+            'isSuperAdminHub' => false,
+            'branches' => [],
+        ];
+
+        if ($user && $user->tenant_id) {
+            $bid = BranchContext::id();
+            if ($bid) {
+                $branchContext['activeBranchName'] = Branch::where('id', $bid)->value('name');
+            }
+
+            if ($user->hasRole('super admin')) {
+                $branchContext['isSuperAdminHub'] = ! session('active_branch_id');
+                $branchContext['branches'] = Branch::query()
+                    ->where('is_active', true)
+                    ->orderBy('name')
+                    ->get(['id', 'name'])
+                    ->values()
+                    ->all();
+            }
+        }
+
         return array_merge(parent::share($request), [
             'auth' => [
-                'user' => $request->user() ? [
-                    'id' => $request->user()->id,
-                    'name' => $request->user()->name,
-                    'email' => $request->user()->email,
-                    'roles' => $request->user()->roles->pluck('name'),
-                    'permissions' => $request->user()->getAllPermissions()->pluck('name'),
+                'user' => $user ? [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'roles' => $user->roles->pluck('name'),
+                    'permissions' => $user->getAllPermissions()->pluck('name'),
                 ] : null,
             ],
+            'branchContext' => $branchContext,
         ]);
     }
 }

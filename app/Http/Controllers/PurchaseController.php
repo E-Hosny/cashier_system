@@ -2,15 +2,21 @@
 namespace App\Http\Controllers;
 
 use App\Models\Purchase;
+use App\Support\BranchContext;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
-use Carbon\Carbon;
+use Symfony\Component\HttpFoundation\RedirectResponse;
 
 class PurchaseController extends Controller
 {
-    public function index(Request $request): Response
+    public function index(Request $request): Response|RedirectResponse
     {
+        if (BranchContext::hasBranch()) {
+            return redirect()->route('dashboard')
+                ->with('error', 'المشتريات متاحة من العرض المركزي فقط. ارجع إلى لوحة التحكم الرئيسية دون اختيار فرع.');
+        }
+
         $query = Purchase::orderBy('purchase_date', 'desc');
 
         // فلترة حسب يوم محدد
@@ -44,8 +50,13 @@ class PurchaseController extends Controller
         ]);
     }
 
-    public function store(Request $request)
+    public function store(Request $request): RedirectResponse
     {
+        if (BranchContext::hasBranch()) {
+            return redirect()->route('dashboard')
+                ->with('error', 'المشتريات متاحة من العرض المركزي فقط.');
+        }
+
         $request->validate([
             'supplier_name' => 'nullable|string|max:255',
             'description' => 'required|string|max:255',

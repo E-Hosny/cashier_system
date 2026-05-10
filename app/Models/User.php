@@ -33,6 +33,7 @@ class User extends Authenticatable
         'email',
         'password',
         'tenant_id',
+        'branch_id',
     ];
 
     /**
@@ -75,6 +76,11 @@ class User extends Authenticatable
     public function tenant()
     {
         return $this->belongsTo(Tenant::class, 'tenant_id');
+    }
+
+    public function branch()
+    {
+        return $this->belongsTo(Branch::class, 'branch_id');
     }
 
     /**

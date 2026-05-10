@@ -2,12 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToBranch;
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Order extends Model
 {
+    use BelongsToBranch;
     use BelongsToTenant;
     use HasFactory;
 
@@ -16,6 +18,7 @@ class Order extends Model
         'status',
         'payment_method',
         'tenant_id',
+        'branch_id',
         'user_id',
         'cashier_shift_id',
         'invoice_number'
@@ -42,6 +45,7 @@ class Order extends Model
     protected static function booted()
     {
         static::bootBelongsToTenant();
+        static::bootBelongsToBranch();
         static::creating(function ($model) {
             if (auth()->check()) {
                 $model->user_id = $model->user_id ?? auth()->id();

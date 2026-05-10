@@ -10,6 +10,21 @@
         <div class="bg-white overflow-hidden shadow-xl sm:rounded-lg p-6">
           <!-- اختيار فترة التواريخ والتصفية -->
           <div class="mb-6">
+            <!-- فرع التقرير (محور السوبر أدمن فقط) -->
+            <div v-if="salesReportHub" class="flex flex-col gap-1 mb-4 max-w-md ms-auto">
+              <label class="text-gray-700 font-medium text-end">🏷 تقرير حسب الفرع:</label>
+              <select
+                v-model="selectedReportBranchId"
+                class="p-2 border rounded-lg text-end"
+                @change="fetchSales"
+              >
+                <option value="">جميع الفروع (إجمالي مركزي + توزيع)</option>
+                <option v-for="b in reportBranches" :key="b.id" :value="String(b.id)">{{ b.name }}</option>
+              </select>
+              <p v-if="selectedReportBranchId" class="text-sm text-gray-600 text-end">
+                يعرض المبيعات والمصروفات والرواتب لهذا الفرع فقط؛ جداول التوزيع حسب الفرع مخفية.
+              </p>
+            </div>
             <!-- صف التواريخ -->
             <div class="flex flex-col sm:flex-row items-stretch sm:items-center sm:justify-end gap-4 mb-4">
               <div class="flex flex-col gap-1">
@@ -89,6 +104,26 @@
           <div v-if="sales.length > 0" class="mt-6 text-xl font-bold text-center bg-gray-200 p-4 rounded-lg">
             💵 إجمالي المبيعات: {{ formatPrice(totalSales) }}
           </div>
+
+          <div v-if="aggregateAllBranches && branchSalesSummary && branchSalesSummary.length" class="mt-6">
+            <h3 class="text-lg font-bold text-gray-800 mb-3 text-end">توزيع المبيعات حسب الفرع</h3>
+            <div class="overflow-x-auto rounded-lg border">
+              <table class="w-full bg-white text-end">
+                <thead class="bg-gray-100">
+                  <tr>
+                    <th class="p-3">الفرع</th>
+                    <th class="p-3">إجمالي المبيعات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="row in branchSalesSummary" :key="'sale-' + (row.branch_id ?? 'none')" class="border-t">
+                    <td class="p-3">{{ row.branch_name }}</td>
+                    <td class="p-3 font-bold text-green-700">{{ formatPrice(row.total_sales) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
           
           <!-- خانة المشتريات معلقة مؤقتاً -->
           <!-- <div v-if="sales.length > 0" class="mt-2 text-lg font-bold text-center bg-gray-100 p-3 rounded-lg">
@@ -106,6 +141,26 @@
             </span>
           </div>
 
+          <div v-if="aggregateAllBranches && branchExpenseSummary && branchExpenseSummary.length" class="mt-6">
+            <h3 class="text-lg font-bold text-gray-800 mb-3 text-end">توزيع المصروفات حسب الفرع</h3>
+            <div class="overflow-x-auto rounded-lg border">
+              <table class="w-full bg-white text-end">
+                <thead class="bg-gray-100">
+                  <tr>
+                    <th class="p-3">الفرع</th>
+                    <th class="p-3">إجمالي المصروفات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="row in branchExpenseSummary" :key="'exp-' + (row.branch_id ?? 'central')" class="border-t">
+                    <td class="p-3">{{ row.branch_name }}</td>
+                    <td class="p-3 font-bold text-red-700">{{ formatPrice(row.total_expenses) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <!-- إجمالي الرواتب مع رابط -->
           <div v-if="sales.length > 0" class="mt-2 text-lg font-bold text-center bg-orange-100 p-3 rounded-lg cursor-pointer hover:bg-orange-200 transition-colors" @click="goToEmployees">
             👥 إجمالي الرواتب: {{ formatPrice(totalSalaries) }}
@@ -115,6 +170,27 @@
                 ({{ getSelectedDateText() }})
               </span>
             </span>
+          </div>
+
+          <div v-if="aggregateAllBranches && branchSalarySummary && branchSalarySummary.length" class="mt-6">
+            <h3 class="text-lg font-bold text-gray-800 mb-3 text-end">توزيع الرواتب حسب الفرع</h3>
+            <p class="text-sm text-gray-600 mb-2 text-end">يُحسب كل صف من الرواتب المسلَّمة فقط خلال الفترة المحددة (نفس منطق الإجمالي أعلاه).</p>
+            <div class="overflow-x-auto rounded-lg border">
+              <table class="w-full bg-white text-end">
+                <thead class="bg-gray-100">
+                  <tr>
+                    <th class="p-3">الفرع</th>
+                    <th class="p-3">إجمالي الرواتب</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="row in branchSalarySummary" :key="'sal-' + (row.branch_id ?? 'none')" class="border-t">
+                    <td class="p-3">{{ row.branch_name }}</td>
+                    <td class="p-3 font-bold text-orange-700">{{ formatPrice(row.total_salaries) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -141,6 +217,34 @@ export default {
     totalSalaries: Number,
     categories: Array,
     products: Array,
+    aggregateAllBranches: {
+      type: Boolean,
+      default: false,
+    },
+    branchSalesSummary: {
+      type: Array,
+      default: () => [],
+    },
+    branchExpenseSummary: {
+      type: Array,
+      default: () => [],
+    },
+    branchSalarySummary: {
+      type: Array,
+      default: () => [],
+    },
+    salesReportHub: {
+      type: Boolean,
+      default: false,
+    },
+    hub_report_branch_id: {
+      type: [Number, String],
+      default: null,
+    },
+    reportBranches: {
+      type: Array,
+      default: () => [],
+    },
   },
   data() {
     return {
@@ -148,7 +252,17 @@ export default {
       dateTo: this.date_to || '', // اجعل النهاية فارغة افتراضيًا
       selectedCategoryId: this.category_id || '',
       selectedProductId: this.product_id || '',
+      selectedReportBranchId:
+        this.hub_report_branch_id !== null && this.hub_report_branch_id !== ''
+          ? String(this.hub_report_branch_id)
+          : '',
     };
+  },
+  watch: {
+    hub_report_branch_id(val) {
+      this.selectedReportBranchId =
+        val !== null && val !== undefined && val !== '' ? String(val) : '';
+    },
   },
   computed: {
     filteredProducts() {
@@ -206,6 +320,9 @@ export default {
         product_id: this.selectedProductId
       };
       if (this.dateTo) params.date_to = this.dateTo;
+      if (this.salesReportHub && this.selectedReportBranchId) {
+        params.report_branch_id = this.selectedReportBranchId;
+      }
       Inertia.get(route("admin.sales.report"), params);
     },
     onCategoryChange() {
@@ -216,6 +333,7 @@ export default {
     clearFilters() {
       this.selectedCategoryId = '';
       this.selectedProductId = '';
+      this.selectedReportBranchId = '';
       this.dateFrom = this.getTodayDate(); // إعادة تعيين التاريخ الصحيح
       this.dateTo = '';
       this.fetchSales();
@@ -261,6 +379,10 @@ export default {
           from: startDate.toISOString().slice(0, 10),
           to: endDate.toISOString().slice(0, 10)
         };
+      }
+
+      if (this.salesReportHub && this.selectedReportBranchId) {
+        expenseParams.expense_branch = String(this.selectedReportBranchId);
       }
       
       Inertia.get(route('expenses.index'), expenseParams);

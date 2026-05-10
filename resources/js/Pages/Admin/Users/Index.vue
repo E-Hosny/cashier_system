@@ -137,6 +137,9 @@ const getRoleBadgeClass = (role) => {
                                             الأدوار
                                         </th>
                                         <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            الفرع
+                                        </th>
+                                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                             تاريخ الإنشاء
                                         </th>
                                         <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -169,6 +172,9 @@ const getRoleBadgeClass = (role) => {
                                                     {{ role === 'admin' ? 'مدير' : role === 'cashier' ? 'كاشير' : role }}
                                                 </span>
                                             </div>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700" data-label="الفرع">
+                                            {{ user.branch_name || '—' }}
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900" data-label="تاريخ الإنشاء">
                                             {{ user.created_at }}

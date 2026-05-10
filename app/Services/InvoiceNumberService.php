@@ -2,10 +2,11 @@
 
 namespace App\Services;
 
-use App\Models\Order;
-
 use App\Models\InvoiceSequence;
+use App\Models\Order;
+use App\Support\BranchContext;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class InvoiceNumberService
@@ -18,6 +19,8 @@ class InvoiceNumberService
      */
     public static function generateInvoiceNumber($tenantId = null): string
     {
+        $branchId = BranchContext::requireId();
+
         // التحقق من قفل نظام الفواتير أثناء المزامنة
         $invoiceSystemLockKey = "invoice_numbering_system_lock";
         
@@ -49,7 +52,7 @@ class InvoiceNumberService
             $dateCode = $today->format('ymd'); // مثال: 250806 لـ 6 أغسطس 2025
             
             // الحصول على الرقم التسلسلي التالي باستخدام النظام الآمن
-            $nextSequence = InvoiceSequence::getNextSequence($dateCode);
+            $nextSequence = InvoiceSequence::getNextSequence($dateCode, $branchId);
             
             // التحقق من عدم وجود تضارب
             $invoiceNumber = $dateCode . '-' . str_pad($nextSequence, 3, '0', STR_PAD_LEFT);
@@ -57,7 +60,7 @@ class InvoiceNumberService
             // التحقق النهائي من عدم وجود الرقم
             if (self::invoiceNumberExists($invoiceNumber)) {
                 // إذا كان الرقم موجود، حاول مرة أخرى
-                $nextSequence = InvoiceSequence::getNextSequence($dateCode);
+                $nextSequence = InvoiceSequence::getNextSequence($dateCode, $branchId);
                 $invoiceNumber = $dateCode . '-' . str_pad($nextSequence, 3, '0', STR_PAD_LEFT);
                 
                 // إذا فشل مرة أخرى، استخدم آلية طوارئ
@@ -123,7 +126,15 @@ class InvoiceNumberService
      */
     private static function invoiceNumberExists(string $invoiceNumber): bool
     {
-        return Order::where('invoice_number', $invoiceNumber)->exists();
+        $tenantId = Auth::user()?->tenant_id;
+        if (! $tenantId) {
+            return Order::where('invoice_number', $invoiceNumber)->exists();
+        }
+
+        return Order::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->where('invoice_number', $invoiceNumber)
+            ->exists();
     }
     
     /**

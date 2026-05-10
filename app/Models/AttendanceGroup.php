@@ -2,12 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToBranch;
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class AttendanceGroup extends Model
 {
+    use BelongsToBranch;
     use BelongsToTenant;
     use HasFactory;
 
@@ -15,6 +17,7 @@ class AttendanceGroup extends Model
         'name',
         'max_present',
         'tenant_id',
+        'branch_id',
     ];
 
     protected $casts = [
@@ -24,6 +27,7 @@ class AttendanceGroup extends Model
     protected static function booted()
     {
         static::bootBelongsToTenant();
+        static::bootBelongsToBranch();
     }
 
     public function employees()

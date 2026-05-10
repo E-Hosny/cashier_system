@@ -6,48 +6,73 @@
     <div class="py-12" dir="rtl">
       <div class="max-w-3xl mx-auto sm:px-6 lg:px-8">
         <div class="bg-white shadow-md rounded-xl p-6 border">
-          <!-- فلترة المصروفات -->
-          <form @submit.prevent="filterExpenses" class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
+          <!-- فلترة المصروفات (تحديث تلقائي عند التغيير) -->
+          <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
+            <div v-if="expenseUi?.aggregateHub" class="sm:col-span-4">
+              <label class="block text-gray-700 mb-1 font-medium">الفرع / النطاق</label>
+              <select v-model="filtersLocal.expense_branch" class="input-style max-w-lg" @change="scheduleFilter">
+                <option value="central">مصروفات مركزية فقط</option>
+                <option v-for="b in expenseUi.hubBranches" :key="b.id" :value="String(b.id)">{{ b.name }}</option>
+              </select>
+            </div>
             <div>
               <label class="block text-gray-700 mb-1">يوم محدد</label>
-              <input 
-                v-model="filtersLocal.expense_date" 
-                type="date" 
-                class="input-style" 
-                @input="clearOtherFilters('expense_date')"
+              <input
+                v-model="filtersLocal.expense_date"
+                type="date"
+                class="input-style"
+                @change="onExpenseDateChanged"
               />
             </div>
             <div>
               <label class="block text-gray-700 mb-1">من تاريخ</label>
-              <input 
-                v-model="filtersLocal.from" 
-                type="date" 
-                class="input-style" 
-                @input="clearOtherFilters('from')"
+              <input
+                v-model="filtersLocal.from"
+                type="date"
+                class="input-style"
+                @change="onFromChanged"
               />
             </div>
             <div>
               <label class="block text-gray-700 mb-1">إلى تاريخ</label>
-              <input 
-                v-model="filtersLocal.to" 
-                type="date" 
-                class="input-style" 
-                @input="clearOtherFilters('to')"
+              <input
+                v-model="filtersLocal.to"
+                type="date"
+                class="input-style"
+                @change="onToChanged"
               />
             </div>
-            <div class="flex items-end gap-2">
-              <button type="submit" class="btn-primary flex-1">بحث</button>
-              <button type="button" @click="clearFilters" class="btn-gray flex-1">مسح</button>
+            <div class="sm:col-span-4 flex flex-wrap gap-2">
+              <button type="button" class="btn-gray" @click="clearFilters">مسح الفلاتر</button>
             </div>
-          </form>
+          </div>
 
           <!-- ملاحظة توضيحية -->
           <div class="mb-4 text-sm text-blue-600 bg-blue-50 p-3 rounded-lg">
-            ℹ️ ملاحظة: يتم عرض المصروفات حسب تاريخ المصروف المحدد
+            ℹ️ يتم تحديث القائمة تلقائياً عند تغيير الفرع أو التاريخ. المصروفات تُفلتر حسب نطاق التاريخ المعروض.
+          </div>
+          <div v-if="expenseUi?.aggregateHub" class="mb-4 text-sm text-amber-800 bg-amber-50 p-3 rounded-lg border border-amber-200">
+            <template v-if="filtersLocal.expense_branch === 'central'">
+              عرض <strong>المصروفات المركزية فقط</strong>.
+            </template>
+            <template v-else>
+              عرض مصروفات فرع: <strong>{{ selectedHubBranchName }}</strong> فقط.
+            </template>
           </div>
 
           <h3 class="text-lg font-bold mb-4">إضافة مصروف جديد</h3>
           <form @submit.prevent="submitExpense" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <div v-if="expenseUi?.canChooseCentral" class="sm:col-span-3 flex flex-wrap gap-4 items-center">
+              <span class="text-gray-700 font-medium">نوع المصروف:</span>
+              <label class="inline-flex items-center gap-2 cursor-pointer">
+                <input v-model="form.expense_scope" type="radio" value="branch" class="rounded-full border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500" />
+                <span>خصص بالفرع الحالي</span>
+              </label>
+              <label class="inline-flex items-center gap-2 cursor-pointer">
+                <input v-model="form.expense_scope" type="radio" value="central" class="rounded-full border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500" />
+                <span>مركزي (جميع الفروع)</span>
+              </label>
+            </div>
             <div>
               <label class="block text-gray-700 mb-1">الوصف</label>
               <input v-model="form.description" type="text" class="input-style" required />
@@ -72,6 +97,7 @@
                 <tr>
                   <th class="p-3">الوصف</th>
                   <th class="p-3">المبلغ</th>
+                  <th class="p-3">النطاق</th>
                   <th class="p-3">التاريخ</th>
                   <th class="p-3">الوقت</th>
                   <th class="p-3">الإجراءات</th>
@@ -81,6 +107,7 @@
                 <tr v-for="expense in expenses" :key="expense.id" class="border-t hover:bg-gray-50">
                   <td class="p-3">{{ expense.description }}</td>
                   <td class="p-3">{{ formatPrice(expense.amount) }} جنيه</td>
+                  <td class="p-3">{{ expense.branch_id == null ? 'مركزي' : (expense.branch?.name || 'فرع') }}</td>
                   <td class="p-3">{{ expense.expense_date }}</td>
                   <td class="p-3">{{ formatTime(expense.created_at) }}</td>
                   <td class="p-3">
@@ -148,92 +175,124 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import { router, usePage } from '@inertiajs/vue3';
+import { ref, computed } from 'vue';
+import { router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
-const page = usePage();
 const props = defineProps({
   expenses: Array,
   totalExpenses: Number,
   filters: Object,
+  expenseUi: {
+    type: Object,
+    default: () => ({
+      aggregateHub: false,
+      canChooseCentral: false,
+      hubBranches: [],
+    }),
+  },
 });
+
+function normalizeExpenseBranchInitial() {
+  const eb = props.filters?.expense_branch || props.filters?.branch_scope || 'central';
+  return eb === 'all' ? 'central' : eb;
+}
 
 const filtersLocal = ref({
   expense_date: props.filters?.expense_date || new Date().toISOString().slice(0, 10),
   from: props.filters?.from || '',
   to: props.filters?.to || '',
+  expense_branch: normalizeExpenseBranchInitial(),
 });
 
-// تحميل البيانات تلقائياً عند فتح الصفحة
-onMounted(() => {
-  if (!props.filters?.expense_date && !props.filters?.from && !props.filters?.to) {
-    filterExpenses();
+const selectedHubBranchName = computed(() => {
+  const eb = filtersLocal.value.expense_branch;
+  if (eb === 'central') {
+    return '';
   }
+  const b = props.expenseUi?.hubBranches?.find((x) => String(x.id) === String(eb));
+  return b?.name || '';
 });
 
-// مراقبة التغييرات في الحقول لتنظيف الحقول الأخرى
+let filterDebounce = null;
+function scheduleFilter() {
+  clearTimeout(filterDebounce);
+  filterDebounce = setTimeout(() => filterExpenses(), 280);
+}
+
 function clearOtherFilters(field) {
   if (field === 'expense_date' && filtersLocal.value.expense_date) {
-    // إذا تم اختيار يوم محدد، امسح الحقول الأخرى
     filtersLocal.value.from = '';
     filtersLocal.value.to = '';
   } else if (field === 'from' || field === 'to') {
-    // إذا تم تحديد من أو إلى، امسح اليوم المحدد
     filtersLocal.value.expense_date = '';
   }
+}
+
+function onExpenseDateChanged() {
+  clearOtherFilters('expense_date');
+  scheduleFilter();
+}
+
+function onFromChanged() {
+  clearOtherFilters('from');
+  scheduleFilter();
+}
+
+function onToChanged() {
+  clearOtherFilters('to');
+  scheduleFilter();
 }
 
 const form = ref({
   description: '',
   amount: '',
   expense_date: new Date().toISOString().slice(0, 10),
+  expense_scope: 'branch',
 });
 
 const editingExpense = ref(null);
 const editForm = ref({ description: '', amount: '', expense_date: '' });
 
 function filterExpenses() {
-  // تحديد نوع الفلترة بناءً على الحقول المملوءة
   let data = {};
-  
+
   if (filtersLocal.value.expense_date) {
-    // إذا تم اختيار يوم محدد، استخدمه فقط
     data = {
       expense_date: filtersLocal.value.expense_date,
       from: '',
       to: ''
     };
   } else if (filtersLocal.value.from && filtersLocal.value.to) {
-    // إذا تم تحديد فترة من-إلى
     data = {
       expense_date: '',
       from: filtersLocal.value.from,
       to: filtersLocal.value.to
     };
   } else if (filtersLocal.value.from) {
-    // إذا تم تحديد من تاريخ فقط
     data = {
       expense_date: '',
       from: filtersLocal.value.from,
       to: ''
     };
   } else if (filtersLocal.value.to) {
-    // إذا تم تحديد إلى تاريخ فقط
     data = {
       expense_date: '',
       from: '',
       to: filtersLocal.value.to
     };
   } else {
-    // افتراضياً: اليوم الحالي
     data = {
       expense_date: new Date().toISOString().slice(0, 10),
       from: '',
       to: ''
     };
   }
-  
+
+  if (props.expenseUi?.aggregateHub) {
+    data.expense_branch = filtersLocal.value.expense_branch || 'central';
+  }
+
   router.get(route('expenses.index'), data, { preserveState: true, preserveScroll: true });
 }
 
@@ -241,26 +300,53 @@ function clearFilters() {
   filtersLocal.value = {
     expense_date: new Date().toISOString().slice(0, 10),
     from: '',
-    to: ''
+    to: '',
+    expense_branch: 'central',
   };
   filterExpenses();
 }
 
+function preserveFiltersPayload() {
+  const p = {};
+  if (filtersLocal.value.expense_date && !filtersLocal.value.from && !filtersLocal.value.to) {
+    p.preserve_expense_date = filtersLocal.value.expense_date;
+  }
+  if (filtersLocal.value.from) {
+    p.preserve_from = filtersLocal.value.from;
+  }
+  if (filtersLocal.value.to) {
+    p.preserve_to = filtersLocal.value.to;
+  }
+  if (props.expenseUi?.aggregateHub) {
+    p.preserve_expense_branch = filtersLocal.value.expense_branch || 'central';
+  }
+  return p;
+}
+
 function submitExpense() {
-  router.post(route('expenses.store'), form.value, {
+  router.post(route('expenses.store'), { ...form.value, ...preserveFiltersPayload() }, {
     onSuccess: () => {
-      form.value = { description: '', amount: '', expense_date: new Date().toISOString().slice(0, 10) };
+      form.value = {
+        description: '',
+        amount: '',
+        expense_date: new Date().toISOString().slice(0, 10),
+        expense_scope: 'branch',
+      };
     },
   });
 }
 
 function editExpense(expense) {
   editingExpense.value = expense.id;
-  editForm.value = { ...expense };
+  editForm.value = {
+    description: expense.description,
+    amount: expense.amount,
+    expense_date: expense.expense_date,
+  };
 }
 
 function updateExpense() {
-  router.put(route('expenses.update', editingExpense.value), editForm.value, {
+  router.put(route('expenses.update', editingExpense.value), { ...editForm.value, ...preserveFiltersPayload() }, {
     onSuccess: () => {
       editingExpense.value = null;
     },
@@ -268,9 +354,19 @@ function updateExpense() {
 }
 
 function deleteExpense(id) {
-  if (confirm('هل أنت متأكد من حذف هذا المصروف؟')) {
-    router.delete(route('expenses.destroy', id));
+  if (!confirm('هل أنت متأكد من حذف هذا المصروف؟')) {
+    return;
   }
+  const pf = preserveFiltersPayload();
+  const params = new URLSearchParams();
+  Object.entries(pf).forEach(([k, v]) => {
+    if (v !== undefined && v !== '') {
+      params.append(k, String(v));
+    }
+  });
+  const qs = params.toString();
+  const url = qs ? `${route('expenses.destroy', id)}?${qs}` : route('expenses.destroy', id);
+  router.delete(url);
 }
 
 function formatPrice(price) {

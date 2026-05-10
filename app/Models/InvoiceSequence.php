@@ -15,6 +15,7 @@ class InvoiceSequence extends Model
         'date_code',
         'current_sequence',
         'tenant_id',
+        'branch_id',
     ];
 
     protected static function booted()
@@ -25,30 +26,36 @@ class InvoiceSequence extends Model
     /**
      * الحصول على الرقم التسلسلي التالي لليوم الحالي
      * مع ضمان عدم وجود race conditions
-     * 
-     * @param string $dateCode
-     * @return int
+     *
+     * @param  string  $dateCode
+     * @param  int  $branchId
      */
-    public static function getNextSequence(string $dateCode): int
+    public static function getNextSequence(string $dateCode, int $branchId): int
     {
-        return DB::transaction(function () use ($dateCode) {
-            // محاولة الحصول على السجل الموجود مع قفل للتحديث
-            $sequence = self::where('date_code', $dateCode)
+        $tenantId = auth()->user()->tenant_id;
+
+        return DB::transaction(function () use ($dateCode, $branchId, $tenantId) {
+            $sequence = self::withoutGlobalScopes()
+                ->where('tenant_id', $tenantId)
+                ->where('branch_id', $branchId)
+                ->where('date_code', $dateCode)
                 ->lockForUpdate()
                 ->first();
-            
+
             if ($sequence) {
-                // تحديث الرقم التسلسلي الحالي
                 $sequence->increment('current_sequence');
+
                 return $sequence->current_sequence;
-            } else {
-                // إنشاء سجل جديد لهذا اليوم
-                $newSequence = self::create([
-                    'date_code' => $dateCode,
-                    'current_sequence' => 1
-                ]);
-                return $newSequence->current_sequence;
             }
+
+            $newSequence = self::create([
+                'date_code' => $dateCode,
+                'current_sequence' => 1,
+                'tenant_id' => $tenantId,
+                'branch_id' => $branchId,
+            ]);
+
+            return $newSequence->current_sequence;
         });
     }
     
@@ -58,30 +65,39 @@ class InvoiceSequence extends Model
      * @param string $dateCode
      * @return int
      */
-    public static function resetSequenceFromExisting(string $dateCode): int
+    public static function resetSequenceFromExisting(string $dateCode, int $branchId, ?int $tenantId = null): int
     {
-        return DB::transaction(function () use ($dateCode) {
-            // حساب أعلى رقم تسلسلي من الفواتير الموجودة
-            $maxFromOrders = \App\Models\Order::whereNotNull('invoice_number')
-                ->where('invoice_number', 'LIKE', $dateCode . '-%')
+        $tenantId = $tenantId ?? auth()->user()?->tenant_id;
+        if (! $tenantId) {
+            throw new \InvalidArgumentException('tenant_id is required to reset invoice sequence.');
+        }
+
+        return DB::transaction(function () use ($dateCode, $branchId, $tenantId) {
+            $maxFromOrders = \App\Models\Order::withoutGlobalScopes()
+                ->where('tenant_id', $tenantId)
+                ->where('branch_id', $branchId)
+                ->whereNotNull('invoice_number')
+                ->where('invoice_number', 'LIKE', $dateCode.'-%')
                 ->where('invoice_number', 'REGEXP', '^[0-9]{6}-[0-9]{3}$')
                 ->get()
                 ->pluck('invoice_number')
-                ->map(function($invoiceNumber) {
+                ->map(function ($invoiceNumber) {
                     $parts = explode('-', $invoiceNumber);
-                    return isset($parts[1]) && is_numeric($parts[1]) ? (int)$parts[1] : 0;
+
+                    return isset($parts[1]) && is_numeric($parts[1]) ? (int) $parts[1] : 0;
                 })
                 ->max() ?? 0;
-            
-            $maxSequence = $maxFromOrders;
-            
-            // تحديث أو إنشاء السجل
-            self::updateOrCreate(
-                ['date_code' => $dateCode],
-                ['current_sequence' => $maxSequence]
+
+            self::withoutGlobalScopes()->updateOrCreate(
+                [
+                    'tenant_id' => $tenantId,
+                    'branch_id' => $branchId,
+                    'date_code' => $dateCode,
+                ],
+                ['current_sequence' => $maxFromOrders]
             );
-            
-            return $maxSequence;
+
+            return $maxFromOrders;
         });
     }
     

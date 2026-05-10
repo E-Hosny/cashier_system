@@ -2,66 +2,71 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Branch;
 use App\Models\Expense;
-use Illuminate\Http\Request;
-use Inertia\Inertia;
+use App\Support\BranchContext;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Inertia\Inertia;
 
 class ExpenseController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Expense::orderBy('created_at', 'desc');
+        $user = Auth::user();
+        $aggregateHub = $user->hasRole('super admin') && BranchContext::id() === null;
 
-        // فلترة حسب يوم محدد - عرض جميع مصروفات اليوم المحدد
+        if ($aggregateHub) {
+            $request->validate([
+                'expense_branch' => ['sometimes', 'nullable', 'string', 'max:32'],
+            ]);
+        }
+
+        $expenseBranch = $aggregateHub ? $this->normalizeExpenseBranchInput($request) : null;
+
+        $query = Expense::query()->orderBy('created_at', 'desc');
+        $this->applyExpenseBranchVisibility($query, $expenseBranch);
+
+        if ($aggregateHub && $expenseBranch !== 'central') {
+            $query->with(['branch:id,name']);
+        }
+
         if ($request->filled('expense_date')) {
             $query->whereDate('expense_date', $request->expense_date);
-        }
-        // فلترة حسب فترة زمنية - تطبيق منطق 7 صباحاً - 7 صباحاً
-        elseif ($request->filled('from') && $request->filled('to')) {
+        } elseif ($request->filled('from') && $request->filled('to')) {
             $startDate = Carbon::parse($request->from)->setTime(7, 0, 0);
             $endDate = Carbon::parse($request->to)->setTime(7, 0, 0);
             $query->whereBetween('created_at', [$startDate, $endDate]);
-        }
-        // فلترة من تاريخ فقط
-        elseif ($request->filled('from')) {
+        } elseif ($request->filled('from')) {
             $startDate = Carbon::parse($request->from)->setTime(7, 0, 0);
             $query->where('created_at', '>=', $startDate);
-        }
-        // فلترة إلى تاريخ فقط
-        elseif ($request->filled('to')) {
+        } elseif ($request->filled('to')) {
             $endDate = Carbon::parse($request->to)->setTime(7, 0, 0);
             $query->where('created_at', '<=', $endDate);
-        }
-        // افتراضياً: عرض مصروفات الفترة الحالية (من 7 صباحاً إلى 7 صباحاً للوم التالي)
-        else {
+        } else {
             $now = Carbon::now();
             $currentHour = $now->hour;
-            
-            // تحديد التاريخ الصحيح بناءً على الوقت الحالي
+
             if ($currentHour < 7) {
-                // قبل الساعة 7 صباحاً - نعرض مصروفات من 7 صباحاً اليوم السابق إلى 7 صباحاً اليوم الحالي
                 $startDate = $now->copy()->subDay()->setTime(7, 0, 0);
                 $endDate = $now->copy()->setTime(7, 0, 0);
                 $defaultDate = $now->copy()->subDay()->toDateString();
             } else {
-                // بعد الساعة 7 صباحاً - نعرض مصروفات من 7 صباحاً اليوم الحالي إلى 7 صباحاً للوم التالي
                 $startDate = $now->copy()->setTime(7, 0, 0);
                 $endDate = $now->copy()->addDay()->setTime(7, 0, 0);
                 $defaultDate = $now->toDateString();
             }
-            
+
             $query->whereBetween('created_at', [$startDate, $endDate]);
         }
 
         $expenses = $query->get();
-        
-        // حساب إجمالي المصروفات
+
         $totalExpenses = $expenses->sum('amount');
-        
-        // تحديد التاريخ الافتراضي للعرض في الواجهة
+
         $defaultExpenseDate = null;
-        if (!$request->filled('expense_date') && !$request->filled('from') && !$request->filled('to')) {
+        if (! $request->filled('expense_date') && ! $request->filled('from') && ! $request->filled('to')) {
             $now = Carbon::now();
             $currentHour = $now->hour;
             if ($currentHour < 7) {
@@ -70,7 +75,7 @@ class ExpenseController extends Controller
                 $defaultExpenseDate = $now->toDateString();
             }
         }
-        
+
         return Inertia::render('Expenses/Index', [
             'expenses' => $expenses,
             'totalExpenses' => $totalExpenses,
@@ -78,6 +83,14 @@ class ExpenseController extends Controller
                 'expense_date' => $request->expense_date ?? $defaultExpenseDate,
                 'from' => $request->from,
                 'to' => $request->to,
+                'expense_branch' => $aggregateHub ? $expenseBranch : null,
+            ],
+            'expenseUi' => [
+                'aggregateHub' => $aggregateHub,
+                'canChooseCentral' => $user->hasRole('super admin') && BranchContext::id() !== null,
+                'hubBranches' => $aggregateHub
+                    ? Branch::query()->orderBy('name')->get(['id', 'name'])->values()->all()
+                    : [],
             ],
         ]);
     }
@@ -88,25 +101,126 @@ class ExpenseController extends Controller
             'description' => 'required|string|max:255',
             'amount' => 'required|numeric|min:0',
             'expense_date' => 'required|date',
+            'expense_scope' => 'sometimes|in:central,branch',
         ]);
-        Expense::create($request->only('description', 'amount', 'expense_date'));
-        return redirect()->route('expenses.index')->with('success', 'تمت إضافة المصروف بنجاح.');
+
+        $user = Auth::user();
+        $branchId = null;
+
+        if ($user->hasRole('super admin')) {
+            if (! BranchContext::id()) {
+                $branchId = null;
+            } else {
+                $scope = $request->input('expense_scope', 'branch');
+                $branchId = $scope === 'central' ? null : BranchContext::requireId();
+            }
+        } else {
+            $branchId = BranchContext::requireId();
+        }
+
+        Expense::create(array_merge(
+            $request->only('description', 'amount', 'expense_date'),
+            ['branch_id' => $branchId]
+        ));
+
+        return redirect()->route('expenses.index', $this->preserveExpenseIndexQuery($request))
+            ->with('success', 'تمت إضافة المصروف بنجاح.');
     }
 
     public function update(Request $request, Expense $expense)
     {
+        $this->ensureCanAccessExpense($expense);
+
         $request->validate([
             'description' => 'required|string|max:255',
             'amount' => 'required|numeric|min:0',
             'expense_date' => 'required|date',
         ]);
         $expense->update($request->only('description', 'amount', 'expense_date'));
-        return redirect()->route('expenses.index')->with('success', 'تم تعديل المصروف بنجاح.');
+
+        return redirect()->route('expenses.index', $this->preserveExpenseIndexQuery($request))
+            ->with('success', 'تم تعديل المصروف بنجاح.');
     }
 
-    public function destroy(Expense $expense)
+    public function destroy(Request $request, Expense $expense)
     {
+        $this->ensureCanAccessExpense($expense);
         $expense->delete();
-        return redirect()->route('expenses.index')->with('success', 'تم حذف المصروف بنجاح.');
+
+        return redirect()->route('expenses.index', $this->preserveExpenseIndexQuery($request))
+            ->with('success', 'تم حذف المصروف بنجاح.');
     }
-} 
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function preserveExpenseIndexQuery(Request $request): array
+    {
+        return array_filter([
+            'expense_date' => $request->input('preserve_expense_date'),
+            'from' => $request->input('preserve_from'),
+            'to' => $request->input('preserve_to'),
+            'expense_branch' => $request->input('preserve_expense_branch'),
+        ], fn ($v) => $v !== null && $v !== '');
+    }
+
+    protected function normalizeExpenseBranchInput(Request $request): string
+    {
+        $raw = $request->input('expense_branch');
+        if ($raw === null && $request->filled('branch_scope')) {
+            $legacy = $request->input('branch_scope');
+            $raw = $legacy === 'central' ? 'central' : null;
+        }
+        $raw = $raw ?? 'central';
+        if ($raw === 'all') {
+            return 'central';
+        }
+        if ($raw === 'central') {
+            return 'central';
+        }
+        if (is_numeric($raw)) {
+            $id = (int) $raw;
+            $tenantId = Auth::user()->tenant_id;
+            $exists = Branch::query()->whereKey($id)->where('tenant_id', $tenantId)->exists();
+
+            return $exists ? (string) $id : 'central';
+        }
+
+        return 'central';
+    }
+
+    protected function applyExpenseBranchVisibility($query, ?string $hubExpenseBranch): void
+    {
+        $user = Auth::user();
+        if ($user->hasRole('super admin') && BranchContext::id() === null) {
+            $scope = $hubExpenseBranch ?? 'central';
+            if ($scope === 'central') {
+                $query->whereNull('branch_id');
+
+                return;
+            }
+            $query->where('branch_id', (int) $scope);
+
+            return;
+        }
+
+        $bid = BranchContext::id();
+        if ($bid !== null) {
+            $query->where('branch_id', $bid);
+        }
+    }
+
+    protected function ensureCanAccessExpense(Expense $expense): void
+    {
+        $user = Auth::user();
+        if ($user->hasRole('super admin') && BranchContext::id() === null) {
+            return;
+        }
+
+        $bid = BranchContext::id();
+        abort_if($bid === null && ! $user->hasRole('super admin'), 403);
+        if ($bid !== null) {
+            abort_unless((int) $expense->branch_id === $bid, 403);
+        }
+    }
+}

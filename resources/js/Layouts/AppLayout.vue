@@ -14,11 +14,17 @@ defineProps({
 
 const showingSidebar = ref(false);
 const page = usePage();
+const branchContext = computed(() => page.props.branchContext || {});
+const hideBranchScopedNav = computed(() => branchContext.value?.isSuperAdminHub === true);
 const userRoles = computed(() => page.props.auth?.user?.roles || []);
 const isBaristaOnly = computed(() =>
     userRoles.value.includes('barista') &&
     !userRoles.value.includes('admin') &&
     !userRoles.value.includes('super admin')
+);
+/** المشتريات مركزية فقط: لا تُعرض عند وجود فرع نشط (سوبر أدمن داخل فرع أو مستخدم مرتبط بفرع). */
+const showPurchasesNav = computed(
+    () => !isBaristaOnly.value && (branchContext.value.activeBranchId == null)
 );
 const canUseBarista = computed(() =>
     userRoles.value.includes('barista') ||
@@ -103,18 +109,18 @@ const logout = () => {
                                 >
                                     عرض الشاشة
                                 </NavLink>
-                                <NavLink
-                                    v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('super admin')"
+                                <NavLink 
+                                    v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('super admin') && !hideBranchScopedNav"
                                     :href="route('admin.employees.attendance-groups.index')"
                                     :active="route().current('admin.employees.attendance-groups.*')"
                                 >
                                     مجموعات الحضور
                                 </NavLink>
-                                <NavLink v-if="!isBaristaOnly" :href="route('cashier.index')" :active="route().current('cashier.index')">
+                                <NavLink v-if="!isBaristaOnly && !hideBranchScopedNav" :href="route('cashier.index')" :active="route().current('cashier.index')">
                                     الكاشير
                                 </NavLink>
 
-                                <NavLink v-if="!isBaristaOnly" :href="route('purchases.index')" :active="route().current('purchases.index')">
+                                <NavLink v-if="showPurchasesNav" :href="route('purchases.index')" :active="route().current('purchases.index')">
                                     المشتريات
                                 </NavLink>
                                 <NavLink v-if="!isBaristaOnly" :href="route('expenses.index')" :active="route().current('expenses.index')">
@@ -335,17 +341,17 @@ const logout = () => {
                                 عرض الشاشة
                             </ResponsiveNavLink>
                             <ResponsiveNavLink
-                                v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('super admin')"
+                                v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.includes('super admin') && !hideBranchScopedNav"
                                 :href="route('admin.employees.attendance-groups.index')"
                                 :active="route().current('admin.employees.attendance-groups.*')"
                                 @click="showingSidebar = false"
                             >
                                 مجموعات الحضور
                             </ResponsiveNavLink>
-                            <ResponsiveNavLink v-if="!isBaristaOnly" :href="route('cashier.index')" :active="route().current('cashier.index')" @click="showingSidebar = false">
+                            <ResponsiveNavLink v-if="!isBaristaOnly && !hideBranchScopedNav" :href="route('cashier.index')" :active="route().current('cashier.index')" @click="showingSidebar = false">
                                 الكاشير
                             </ResponsiveNavLink>
-                            <ResponsiveNavLink v-if="!isBaristaOnly" :href="route('purchases.index')" :active="route().current('purchases.index')" @click="showingSidebar = false">
+                            <ResponsiveNavLink v-if="showPurchasesNav" :href="route('purchases.index')" :active="route().current('purchases.index')" @click="showingSidebar = false">
                                 المشتريات
                             </ResponsiveNavLink>
                             <ResponsiveNavLink v-if="!isBaristaOnly" :href="route('expenses.index')" :active="route().current('expenses.index')" @click="showingSidebar = false">

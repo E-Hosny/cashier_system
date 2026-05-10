@@ -10,6 +10,7 @@ import Checkbox from '@/Components/Checkbox.vue';
 
 const props = defineProps({
     roles: Array,
+    branches: Array,
 });
 
 const form = useForm({
@@ -18,6 +19,7 @@ const form = useForm({
     password: '',
     password_confirmation: '',
     roles: [],
+    branch_id: '',
 });
 
 const submit = () => {
@@ -43,6 +45,10 @@ const getRoleDisplayName = (role) => {
             return 'مدير';
         case 'cashier':
             return 'كاشير';
+        case 'super admin':
+            return 'سوبر أدمن';
+        case 'barista':
+            return 'باريستا';
         default:
             return role;
     }
@@ -118,6 +124,20 @@ const getRoleDisplayName = (role) => {
                                     required
                                 />
                                 <InputError :message="form.errors.password_confirmation" class="mt-2" />
+                            </div>
+
+                            <!-- الفرع -->
+                            <div class="mb-6">
+                                <InputLabel for="branch_id" value="الفرع (إجباري لجميع الأدوار ماعدا سوبر أدمن)" />
+                                <select
+                                    id="branch_id"
+                                    v-model="form.branch_id"
+                                    class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm"
+                                >
+                                    <option value="">— بدون —</option>
+                                    <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+                                </select>
+                                <InputError :message="form.errors.branch_id" class="mt-2" />
                             </div>
 
                             <!-- الأدوار -->

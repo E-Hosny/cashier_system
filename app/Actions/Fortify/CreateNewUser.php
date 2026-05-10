@@ -2,6 +2,7 @@
 
 namespace App\Actions\Fortify;
 
+use App\Models\Branch;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
@@ -33,12 +34,19 @@ class CreateNewUser implements CreatesNewUsers
             'name' => $input['name'],
         ]);
 
+        $branch = Branch::create([
+            'tenant_id' => $tenant->id,
+            'name' => 'الفرع الرئيسي',
+            'is_active' => true,
+        ]);
+
         // إنشاء المستخدم مرتبطاً بالـ tenant
         $user = User::create([
             'name' => $input['name'],
             'email' => $input['email'],
             'password' => Hash::make($input['password']),
             'tenant_id' => $tenant->id,
+            'branch_id' => $branch->id,
         ]);
 
         // تعيين دور admin افتراضيًا
