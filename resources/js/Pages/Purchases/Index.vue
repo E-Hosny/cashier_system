@@ -224,14 +224,12 @@ const purchaseKindLabel = (purchase) =>
                                     <div>
                                         <label class="block text-gray-700 font-semibold text-sm mb-1">اسم البند</label>
                                         <input v-model="newCustomItem.name" type="text" required
-                                            class="w-full border-gray-300 rounded-md shadow-sm"
-                                            placeholder="مثال: صيانة ماكينة">
+                                            class="w-full border-gray-300 rounded-md shadow-sm">
                                     </div>
                                     <div>
                                         <label class="block text-gray-700 font-semibold text-sm mb-1">الوحدة (اختياري)</label>
                                         <input v-model="newCustomItem.unit" type="text"
-                                            class="w-full border-gray-300 rounded-md shadow-sm"
-                                            placeholder="مثال: مرة، كرتونة">
+                                            class="w-full border-gray-300 rounded-md shadow-sm">
                                     </div>
                                     <button type="submit"
                                         class="w-full bg-amber-600 text-white px-4 py-2 rounded-md hover:bg-amber-700">
