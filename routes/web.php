@@ -117,6 +117,9 @@ Route::middleware([
     });
 
     Route::middleware(['branch.context'])->group(function () {
+        Route::get('/raw-materials/branch-pull', [RawMaterialController::class, 'branchPullForm'])->name('admin.raw-materials.branch-pull');
+        Route::post('/raw-materials/branch-pull', [RawMaterialController::class, 'branchPullStore'])->name('admin.raw-materials.branch-pull.store');
+
         // Employees Management (admin and cashier with attendance permission)
         Route::middleware(['employee.attendance'])->group(function () {
             Route::resource('employees', EmployeeController::class, ['as' => 'admin'])->except(['show']);

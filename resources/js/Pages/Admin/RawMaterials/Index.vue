@@ -2,19 +2,33 @@
   <div class="mx-auto max-w-screen-2xl w-full p-4 sm:p-6" dir="rtl">
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4 no-print">
       <h1 class="text-3xl font-bold text-gray-800">🛢️ إدارة المواد الخام</h1>
-      <div class="flex flex-wrap gap-2">
-        <a v-if="canReceive" :href="route('admin.raw-materials.pending-receive')" class="btn-blue">📥 سحب المنتجات</a>
+      <div v-if="isCentralView" class="flex flex-wrap gap-2">
         <a v-if="canManageRawCategories" :href="route('admin.raw-material-categories.index')" class="btn-gray">📁 فئات المواد الخام</a>
         <a v-if="canAddRaw" :href="route('admin.raw-materials.create')" class="btn-primary">➕ إضافة مادة خام</a>
       </div>
     </div>
 
+    <div class="mb-6 bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-wrap items-center gap-4 no-print">
+      <span class="text-gray-800 font-semibold whitespace-nowrap">عرض المخزون:</span>
+      <select
+        v-model="viewScopeSelect"
+        class="border border-gray-300 rounded-lg p-2.5 min-w-[220px] bg-white font-medium"
+        @change="applyViewScope"
+      >
+        <option value="central">🏢 المخزون المركزي</option>
+        <option v-for="b in hubBranches" :key="b.id" :value="String(b.id)">📍 {{ b.name }}</option>
+      </select>
+      <p v-if="isCentralView" class="text-sm text-gray-600">إدارة المواد، التكويد، والطباعة من المركز.</p>
+      <p v-else class="text-sm text-gray-600">مخزون وسحوبات يوم العمل للفرع المحدد فقط.</p>
+    </div>
+
+    <template v-if="isCentralView">
     <div v-if="showTableTools" class="mb-4 flex flex-wrap items-center gap-3 no-print">
       <label class="text-gray-700 font-medium whitespace-nowrap">تصفية حسب الفئة:</label>
       <select
         v-model="filterCategoryId"
         class="border border-gray-300 rounded-lg p-2 min-w-[200px]"
-        @change="applyCategoryFilter"
+        @change="applyFilters"
       >
         <option value="">الكل</option>
         <option v-for="c in rawMaterialCategories" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
@@ -65,13 +79,13 @@
         </div>
 
         <div class="mt-3 bg-white rounded-lg p-3 border border-gray-200">
-          <div class="text-gray-600 mb-1 text-sm">الكمية الحالية (المخزون)</div>
+          <div class="text-gray-600 mb-1 text-sm">الكمية الحالية (المخزون المركزي)</div>
           <div class="font-mono font-bold text-gray-900">
             <template v-if="material.quantity_per_unit">
               {{ formatStockUnits(material) }} {{ material.unit }}
               <span class="text-gray-600 font-normal">({{ formatStockConsume(material) }} {{ material.consume_unit }})</span>
               <span v-if="material.pending_pieces > 0" class="block text-amber-800 text-sm font-semibold mt-1">
-                قيد الاستلام: {{ formatPendingPieces(material) }} {{ material.unit }}
+                تم التكويد: {{ formatPendingPieces(material) }} {{ material.unit }}
               </span>
             </template>
             <template v-else>
@@ -80,7 +94,7 @@
                 ({{ (material.stock / ((material.purchase_unit === 'لتر' && material.consume_unit === 'مللي') ? 1000 : (material.purchase_unit === 'كجم' && material.consume_unit === 'جرام') ? 1000 : 1)).toFixed(2) }} {{ material.purchase_unit }})
               </span>
               <span v-if="material.pending_pieces > 0" class="block text-amber-800 text-sm font-semibold mt-1">
-                قيد الاستلام: {{ formatPendingPieces(material) }} {{ material.unit }}
+                تم التكويد: {{ formatPendingPieces(material) }} {{ material.unit }}
               </span>
             </template>
           </div>
@@ -111,7 +125,7 @@
             <th class="p-4">اسم المادة</th>
             <th class="p-4">الفئة</th>
             <th class="p-4">عدد وحدات القطعة</th>
-            <th class="p-4 min-w-[320px]">الكمية الحالية (المخزون)</th>
+            <th class="p-4 min-w-[320px]">الكمية الحالية (المخزون المركزي)</th>
             <th class="p-4">سعر المادة الخام</th>
             <th class="p-4">معلومات التسعير</th>
             <th class="p-4">حد التنبيه</th>
@@ -126,12 +140,12 @@
               {{ formatQuantityPerUnit(material) }}
               <span v-if="material.consume_unit" class="text-gray-500">{{ material.consume_unit }}</span>
             </td>
-            <td class="p-4 block sm:table-cell font-mono font-bold min-w-[320px]" data-label="الكمية الحالية (المخزون)">
+            <td class="p-4 block sm:table-cell font-mono font-bold min-w-[320px]" data-label="الكمية الحالية (المخزون المركزي)">
               <template v-if="material.quantity_per_unit">
                 {{ formatStockUnits(material) }} {{ material.unit }}
                 <span class="text-gray-600 font-normal">({{ formatStockConsume(material) }} {{ material.consume_unit }})</span>
                 <span v-if="material.pending_pieces > 0" class="block text-amber-800 text-sm font-semibold mt-1">
-                  قيد الاستلام: {{ formatPendingPieces(material) }} {{ material.unit }}
+                  تم التكويد: {{ formatPendingPieces(material) }} {{ material.unit }}
                 </span>
               </template>
               <template v-else>
@@ -140,7 +154,7 @@
                   ({{ (material.stock / ((material.purchase_unit === 'لتر' && material.consume_unit === 'مللي') ? 1000 : (material.purchase_unit === 'كجم' && material.consume_unit === 'جرام') ? 1000 : 1)).toFixed(2) }} {{ material.purchase_unit }})
                 </span>
                 <span v-if="material.pending_pieces > 0" class="block text-amber-800 text-sm font-semibold mt-1">
-                  قيد الاستلام: {{ formatPendingPieces(material) }} {{ material.unit }}
+                  تم التكويد: {{ formatPendingPieces(material) }} {{ material.unit }}
                 </span>
               </template>
             </td>
@@ -170,9 +184,90 @@
         </tbody>
       </table>
     </div>
+    </template>
+
+    <template v-else-if="branchDetail">
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-3 no-print">
+        <div>
+          <h2 class="text-xl font-bold text-gray-800">فرع: {{ branchDetail.branch_name }}</h2>
+          <p class="text-sm text-gray-600 mt-1">مخزون المواد الخام وسحوبات يوم العمل لهذا الفرع.</p>
+        </div>
+        <div v-if="showTableTools" class="flex flex-wrap items-center gap-2">
+          <label class="text-gray-700 font-medium whitespace-nowrap">الفئة:</label>
+          <select
+            v-model="filterCategoryId"
+            class="border border-gray-300 rounded-lg p-2 min-w-[180px]"
+            @change="applyFilters"
+          >
+            <option value="">الكل</option>
+            <option v-for="c in rawMaterialCategories" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="bg-white shadow-lg rounded-xl overflow-x-auto mb-8 no-print">
+        <table class="w-full min-w-[900px] text-end text-sm">
+          <thead class="bg-gray-200">
+            <tr>
+              <th class="p-3">المادة</th>
+              <th class="p-3">الفئة</th>
+              <th class="p-3">مخزون الفرع (قطع)</th>
+              <th class="p-3">بالوحدة الاستهلاكية</th>
+              <th class="p-3">حد التنبيه</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="!branchDetail.materials?.length">
+              <td colspan="5" class="p-6 text-center text-gray-500">لا توجد مواد خام في هذا العرض.</td>
+            </tr>
+            <tr
+              v-for="m in branchDetail.materials"
+              :key="m.id"
+              :class="m.is_low ? 'bg-red-50' : ''"
+            >
+              <td class="p-3 font-semibold">{{ m.name }}</td>
+              <td class="p-3">{{ m.category?.name || '—' }}</td>
+              <td class="p-3 font-mono font-bold">{{ m.branch_stock_pieces }} {{ m.unit }}</td>
+              <td class="p-3 text-gray-600">{{ m.branch_stock_consume }} {{ m.consume_unit }}</td>
+              <td class="p-3">{{ m.alert_pieces != null ? m.alert_pieces + ' ' + (m.unit || '') : '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="no-print">
+        <h3 class="text-lg font-bold text-gray-800 mb-2">سحوبات اليوم — {{ branchDetail.branch_name }}</h3>
+        <p v-if="branchDetail.businessDayLabel" class="text-sm text-blue-700 bg-blue-50 rounded-lg px-3 py-2 mb-4 inline-block">
+          {{ branchDetail.businessDayLabel }}
+        </p>
+        <div class="overflow-x-auto border border-gray-200 rounded-xl bg-white">
+          <table class="w-full text-sm border-collapse">
+            <thead class="bg-gray-100">
+              <tr>
+                <th class="border border-gray-200 p-2">الوقت</th>
+                <th class="border border-gray-200 p-2">المادة</th>
+                <th class="border border-gray-200 p-2">القطع</th>
+                <th class="border border-gray-200 p-2">الكود</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="!branchDetail.todayPulls?.length">
+                <td colspan="4" class="text-center p-6 text-gray-500">لا توجد سحوبات لهذا اليوم.</td>
+              </tr>
+              <tr v-for="pull in branchDetail.todayPulls" :key="pull.id">
+                <td class="border border-gray-200 p-2 text-center">{{ pull.received_at }}</td>
+                <td class="border border-gray-200 p-2 text-center">{{ pull.product_name }}</td>
+                <td class="border border-gray-200 p-2 text-center">{{ pull.piece_count }} {{ pull.unit }}</td>
+                <td class="border border-gray-200 p-2 text-center font-mono text-xs">{{ pull.label_code }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </template>
 
     <div
-      v-if="printModal.open"
+      v-if="isCentralView && printModal.open"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       @click.self="closePrintModal"
     >
@@ -180,11 +275,11 @@
         <h3 class="text-lg font-bold text-gray-800 mb-2">طباعة كود — {{ printModal.materialName }}</h3>
 
         <p v-if="!printModal.created" class="text-sm text-gray-600 mb-4">
-          أدخل عدد القطع المراد تكويدها (لن يُضاف للمخزون حتى «سحب المنتجات»).
+          أدخل عدد القطع المراد تكويدها (تُسحب لاحقاً من الفرع عبر الباركود).
         </p>
 
         <p v-else class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg py-2 px-3 mb-4">
-          تم تكويد {{ printModal.piece_count }} قطعة كمُعلّق لم تصل للمحل بعد.
+          تم تكويد {{ printModal.piece_count }} {{ printModal.unit || 'قطعة' }} — بانتظار سحب الفرع.
         </p>
 
         <div v-if="!printModal.created">
@@ -206,7 +301,7 @@
             <svg ref="barcodeSvgPreview" class="max-w-full h-auto"></svg>
           </div>
           <p class="text-xs text-gray-600 mb-4">
-            سيتم إضافة الكمية للمخزون عند سحب المنتجات عبر نفس الكود.
+            يُسحب الكود من الفرع لإضافة الكمية لمخزون ذلك الفرع.
           </p>
         </div>
 
@@ -253,8 +348,19 @@ export default {
       type: Object,
       default: () => ({ category_id: '' }),
     },
+    hubBranches: {
+      type: Array,
+      default: () => [],
+    },
+    branchDetail: {
+      type: Object,
+      default: null,
+    },
   },
   computed: {
+    isCentralView() {
+      return this.viewScopeSelect === 'central';
+    },
     userRoles() {
       return this.$page?.props?.auth?.user?.roles || [];
     },
@@ -291,6 +397,7 @@ export default {
   },
   data() {
     return {
+      viewScopeSelect: this.filters?.view_scope != null ? String(this.filters.view_scope) : 'central',
       filterCategoryId: this.filters?.category_id != null && this.filters.category_id !== '' ? String(this.filters.category_id) : '',
       rawMaterialsLocal: this.rawMaterials,
       printModal: {
@@ -315,17 +422,34 @@ export default {
       handler(val) {
         const id = val?.category_id;
         this.filterCategoryId = id != null && id !== '' ? String(id) : '';
+        if (val?.view_scope != null) {
+          this.viewScopeSelect = String(val.view_scope);
+        }
       },
     },
   },
   methods: {
-    applyCategoryFilter() {
-      const id = this.filterCategoryId;
-      Inertia.get(
-        route('admin.raw-materials.index'),
-        id ? { category_id: id } : {},
-        { preserveState: true, replace: true }
-      );
+    filterQueryParams() {
+      const params = { view_scope: this.viewScopeSelect };
+      if (this.filterCategoryId) {
+        params.category_id = this.filterCategoryId;
+      }
+      return params;
+    },
+    applyViewScope() {
+      if (this.viewScopeSelect !== 'central') {
+        this.filterCategoryId = this.filterCategoryId || '';
+      }
+      Inertia.get(route('admin.raw-materials.index'), this.filterQueryParams(), {
+        preserveState: true,
+        replace: true,
+      });
+    },
+    applyFilters() {
+      Inertia.get(route('admin.raw-materials.index'), this.filterQueryParams(), {
+        preserveState: true,
+        replace: true,
+      });
     },
     openPrintModal(material) {
       this.printModal = {

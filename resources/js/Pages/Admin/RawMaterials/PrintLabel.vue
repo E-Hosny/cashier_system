@@ -18,7 +18,7 @@
       </div>
       <p class="font-mono text-sm break-all text-gray-800 mb-4">{{ label.label_code }}</p>
       <p v-if="label.status === 'pending'" class="text-amber-800 bg-amber-50 border border-amber-200 rounded-lg py-2 px-3 text-sm">
-        قيد الاستلام — تم تكويد هذه الكمية ولم تُضف للمخزون حتى يتم السحب من صفحة «سحب المنتجات».
+        تم تكويد {{ label.piece_count }} {{ unit || 'قطعة' }} — بانتظار سحب الفرع عبر الباركود.
       </p>
     </div>
   </div>

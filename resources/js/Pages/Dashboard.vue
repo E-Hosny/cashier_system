@@ -170,6 +170,18 @@ function clearBranch() {
                 <!-- باقي الأدوار + سوبر أدمن داخل فرع -->
                 <template v-else>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <a
+                            v-if="!isBaristaOnly"
+                            :href="route('admin.raw-materials.branch-pull')"
+                            class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl ring-2 ring-amber-100"
+                        >
+                            <div class="flex flex-col items-center">
+                                <div class="text-amber-600 text-4xl mb-4">📥</div>
+                                <h3 class="text-lg font-semibold text-gray-700">سحب المواد الخام</h3>
+                                <p class="text-sm text-gray-500">استلام بالباركود لمخزون الفرع</p>
+                            </div>
+                        </a>
+
                         <a v-if="!isBaristaOnly" href="/cashier" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl">
                             <div class="flex flex-col items-center">
                                 <div class="text-blue-500 text-4xl mb-4">🏪</div>

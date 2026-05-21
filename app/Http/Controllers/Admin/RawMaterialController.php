@@ -3,14 +3,19 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Branch;
+use App\Models\BranchRawMaterialStock;
 use App\Models\Category;
+use App\Models\Employee;
 use App\Models\Product;
 use App\Models\RawMaterialPendingLabel;
 use App\Models\StockMovement;
+use App\Support\BranchContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
+use Symfony\Component\HttpFoundation\RedirectResponse;
 
 class RawMaterialController extends Controller
 {
@@ -37,67 +42,270 @@ class RawMaterialController extends Controller
         }
     }
 
-    /**
-     * Display a listing of the resource.
-     */
+    private function isCentralHub(): bool
+    {
+        $user = auth()->user();
+
+        return $user?->hasRole('super admin') && ! BranchContext::hasBranch();
+    }
+
+    private function currentBusinessDayBounds(): array
+    {
+        return Employee::businessDayBoundsForAnchor(Employee::businessDayAnchorFromNow());
+    }
+
     public function index(Request $request)
     {
         $this->requireAnyRole(['admin', 'super admin', 'cashier']);
 
-        $user = auth()->user();
-        // Cashier should only use "pending-receive" (sحب المنتجات) without seeing the raw materials table.
-        if ($user?->hasRole('cashier') && ! $user->hasRole('admin') && ! $user->hasRole('super admin')) {
-            return Inertia::render('Admin/RawMaterials/Index', [
-                'rawMaterials' => [],
-                'rawMaterialCategories' => [],
-                'filters' => ['category_id' => ''],
-            ]);
+        if (! $this->isCentralHub()) {
+            return redirect()->route('admin.raw-materials.branch-pull');
         }
 
-        $query = Product::where('type', 'raw')->with('category')->latest();
-        if ($request->filled('category_id')) {
-            $query->where('category_id', $request->integer('category_id'));
+        $hubBranches = Branch::query()->orderBy('name')->get(['id', 'name']);
+        $viewScope = $request->get('view_scope', 'central');
+
+        if ($viewScope !== 'central' && ! $hubBranches->contains('id', (int) $viewScope)) {
+            $viewScope = 'central';
         }
 
-        $rawMaterials = $query->get();
-        $pendingSums = RawMaterialPendingLabel::query()
-            ->where('status', RawMaterialPendingLabel::STATUS_PENDING)
-            ->selectRaw('product_id, SUM(piece_count) as total')
-            ->groupBy('product_id')
-            ->pluck('total', 'product_id');
-        $rawMaterials = $rawMaterials->map(function (Product $m) use ($pendingSums) {
-            $m->pending_pieces = (float) ($pendingSums[$m->id] ?? 0);
+        $categoryId = $request->get('category_id', '') !== '' ? (string) $request->get('category_id') : '';
 
-            return $m;
-        });
+        $rawMaterials = [];
+        $branchDetail = null;
+
+        if ($viewScope === 'central') {
+            $query = Product::where('type', 'raw')->with('category')->latest();
+            if ($request->filled('category_id')) {
+                $query->where('category_id', $request->integer('category_id'));
+            }
+
+            $rawMaterials = $query->get();
+            $pendingSums = RawMaterialPendingLabel::query()
+                ->where('status', RawMaterialPendingLabel::STATUS_PENDING)
+                ->selectRaw('product_id, SUM(piece_count) as total')
+                ->groupBy('product_id')
+                ->pluck('total', 'product_id');
+            $rawMaterials = $rawMaterials->map(function (Product $m) use ($pendingSums) {
+                $m->pending_pieces = (float) ($pendingSums[$m->id] ?? 0);
+
+                return $m;
+            });
+        } else {
+            $branchDetail = $this->buildBranchDetail((int) $viewScope, $request);
+        }
 
         return Inertia::render('Admin/RawMaterials/Index', [
             'rawMaterials' => $rawMaterials,
             'rawMaterialCategories' => Category::forRawMaterials()->orderBy('name')->get(['id', 'name']),
+            'hubBranches' => $hubBranches,
+            'branchDetail' => $branchDetail,
             'filters' => [
-                'category_id' => $request->get('category_id', '') !== '' ? (string) $request->get('category_id') : '',
+                'category_id' => $categoryId,
+                'view_scope' => $viewScope,
             ],
         ]);
     }
 
     /**
-     * Show the form for creating a new resource.
+     * @return array<string, mixed>
      */
+    private function buildBranchDetail(int $branchId, Request $request): array
+    {
+        [$dayStart, $dayEnd] = $this->currentBusinessDayBounds();
+
+        $branch = Branch::query()->findOrFail($branchId);
+
+        $query = Product::where('type', 'raw')->with('category')->orderBy('name');
+        if ($request->filled('category_id')) {
+            $query->where('category_id', $request->integer('category_id'));
+        }
+
+        $stockRows = BranchRawMaterialStock::query()
+            ->where('branch_id', $branchId)
+            ->get()
+            ->keyBy('product_id');
+
+        $materials = $query->get()->map(function (Product $product) use ($stockRows) {
+            $row = $stockRows[$product->id] ?? null;
+            $stockConsume = (float) ($row?->stock ?? 0);
+            $qpu = (float) ($product->quantity_per_unit ?: 0);
+            $pieces = $qpu > 0 ? $stockConsume / $qpu : $stockConsume;
+            $alertConsume = $row?->stock_alert_threshold ?? $product->stock_alert_threshold;
+            $alertPieces = $alertConsume && $qpu > 0 ? ((float) $alertConsume) / $qpu : $alertConsume;
+
+            return [
+                'id' => $product->id,
+                'name' => $product->name,
+                'unit' => $product->unit,
+                'consume_unit' => $product->consume_unit,
+                'quantity_per_unit' => $product->quantity_per_unit,
+                'purchase_price' => $product->purchase_price,
+                'unit_consume_price' => $product->unit_consume_price,
+                'purchase_unit' => $product->purchase_unit,
+                'category' => $product->category ? ['id' => $product->category->id, 'name' => $product->category->name] : null,
+                'branch_stock_pieces' => round($pieces, 2),
+                'branch_stock_consume' => round($stockConsume, 2),
+                'alert_pieces' => $alertPieces !== null ? round((float) $alertPieces, 2) : null,
+                'is_low' => $alertPieces !== null && $pieces <= (float) $alertPieces,
+            ];
+        })->values();
+
+        $todayPulls = RawMaterialPendingLabel::query()
+            ->with('product:id,name,unit')
+            ->where('branch_id', $branchId)
+            ->where('status', RawMaterialPendingLabel::STATUS_RECEIVED)
+            ->whereBetween('received_at', [$dayStart, $dayEnd])
+            ->orderByDesc('received_at')
+            ->get()
+            ->map(fn (RawMaterialPendingLabel $label) => [
+                'id' => $label->id,
+                'received_at' => $label->received_at?->format('Y-m-d H:i'),
+                'product_name' => $label->product?->name ?? '—',
+                'piece_count' => (float) $label->piece_count,
+                'unit' => $label->product?->unit ?? '',
+                'label_code' => $label->label_code,
+            ]);
+
+        return [
+            'branch_id' => $branch->id,
+            'branch_name' => $branch->name,
+            'materials' => $materials,
+            'todayPulls' => $todayPulls->values()->all(),
+            'businessDayLabel' => Employee::periodTextForAnchorDate(Employee::businessDayAnchorFromNow()),
+        ];
+    }
+
+    public function branchPullForm()
+    {
+        $this->requireAnyRole(['cashier', 'admin', 'super admin']);
+
+        if ($this->isCentralHub()) {
+            return redirect()->route('dashboard')
+                ->with('error', 'اختر فرعاً من لوحة التحكم لسحب المواد الخام.');
+        }
+
+        $branchId = BranchContext::requireId();
+        [$dayStart, $dayEnd] = $this->currentBusinessDayBounds();
+
+        $todayPulls = RawMaterialPendingLabel::query()
+            ->with('product:id,name,unit')
+            ->where('branch_id', $branchId)
+            ->where('status', RawMaterialPendingLabel::STATUS_RECEIVED)
+            ->whereBetween('received_at', [$dayStart, $dayEnd])
+            ->orderByDesc('received_at')
+            ->get()
+            ->map(fn (RawMaterialPendingLabel $label) => [
+                'id' => $label->id,
+                'received_at' => $label->received_at?->format('H:i'),
+                'product_name' => $label->product?->name ?? '—',
+                'piece_count' => (float) $label->piece_count,
+                'unit' => $label->product?->unit ?? '',
+                'label_code' => $label->label_code,
+            ]);
+
+        return Inertia::render('Admin/RawMaterials/BranchPull', [
+            'todayPulls' => $todayPulls,
+            'businessDayLabel' => Employee::periodTextForAnchorDate(Employee::businessDayAnchorFromNow()),
+            'branchName' => Branch::find($branchId)?->name ?? '',
+        ]);
+    }
+
+    public function branchPullStore(Request $request): RedirectResponse
+    {
+        $this->requireAnyRole(['cashier', 'admin', 'super admin']);
+
+        $branchId = BranchContext::requireId();
+
+        $data = $request->validate([
+            'label_code' => 'required|string|max:64',
+        ]);
+
+        $code = strtoupper(trim($data['label_code']));
+
+        $label = RawMaterialPendingLabel::query()
+            ->where('label_code', $code)
+            ->where('status', RawMaterialPendingLabel::STATUS_PENDING)
+            ->first();
+
+        if (! $label) {
+            return back()->withErrors(['label_code' => 'الكود غير صالح أو تم سحبه مسبقاً.'])->withInput();
+        }
+
+        $product = $label->product;
+        if (! $product || $product->type !== 'raw') {
+            return back()->withErrors(['label_code' => 'المادة المرتبطة بهذا الكود غير صالحة.'])->withInput();
+        }
+
+        $amount = (float) $label->consume_amount;
+
+        if ((float) $product->stock < $amount) {
+            return back()->withErrors([
+                'label_code' => 'المخزون المركزي غير كافٍ لهذه الكمية. المتاح: '.round((float) $product->stock, 2).' '.$product->consume_unit,
+            ])->withInput();
+        }
+
+        DB::transaction(function () use ($product, $label, $amount, $branchId) {
+            $product->decrement('stock', $amount);
+
+            BranchRawMaterialStock::adjust($branchId, $product->id, $amount, $product->tenant_id);
+
+            StockMovement::create([
+                'product_id' => $product->id,
+                'branch_id' => $branchId,
+                'quantity' => $amount,
+                'type' => 'branch_pull',
+                'tenant_id' => $product->tenant_id,
+            ]);
+
+            StockMovement::create([
+                'product_id' => $product->id,
+                'quantity' => -$amount,
+                'type' => 'branch_pull_central',
+                'tenant_id' => $product->tenant_id,
+            ]);
+
+            $label->update([
+                'status' => RawMaterialPendingLabel::STATUS_RECEIVED,
+                'branch_id' => $branchId,
+                'received_at' => now(),
+            ]);
+        });
+
+        return redirect()->route('admin.raw-materials.branch-pull')
+            ->with('success', 'تم سحب الكمية وإضافتها لمخزون الفرع.');
+    }
+
+    public function receiveByBarcodeForm(): RedirectResponse
+    {
+        return redirect()->route('admin.raw-materials.branch-pull');
+    }
+
+    public function receiveByBarcode(Request $request): RedirectResponse
+    {
+        return $this->branchPullStore($request);
+    }
+
     public function create()
     {
         $this->requireAnyRole(['super admin']);
+
+        if (! $this->isCentralHub()) {
+            return redirect()->route('dashboard')->with('error', 'إدارة المواد الخام من العرض المركزي فقط.');
+        }
 
         return Inertia::render('Admin/RawMaterials/Create', [
             'rawMaterialCategories' => Category::forRawMaterials()->orderBy('name')->get(['id', 'name']),
         ]);
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
     public function store(Request $request)
     {
         $this->requireAnyRole(['super admin']);
+
+        if (! $this->isCentralHub()) {
+            return redirect()->route('dashboard')->with('error', 'إدارة المواد الخام من العرض المركزي فقط.');
+        }
 
         $request->merge([
             'category_id' => $request->filled('category_id') ? (int) $request->category_id : null,
@@ -139,20 +347,18 @@ class RawMaterialController extends Controller
         return redirect()->route('admin.raw-materials.index')->with('success', 'تمت إضافة المادة الخام بنجاح.');
     }
 
-    /**
-     * Display the specified resource.
-     */
     public function show(Product $product)
     {
         //
     }
 
-    /**
-     * Show the form for editing the specified resource.
-     */
     public function edit(Product $raw_material)
     {
         $this->requireAnyRole(['admin', 'super admin']);
+
+        if (! $this->isCentralHub()) {
+            return redirect()->route('admin.raw-materials.branch-pull');
+        }
 
         return Inertia::render('Admin/RawMaterials/Edit', [
             'rawMaterial' => $raw_material,
@@ -160,12 +366,13 @@ class RawMaterialController extends Controller
         ]);
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
     public function update(Request $request, Product $raw_material)
     {
         $this->requireAnyRole(['admin', 'super admin']);
+
+        if (! $this->isCentralHub()) {
+            return redirect()->route('admin.raw-materials.branch-pull');
+        }
 
         $request->merge([
             'category_id' => $request->filled('category_id') ? (int) $request->category_id : null,
@@ -206,12 +413,13 @@ class RawMaterialController extends Controller
         return redirect()->route('admin.raw-materials.index')->with('success', 'تم تحديث المادة الخام بنجاح.');
     }
 
-    /**
-     * Create a pending label batch (does not change stock until received).
-     */
     public function storeLabel(Request $request, Product $raw_material)
     {
         $this->requireAnyRole(['admin', 'super admin']);
+
+        if (! $this->isCentralHub()) {
+            abort(403);
+        }
 
         if ($raw_material->type !== 'raw') {
             abort(404);
@@ -233,7 +441,6 @@ class RawMaterialController extends Controller
             'status' => RawMaterialPendingLabel::STATUS_PENDING,
         ]);
 
-        // When called from the list modal (AJAX), return JSON and do not redirect.
         if ($request->isXmlHttpRequest()) {
             $label->loadMissing('product');
 
@@ -251,12 +458,13 @@ class RawMaterialController extends Controller
         return redirect()->route('admin.raw-materials.labels.print', $label);
     }
 
-    /**
-     * Printable label page (barcode encodes label_code).
-     */
     public function printLabel(RawMaterialPendingLabel $label)
     {
         $this->requireAnyRole(['admin', 'super admin']);
+
+        if (! $this->isCentralHub()) {
+            abort(403);
+        }
 
         $label->loadMissing('product');
 
@@ -274,80 +482,26 @@ class RawMaterialController extends Controller
         ]);
     }
 
-    public function receiveByBarcodeForm()
-    {
-        $this->requireAnyRole(['cashier', 'admin', 'super admin']);
-
-        return Inertia::render('Admin/RawMaterials/ReceiveByBarcode');
-    }
-
-    /**
-     * Receive stock by scanning / entering label_code.
-     */
-    public function receiveByBarcode(Request $request)
-    {
-        $this->requireAnyRole(['cashier', 'admin', 'super admin']);
-
-        $data = $request->validate([
-            'label_code' => 'required|string|max:64',
-        ]);
-
-        $code = strtoupper(trim($data['label_code']));
-
-        $label = RawMaterialPendingLabel::query()
-            ->where('label_code', $code)
-            ->where('status', RawMaterialPendingLabel::STATUS_PENDING)
-            ->first();
-
-        if (! $label) {
-            return back()->withErrors(['label_code' => 'الكود غير صالح أو تم استلامه مسبقاً.'])->withInput();
-        }
-
-        $product = $label->product;
-        if (! $product || $product->type !== 'raw') {
-            return back()->withErrors(['label_code' => 'المادة المرتبطة بهذا الكود غير صالحة.'])->withInput();
-        }
-
-        $amount = (float) $label->consume_amount;
-
-        DB::transaction(function () use ($product, $label, $amount) {
-            $product->increment('stock', $amount);
-
-            StockMovement::create([
-                'product_id' => $product->id,
-                'quantity' => $amount,
-                'type' => 'barcode_receipt',
-                'related_order_id' => null,
-                'related_purchase_id' => null,
-            ]);
-
-            $label->update([
-                'status' => RawMaterialPendingLabel::STATUS_RECEIVED,
-                'received_at' => now(),
-            ]);
-        });
-
-        return redirect()->route('admin.raw-materials.index')->with('success', 'تم استلام الكمية وإضافتها إلى المخزون بنجاح.');
-    }
-
-    /**
-     * Show form for adding extra quantity to a raw material.
-     */
     public function addQuantityForm(Product $raw_material)
     {
         $this->requireAnyRole(['admin', 'super admin']);
+
+        if (! $this->isCentralHub()) {
+            return redirect()->route('admin.raw-materials.index');
+        }
 
         return Inertia::render('Admin/RawMaterials/AddQuantity', [
             'rawMaterial' => $raw_material,
         ]);
     }
 
-    /**
-     * Store added quantity for a raw material (in pieces).
-     */
     public function addQuantity(Request $request, Product $raw_material)
     {
         $this->requireAnyRole(['admin', 'super admin']);
+
+        if (! $this->isCentralHub()) {
+            return redirect()->route('admin.raw-materials.index');
+        }
 
         $data = $request->validate([
             'quantity_units' => 'required|numeric|min:0.001',
@@ -371,14 +525,14 @@ class RawMaterialController extends Controller
         return redirect()->route('admin.raw-materials.index')->with('success', 'تمت إضافة الكمية للمخزون بنجاح.');
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
     public function destroy(Product $raw_material)
     {
         $this->requireAnyRole(['super admin']);
 
-        // Add check if material is used in any finished product before deleting
+        if (! $this->isCentralHub()) {
+            abort(403);
+        }
+
         $raw_material->delete();
 
         return redirect()->route('admin.raw-materials.index')->with('success', 'تم حذف المادة الخام بنجاح.');

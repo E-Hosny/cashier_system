@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BranchRawMaterialStock;
 use App\Models\Category;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Support\BranchContext;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Dompdf\Options;
 use Illuminate\Http\Request;
@@ -190,13 +192,26 @@ class CashierController extends Controller
                     }
                 }
                 
-                // تنفيذ تحديثات المخزون بشكل جماعي
+                $branchId = (int) ($order->branch_id ?? BranchContext::requireId());
+
                 foreach ($stockUpdates as $productId => $change) {
-                    DB::table('products')->where('id', $productId)->increment('stock', $change);
+                    if ($change >= 0) {
+                        continue;
+                    }
+                    BranchRawMaterialStock::deduct(
+                        $branchId,
+                        (int) $productId,
+                        abs($change),
+                        $tenantId
+                    );
                 }
-                
-                // إدراج حركات المخزون بشكل جماعي
-                if (!empty($stockMovements)) {
+
+                foreach ($stockMovements as &$movement) {
+                    $movement['branch_id'] = $branchId;
+                }
+                unset($movement);
+
+                if (! empty($stockMovements)) {
                     StockMovement::insert($stockMovements);
                 }
             });

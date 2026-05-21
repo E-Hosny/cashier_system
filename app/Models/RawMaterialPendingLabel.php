@@ -19,6 +19,7 @@ class RawMaterialPendingLabel extends Model
     protected $fillable = [
         'tenant_id',
         'product_id',
+        'branch_id',
         'label_code',
         'piece_count',
         'consume_amount',
@@ -43,6 +44,11 @@ class RawMaterialPendingLabel extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class, 'product_id');
+    }
+
+    public function branch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class);
     }
 
     public function isPending(): bool

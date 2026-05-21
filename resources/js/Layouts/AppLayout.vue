@@ -26,6 +26,9 @@ const isBaristaOnly = computed(() =>
 const showPurchasesNav = computed(
     () => !isBaristaOnly.value && (branchContext.value.activeBranchId == null)
 );
+const showRawMaterialsNav = computed(
+    () => !isBaristaOnly.value && branchContext.value.isSuperAdminHub === true
+);
 const canUseBarista = computed(() =>
     userRoles.value.includes('barista') ||
     userRoles.value.includes('admin') ||
@@ -92,7 +95,7 @@ const logout = () => {
                                 <NavLink v-if="!isBaristaOnly" :href="route('admin.products.index')" :active="route().current('admin.products.index')">
                                     المنتجات النهائية
                                 </NavLink>
-                                <NavLink v-if="!isBaristaOnly" :href="route('admin.raw-materials.index')" :active="route().current('admin.raw-materials.index')">
+                                <NavLink v-if="showRawMaterialsNav" :href="route('admin.raw-materials.index')" :active="route().current('admin.raw-materials.*')">
                                     المواد الخام
                                 </NavLink>
                                 <NavLink 
@@ -321,7 +324,7 @@ const logout = () => {
                             <ResponsiveNavLink v-if="!isBaristaOnly" :href="route('admin.products.index')" :active="route().current('admin.products.index')" @click="showingSidebar = false">
                                 المنتجات النهائية
                             </ResponsiveNavLink>
-                            <ResponsiveNavLink v-if="!isBaristaOnly" :href="route('admin.raw-materials.index')" :active="route().current('admin.raw-materials.index')" @click="showingSidebar = false">
+                            <ResponsiveNavLink v-if="showRawMaterialsNav" :href="route('admin.raw-materials.index')" :active="route().current('admin.raw-materials.*')" @click="showingSidebar = false">
                                 المواد الخام
                             </ResponsiveNavLink>
                             <ResponsiveNavLink 
