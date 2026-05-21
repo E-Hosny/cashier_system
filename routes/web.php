@@ -167,6 +167,8 @@ Route::middleware([
     // Purchases
     Route::get('/purchases', [PurchaseController::class, 'index'])->name('purchases.index');
     Route::post('/purchases', [PurchaseController::class, 'store'])->name('purchases.store');
+    Route::post('/purchases/custom-items', [PurchaseController::class, 'storeCustomItem'])->name('purchases.custom-items.store');
+    Route::delete('/purchases/custom-items/{customPurchaseItem}', [PurchaseController::class, 'destroyCustomItem'])->name('purchases.custom-items.destroy');
 
     // Expenses
     Route::get('/expenses', [ExpenseController::class, 'index'])->name('expenses.index');

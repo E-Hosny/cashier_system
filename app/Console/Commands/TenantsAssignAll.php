@@ -63,6 +63,7 @@ class TenantsAssignAll extends Command
             'orders',
             'order_items',
             'purchases',
+            'custom_purchase_items',
             'suppliers',
             'employee_discounts',
             'categories',
