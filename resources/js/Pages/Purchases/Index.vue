@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { usePage, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
@@ -18,11 +18,37 @@ const newPurchase = ref({
     purchase_date: today
 });
 
-// وحدة الشراء المتاحة للمادة المختارة
+const selectedMaterial = computed(() =>
+    rawMaterials.value.find((m) => m.name === newPurchase.value.description) ?? null
+);
+
 const filteredUnits = computed(() => {
-    const material = rawMaterials.value.find(m => m.name === newPurchase.value.description);
-    return material && material.purchase_unit ? [material.purchase_unit] : [];
+    const material = selectedMaterial.value;
+    return material?.purchase_unit ? [material.purchase_unit] : [];
 });
+
+const selectedMaterialUnitsPerPieceLabel = computed(() => {
+    const m = selectedMaterial.value;
+    if (!m) return '';
+
+    if (m.quantity_per_unit) {
+        const q = parseFloat(m.quantity_per_unit);
+        const qStr = Number.isNaN(q) ? m.quantity_per_unit : (q % 1 === 0 ? q : q.toFixed(2));
+        const pieceUnit = m.unit || 'قطعة';
+        const consumeUnit = m.consume_unit || 'وحدة الاستهلاك';
+        return `كل ${pieceUnit} = ${qStr} ${consumeUnit}`;
+    }
+
+    return 'لم يُحدد عدد وحدات القطعة لهذه المادة';
+});
+
+watch(
+    () => newPurchase.value.description,
+    (name) => {
+        const material = rawMaterials.value.find((m) => m.name === name);
+        newPurchase.value.purchase_unit = material?.purchase_unit ?? '';
+    }
+);
 
 // **حساب إجمالي المشتريات للفترة المحددة**
 const totalAmount = computed(() => {
@@ -51,6 +77,7 @@ const submitPurchase = () => {
             newPurchase.value = {
                 description: '',
                 quantity: '',
+                purchase_unit: '',
                 total_amount: '',
                 purchase_date: today
             };
@@ -136,16 +163,21 @@ const submitPurchase = () => {
                                     <select v-model="newPurchase.description" required class="w-full border-gray-300 rounded-md shadow-sm">
                                         <option value="" disabled>اختر المادة الخام</option>
                                         <option v-for="material in rawMaterials" :key="material.id" :value="material.name">
-                                            {{ material.name }} <span v-if="material.unit">({{ material.unit }})</span>
+                                            {{ material.name }}<template v-if="material.unit"> ({{ material.unit }})</template>
                                         </option>
                                     </select>
+                                    <p v-if="selectedMaterial" class="mt-2 text-sm text-gray-700 bg-white border border-gray-200 rounded-md px-3 py-2">
+                                        <span class="font-semibold text-gray-800">عدد وحدات القطعة:</span>
+                                        {{ selectedMaterialUnitsPerPieceLabel }}
+                                    </p>
                                 </div>
                                 <div>
-                                    <label class="block text-gray-700 font-semibold">الكمية:</label>
+                                    <label class="block text-gray-700 font-semibold">
+                                        {{ selectedMaterial?.quantity_per_unit ? 'عدد القطع:' : 'الكمية:' }}
+                                    </label>
                                     <div class="flex gap-2">
                                         <input v-model="newPurchase.quantity" type="number" step="0.01" min="0.01"
-                                            class="w-full border-gray-300 rounded-md shadow-sm"
-                                            placeholder="مثال: 0.5 أو 1.25">
+                                            class="w-full border-gray-300 rounded-md shadow-sm">
                                         <select v-model="newPurchase.purchase_unit" class="border-gray-300 rounded-md shadow-sm">
                                             <option v-for="unit in filteredUnits" :key="unit" :value="unit">
                                                 {{ unit }}
@@ -172,6 +204,10 @@ const submitPurchase = () => {
                         </form>
                     </div>
 
+                    <div class="mb-4 text-sm text-blue-600 bg-blue-50 p-3 rounded-lg">
+                        ℹ️ بشكل افتراضي تُعرض مشتريات يوم العمل الحالي (من الساعة 7:00 صباحاً إلى 7:00 صباحاً اليوم التالي). استخدم الفلاتر أعلاه لعرض يوم أو فترة محددة.
+                    </div>
+
                     <!-- عرض المشتريات -->
                     <h3 class="text-lg font-semibold text-gray-700 mb-4">قائمة المشتريات لليوم</h3>
                     <div class="overflow-x-auto">
@@ -193,7 +229,7 @@ const submitPurchase = () => {
                               <tr v-for="purchase in purchases" :key="purchase.id">
                                   <td class="border border-gray-200 p-2 text-center" data-label="المبلغ الإجمالي">{{ purchase.total_amount }}</td>
                                   <td class="border border-gray-200 p-2 text-center" data-label="الكمية">{{ purchase.quantity ?? 'غير محدد' }}</td>
-                                  <td class="border border-gray-200 p-2 text-center" data-label="المنتج">{{ purchase.product_name }}</td>
+                                  <td class="border border-gray-200 p-2 text-center" data-label="المنتج">{{ purchase.description }}</td>
                                   <td class="border border-gray-200 p-2 text-center" data-label="التاريخ">{{ purchase.purchase_date }}</td>
                               </tr>
                           </tbody>

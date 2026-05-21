@@ -1,8 +1,10 @@
 <?php
 namespace App\Http\Controllers;
 
+use App\Models\Employee;
 use App\Models\Purchase;
 use App\Support\BranchContext;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -17,29 +19,37 @@ class PurchaseController extends Controller
                 ->with('error', 'المشتريات متاحة من العرض المركزي فقط. ارجع إلى لوحة التحكم الرئيسية دون اختيار فرع.');
         }
 
-        $query = Purchase::orderBy('purchase_date', 'desc');
+        $query = Purchase::orderBy('created_at', 'desc');
 
-        // فلترة حسب يوم محدد
         if ($request->filled('date')) {
             $query->whereDate('purchase_date', $request->date);
-        }
-        // فلترة حسب فترة زمنية
-        elseif ($request->filled('from') && $request->filled('to')) {
-            $query->whereBetween('purchase_date', [$request->from, $request->to]);
-        }
-        // فلترة من تاريخ فقط
-        elseif ($request->filled('from')) {
-            $query->where('purchase_date', '>=', $request->from);
-        }
-        // فلترة إلى تاريخ فقط
-        elseif ($request->filled('to')) {
-            $query->where('purchase_date', '<=', $request->to);
+        } elseif ($request->filled('from') && $request->filled('to')) {
+            $startDate = Carbon::parse($request->from)->setTime(7, 0, 0);
+            $endDate = Carbon::parse($request->to)->setTime(7, 0, 0);
+            $query->whereBetween('created_at', [$startDate, $endDate]);
+        } elseif ($request->filled('from')) {
+            $startDate = Carbon::parse($request->from)->setTime(7, 0, 0);
+            $query->where('created_at', '>=', $startDate);
+        } elseif ($request->filled('to')) {
+            $endDate = Carbon::parse($request->to)->setTime(7, 0, 0);
+            $query->where('created_at', '<=', $endDate);
+        } else {
+            [$startDate, $endDate] = Employee::businessDayBoundsForAnchor(Employee::businessDayAnchorFromNow());
+            $query->whereBetween('created_at', [$startDate, $endDate]);
         }
 
         $purchases = $query->get();
 
-        // جلب المواد الخام فقط
-        $rawMaterials = \App\Models\Product::where('type', 'raw')->get(['id', 'name', 'unit']);
+        $rawMaterials = \App\Models\Product::where('type', 'raw')
+            ->orderBy('name')
+            ->get([
+                'id',
+                'name',
+                'unit',
+                'purchase_unit',
+                'consume_unit',
+                'quantity_per_unit',
+            ]);
 
         return Inertia::render('Purchases/Index', [
             'purchases' => $purchases,
@@ -74,24 +84,18 @@ class PurchaseController extends Controller
             'purchase_date' => $request->purchase_date,
         ]);
 
-        // تحديث المخزون وتسجيل حركة المخزون
         if ($request->quantity && $request->description) {
-            $product = \App\Models\Product::where('name', $request->description)->first();
+            $product = \App\Models\Product::where('type', 'raw')
+                ->where('name', $request->description)
+                ->first();
+
             if ($product) {
-                // تحويل الكمية من وحدة الشراء إلى وحدة الاستهلاك
-                $purchaseUnit = $request->purchase_unit ?? $product->purchase_unit;
-                $consumeUnit = $product->consume_unit;
-                $conversionFactor = 1;
-                // دعم التحويلات الشائعة
-                if ($purchaseUnit && $consumeUnit) {
-                    $factors = [
-                        'لتر' => ['مللي' => 1000, 'لتر' => 1],
-                        'كجم' => ['جرام' => 1000, 'كجم' => 1],
-                        'قطعة' => ['قطعة' => 1],
-                    ];
-                    $conversionFactor = $factors[$purchaseUnit][$consumeUnit] ?? 1;
-                }
-                $quantityToAdd = $request->quantity * $conversionFactor;
+                $quantityToAdd = self::stockAdditionFromPurchaseQuantity(
+                    $product,
+                    (float) $request->quantity,
+                    $request->purchase_unit
+                );
+
                 $product->increment('stock', $quantityToAdd);
                 \App\Models\StockMovement::create([
                     'product_id' => $product->id,
@@ -103,6 +107,34 @@ class PurchaseController extends Controller
         }
 
         return redirect()->route('purchases.index')->with('success', 'تم إضافة المشتريات بنجاح.');
+    }
+
+    /**
+     * تحويل كمية المشتريات إلى مخزون (بوحدة الاستهلاك) كما في إضافة الكمية للمواد الخام.
+     */
+    private static function stockAdditionFromPurchaseQuantity(
+        \App\Models\Product $product,
+        float $quantity,
+        ?string $purchaseUnit
+    ): float {
+        if ($product->quantity_per_unit) {
+            return $quantity * (float) $product->quantity_per_unit;
+        }
+
+        $purchaseUnit = $purchaseUnit ?? $product->purchase_unit;
+        $consumeUnit = $product->consume_unit;
+        $conversionFactor = 1;
+
+        if ($purchaseUnit && $consumeUnit) {
+            $factors = [
+                'لتر' => ['مللي' => 1000, 'لتر' => 1],
+                'كجم' => ['جرام' => 1000, 'كجم' => 1],
+                'قطعة' => ['قطعة' => 1],
+            ];
+            $conversionFactor = $factors[$purchaseUnit][$consumeUnit] ?? 1;
+        }
+
+        return $quantity * $conversionFactor;
     }
 }
 
