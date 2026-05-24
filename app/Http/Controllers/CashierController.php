@@ -28,6 +28,7 @@ class CashierController extends Controller
 {
     $products = Product::with('category')
         ->where('type', 'finished')
+        ->published()
         ->latest()->get()->append('available_sizes');
     // Ensure size_variants is always an array
     $products->transform(function ($product) {
@@ -78,7 +79,16 @@ class CashierController extends Controller
             'items.*.size' => 'nullable|string',
         ]);
 
+        $draftProductIds = Product::whereIn('id', collect($data['items'])->pluck('product_id'))
+            ->where('is_draft', true)
+            ->pluck('id');
 
+        if ($draftProductIds->isNotEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'أحد المنتجات في السلة غير متاح للبيع (مسودة). يرجى تحديث الصفحة.',
+            ], 422);
+        }
 
         $order = null;
         

@@ -69,6 +69,9 @@ Route::middleware([
     Route::delete('/products/{product}', [ProductController::class, 'destroy'])
         ->middleware('super_admin')
         ->name('admin.products.destroy');
+    Route::post('/products/{product}/toggle-draft', [ProductController::class, 'toggleDraft'])
+        ->middleware('super_admin')
+        ->name('admin.products.toggle-draft');
     Route::get('/products/export', [ProductController::class, 'export'])->name('admin.products.export');
     Route::get('/products/cost-analysis', [ProductController::class, 'costAnalysis'])->name('admin.products.cost-analysis');
     Route::get('/products/sales-analysis', [ProductController::class, 'salesAnalysis'])->name('admin.products.sales-analysis')->middleware('super_admin');

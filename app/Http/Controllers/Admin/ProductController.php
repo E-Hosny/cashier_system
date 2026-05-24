@@ -221,6 +221,29 @@ class ProductController extends Controller
         return redirect()->route('admin.products.index')->with('success', 'تم حذف المنتج بنجاح!');
     }
 
+    public function toggleDraft(Request $request, Product $product)
+    {
+        if ($product->type !== 'finished') {
+            abort(422, 'يمكن تعيين المسودة للمنتجات النهائية فقط.');
+        }
+
+        $product->update(['is_draft' => ! $product->is_draft]);
+
+        $redirectParams = [];
+        if ($request->filled('category_id')) {
+            $redirectParams['category_id'] = $request->input('category_id');
+        }
+        if ($request->filled('searchTerm')) {
+            $redirectParams['searchTerm'] = $request->input('searchTerm');
+        }
+
+        $message = $product->is_draft
+            ? 'تم تعيين المنتج كمسودة ولن يظهر في الكاشير.'
+            : 'تم نشر المنتج وسيظهر في الكاشير.';
+
+        return redirect()->route('admin.products.index', $redirectParams)->with('success', $message);
+    }
+
     public function costAnalysis()
     {
         $products = Product::where('type', 'finished')

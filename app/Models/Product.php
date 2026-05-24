@@ -14,6 +14,7 @@ class Product extends Model
     protected $fillable = [
         'name',
         'type',
+        'is_draft',
         'unit',
         'stock',
         'stock_alert_threshold',
@@ -34,6 +35,7 @@ class Product extends Model
     protected $casts = [
         'size_variants' => 'array',
         'unit_conversions' => 'array',
+        'is_draft' => 'boolean',
     ];
 
     public function ingredients()
@@ -55,6 +57,16 @@ class Product extends Model
     public function category()
     {
         return $this->belongsTo(Category::class);
+    }
+
+    public function scopePublished($query)
+    {
+        return $query->where('is_draft', false);
+    }
+
+    public function scopeDraft($query)
+    {
+        return $query->where('is_draft', true);
     }
 
     public function getAvailableSizesAttribute()

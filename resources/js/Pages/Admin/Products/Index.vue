@@ -61,12 +61,13 @@
             <th class="p-4">الأحجام والأسعار</th>
             <th class="p-4 text-center">الصورة</th>
             <th class="p-4">الفئة</th>
+            <th class="p-4 text-center">الحالة</th>
             <th class="p-4 text-center">الإجراءات</th>
           </tr>
         </thead>
         <tbody>
           <template v-for="product in products" :key="product.id">
-            <tr class="block sm:table-row border-t sm:border-t-0 border-gray-200 hover:bg-gray-50">
+            <tr class="block sm:table-row border-t sm:border-t-0 border-gray-200 hover:bg-gray-50" :class="{ 'bg-amber-50/60': product.is_draft }">
               <td class="p-4 sm:table-cell">
                 <button v-if="product.ingredients && product.ingredients.length > 0" @click="toggleIngredients(product.id)" class="text-blue-500 hover:text-blue-700">
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 transition-transform" :class="{'rotate-90': isExpanded(product.id)}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -88,8 +89,23 @@
                 <img v-if="product.image" :src="`/storage/${product.image}`" class="h-16 w-16 object-cover rounded-md shadow-md mx-auto sm:mx-0">
               </td>
               <td class="p-4 block sm:table-cell" data-label="الفئة">{{ product.category?.name || "بدون فئة" }}</td>
+              <td class="p-4 block sm:table-cell text-center" data-label="الحالة">
+                <span
+                  v-if="product.is_draft"
+                  class="inline-block px-2 py-1 text-xs font-semibold rounded-full bg-amber-100 text-amber-800"
+                  title="لا يظهر في الكاشير"
+                >
+                  مسودة
+                </span>
+                <span
+                  v-else
+                  class="inline-block px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800"
+                >
+                  منشور
+                </span>
+              </td>
               <td class="p-4 block sm:table-cell" data-label="الإجراءات">
-                <div class="flex justify-center items-center gap-2">
+                <div class="flex justify-center items-center gap-2 flex-wrap">
                   <a v-if="hasSuperAdminRole" :href="buildEditUrl(product.id)" class="btn-yellow">✏️ تعديل</a>
                   <button
                     v-if="hasSuperAdminRole"
@@ -98,11 +114,20 @@
                   >
                     🗑️ حذف
                   </button>
+                  <button
+                    v-if="hasSuperAdminRole"
+                    type="button"
+                    :class="product.is_draft ? 'btn-green' : 'btn-draft'"
+                    :title="product.is_draft ? 'إظهار المنتج في الكاشير' : 'إخفاء المنتج من الكاشير (مسودة)'"
+                    @click="toggleDraft(product)"
+                  >
+                    {{ product.is_draft ? '✅ نشر' : '📝 مسودة' }}
+                  </button>
                 </div>
               </td>
             </tr>
             <tr v-if="isExpanded(product.id)" class="block sm:table-row">
-              <td colspan="8" class="p-4 bg-gray-50 block sm:table-cell">
+              <td colspan="9" class="p-4 bg-gray-50 block sm:table-cell">
                 <div class="p-4 border-l-4 border-blue-400">
                   <h4 class="font-bold text-lg mb-2 text-gray-700">مكونات {{ product.name }}:</h4>
                   <div v-if="product.ingredients && product.ingredients.length">
@@ -166,6 +191,18 @@ export default {
       if (confirm("هل أنت متأكد من حذف هذا المنتج؟")) {
         Inertia.delete(route("admin.products.destroy", id));
       }
+    },
+    toggleDraft(product) {
+      const action = product.is_draft ? 'نشر هذا المنتج في الكاشير؟' : 'تعيين هذا المنتج كمسودة؟ لن يظهر في الكاشير.';
+      if (!confirm(action)) {
+        return;
+      }
+      Inertia.post(route('admin.products.toggle-draft', product.id), {
+        category_id: this.selectedCategory,
+        searchTerm: this.searchTerm,
+      }, {
+        preserveScroll: true,
+      });
     },
     buildEditUrl(productId) {
       const base = route('admin.products.edit', productId);
@@ -246,6 +283,9 @@ export default {
 .btn-gray {
   @apply bg-gray-500 hover:bg-gray-600 text-white font-bold px-4 py-2 rounded-lg transition;
 }
+.btn-draft {
+  @apply bg-amber-500 hover:bg-amber-600 text-white font-bold px-4 py-2 rounded-lg transition;
+}
 
 /* تحسين الفلاتر للجوال */
 @media (max-width: 640px) {
@@ -315,7 +355,7 @@ export default {
     flex-direction: column;
     gap: 0.5rem;
   }
-  .btn-yellow, .btn-red {
+  .btn-yellow, .btn-red, .btn-draft, .btn-green {
     width: 100%;
     font-size: 1rem;
     padding: 0.75rem 0;
