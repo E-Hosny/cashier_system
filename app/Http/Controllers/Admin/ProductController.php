@@ -244,10 +244,16 @@ class ProductController extends Controller
         return redirect()->route('admin.products.index', $redirectParams)->with('success', $message);
     }
 
-    public function costAnalysis()
+    public function costAnalysis(Request $request)
     {
-        $products = Product::where('type', 'finished')
-            ->with(['ingredients' => function ($query) {
+        $query = Product::where('type', 'finished');
+
+        if ($request->filled('category_id')) {
+            $query->where('category_id', $request->category_id);
+        }
+
+        $products = $query
+            ->with(['category', 'ingredients' => function ($query) {
                 // لازم نحمّل `type` عشان `getUnitPrice()` داخل Product model يشتغل بشكل صحيح
                 $query->select(
                     'products.id',
@@ -305,8 +311,14 @@ class ProductController extends Controller
             $product->size_variants = $sizeVariants;
         }
 
+        $categories = Category::forProducts()->orderBy('name')->get();
+
         return Inertia::render('Admin/Products/CostAnalysis', [
             'products' => $products,
+            'categories' => $categories,
+            'filters' => [
+                'category_id' => $request->category_id ?? '',
+            ],
         ]);
     }
 

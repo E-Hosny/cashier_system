@@ -5,7 +5,36 @@
       <a :href="route('admin.products.index')" class="btn-gray">➡️ العودة إلى المنتجات</a>
     </div>
 
-    <div class="bg-white shadow-lg rounded-xl overflow-x-auto">
+    <div class="bg-white rounded-xl shadow-lg p-6 mb-6 relative z-20">
+      <div class="flex flex-col md:flex-row gap-4 items-end">
+        <div class="flex-1 w-full">
+          <label class="block text-gray-700 mb-2 font-semibold">تصفية حسب الفئة:</label>
+          <select
+            v-model="selectedCategory"
+            class="cost-analysis-category-select w-full p-3 border border-gray-300 rounded-lg focus:ring focus:ring-blue-300 text-gray-900 bg-white"
+            @change="applyFilters"
+          >
+            <option value="">جميع الفئات</option>
+            <option
+              v-for="category in categoryOptions"
+              :key="category.id"
+              :value="category.id"
+            >
+              {{ category.name }}
+            </option>
+          </select>
+        </div>
+        <div class="flex gap-2 w-full md:w-auto">
+          <button type="button" class="btn-gray w-full md:w-auto" @click="clearFilters">🗑️ مسح الفلتر</button>
+          <div class="text-gray-600 text-sm flex items-center whitespace-nowrap px-2">
+            <span class="font-semibold">عدد المنتجات:</span>
+            <span class="mr-2 text-blue-600 font-bold">{{ products.length }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-white shadow-lg rounded-xl overflow-x-auto relative z-0">
       <table class="w-full text-end">
         <thead class="bg-gray-200 hidden sm:table-header-group">
           <tr>
@@ -94,7 +123,9 @@
             </template>
           </template>
           <tr v-else>
-            <td colspan="7" class="text-center text-gray-500 py-8">لا يوجد منتجات صالحة للعرض أو هناك مشكلة في بيانات المنتجات.</td>
+            <td colspan="8" class="text-center text-gray-500 py-8">
+              {{ selectedCategory ? 'لا توجد منتجات في هذه الفئة.' : 'لا يوجد منتجات صالحة للعرض أو هناك مشكلة في بيانات المنتجات.' }}
+            </td>
           </tr>
         </tbody>
       </table>
@@ -110,13 +141,39 @@ export default {
   layout: AppLayout,
   props: {
     products: Array,
+    categories: {
+      type: Array,
+      default: () => [],
+    },
+    filters: {
+      type: Object,
+      default: () => ({}),
+    },
+  },
+  computed: {
+    categoryOptions() {
+      return Array.isArray(this.categories) ? this.categories : [];
+    },
   },
   data() {
     return {
       expandedItems: new Set(),
+      selectedCategory: this.filters?.category_id ?? '',
     };
   },
   methods: {
+    applyFilters() {
+      Inertia.get(route('admin.products.cost-analysis'), {
+        category_id: this.selectedCategory || undefined,
+      }, {
+        replace: true,
+        preserveScroll: true,
+      });
+    },
+    clearFilters() {
+      this.selectedCategory = '';
+      this.applyFilters();
+    },
     formatMoney(value) {
       const n = typeof value === 'number' ? value : parseFloat(value);
       if (Number.isNaN(n)) return value ?? '-';
@@ -232,5 +289,15 @@ export default {
 }
 .btn-gray {
   @apply bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition;
+}
+</style>
+
+<style>
+/* خيارات القائمة المنسدلة — نص مرئي على Windows/المتصفحات التي تورّث لوناً فاتحاً */
+.cost-analysis-category-select,
+.cost-analysis-category-select option {
+  color: #111827;
+  background-color: #ffffff;
+  color-scheme: light;
 }
 </style> 
