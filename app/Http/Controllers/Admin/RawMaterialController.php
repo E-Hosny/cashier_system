@@ -178,7 +178,78 @@ class RawMaterialController extends Controller
             'materials' => $materials,
             'todayPulls' => $todayPulls->values()->all(),
             'businessDayLabel' => Employee::periodTextForAnchorDate(Employee::businessDayAnchorFromNow()),
+            'can_edit_stock' => auth()->user()?->hasRole('super admin') ?? false,
         ];
+    }
+
+    public function updateBranchStock(Request $request, Branch $branch, Product $raw_material): RedirectResponse
+    {
+        if (! auth()->user()?->hasRole('super admin')) {
+            abort(403);
+        }
+
+        if (! $this->isCentralHub()) {
+            return redirect()->route('admin.raw-materials.index')
+                ->with('error', 'تعديل مخزون الفرع من العرض المركزي فقط.');
+        }
+
+        if ($raw_material->type !== 'raw') {
+            abort(404);
+        }
+
+        $data = $request->validate([
+            'stock_pieces' => 'nullable|numeric|min:0',
+            'stock_consume' => 'nullable|numeric|min:0',
+            'note' => 'nullable|string|max:255',
+        ]);
+
+        if (! isset($data['stock_pieces']) && ! isset($data['stock_consume'])) {
+            return redirect()->back()->with('error', 'أدخل الكمية بالقطع أو بالوحدة الاستهلاكية.');
+        }
+
+        $perUnit = (float) ($raw_material->quantity_per_unit ?: 1);
+        if (isset($data['stock_consume'])) {
+            $newConsume = (float) $data['stock_consume'];
+        } else {
+            $newConsume = (float) $data['stock_pieces'] * $perUnit;
+        }
+
+        $row = BranchRawMaterialStock::query()
+            ->where('branch_id', $branch->id)
+            ->where('product_id', $raw_material->id)
+            ->first();
+
+        $oldConsume = (float) ($row?->stock ?? 0);
+        $delta = $newConsume - $oldConsume;
+
+        BranchRawMaterialStock::query()->updateOrCreate(
+            ['branch_id' => $branch->id, 'product_id' => $raw_material->id],
+            [
+                'tenant_id' => $raw_material->tenant_id ?? auth()->user()?->tenant_id,
+                'stock' => $newConsume,
+            ]
+        );
+
+        if (abs($delta) > 0.0001) {
+            StockMovement::create([
+                'product_id' => $raw_material->id,
+                'branch_id' => $branch->id,
+                'quantity' => $delta,
+                'type' => 'branch_manual_adjustment',
+                'tenant_id' => $raw_material->tenant_id,
+            ]);
+        }
+
+        $params = [
+            'view_scope' => (string) $branch->id,
+            'tab' => 'materials',
+        ];
+        if ($request->filled('category_id')) {
+            $params['category_id'] = $request->get('category_id');
+        }
+
+        return redirect()->route('admin.raw-materials.index', $params)
+            ->with('success', 'تم تحديث مخزون الفرع لـ «'.$raw_material->name.'».');
     }
 
     public function branchPullForm()

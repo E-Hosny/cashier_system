@@ -227,6 +227,9 @@
         <div>
           <h2 class="text-xl font-bold text-gray-800">فرع: {{ branchDetail.branch_name }}</h2>
           <p class="text-sm text-gray-600 mt-1">مخزون المواد الخام وسحوبات يوم العمل لهذا الفرع.</p>
+          <p v-if="branchDetail.can_edit_stock" class="text-sm text-amber-800 mt-1 font-medium">
+            كسوبر أدمن: عدّل مخزون الفرع بالقطع أو بالوحدة الاستهلاكية — يُحدَّث الحقل الآخر تلقائياً.
+          </p>
         </div>
         <div v-if="showTableTools" class="flex flex-wrap items-center gap-2">
           <label class="text-gray-700 font-medium whitespace-nowrap">الفئة:</label>
@@ -241,7 +244,87 @@
         </div>
       </div>
 
-      <div class="bg-white shadow-lg rounded-xl overflow-x-auto mb-8 no-print">
+      <!-- جوال: كارت لكل مادة -->
+      <div class="sm:hidden space-y-3 mb-8 no-print">
+        <p
+          v-if="!branchDetail.materials?.length"
+          class="text-center text-gray-500 p-6 bg-white rounded-xl shadow border border-gray-200"
+        >
+          لا توجد مواد خام في هذا العرض.
+        </p>
+        <div
+          v-for="m in branchDetail.materials"
+          :key="'branch-card-' + m.id"
+          class="shadow rounded-xl border p-4"
+          :class="m.is_low ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-white'"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="text-lg font-bold text-gray-800">{{ m.name }}</div>
+              <div class="text-sm text-gray-600 mt-1">
+                <span class="font-medium">الفئة:</span>
+                {{ m.category?.name || '—' }}
+              </div>
+            </div>
+            <div v-if="m.is_low" class="text-xs font-bold text-red-700 bg-red-100 px-2 py-1 rounded shrink-0">
+              مخزون منخفض
+            </div>
+          </div>
+
+          <div class="mt-3 grid grid-cols-2 gap-3 text-sm">
+            <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+              <div class="text-gray-600 mb-1">مخزون الفرع (قطع)</div>
+              <template v-if="branchStockEdit.productId === m.id">
+                <input
+                  :value="branchStockEdit.pieces"
+                  type="number"
+                  min="0"
+                  step="any"
+                  class="w-full border border-amber-400 rounded p-2 text-center font-mono font-bold"
+                  @input="onBranchPiecesInput(m, $event)"
+                />
+                <span class="text-gray-500 text-xs mt-1 block text-center">{{ m.unit }}</span>
+              </template>
+              <div v-else class="font-mono font-bold text-gray-900">
+                {{ m.branch_stock_pieces }} {{ m.unit }}
+              </div>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+              <div class="text-gray-600 mb-1">بالوحدة الاستهلاكية</div>
+              <template v-if="branchStockEdit.productId === m.id">
+                <input
+                  :value="branchStockEdit.consume"
+                  type="number"
+                  min="0"
+                  step="any"
+                  class="w-full border border-amber-400 rounded p-2 text-center font-mono font-bold"
+                  @input="onBranchConsumeInput(m, $event)"
+                />
+                <span class="text-gray-500 text-xs mt-1 block text-center">{{ m.consume_unit }}</span>
+              </template>
+              <div v-else class="font-mono font-bold text-gray-800">
+                {{ m.branch_stock_consume }} {{ m.consume_unit }}
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-3 text-sm text-gray-600">
+            <span class="font-medium">حد التنبيه:</span>
+            {{ m.alert_pieces != null ? m.alert_pieces + ' ' + (m.unit || '') : '—' }}
+          </div>
+
+          <div v-if="branchDetail.can_edit_stock" class="mt-4 flex flex-wrap gap-2 justify-end">
+            <template v-if="branchStockEdit.productId === m.id">
+              <button type="button" class="btn-primary text-sm py-2 px-3" @click="saveBranchStock(m)">حفظ</button>
+              <button type="button" class="btn-gray text-sm py-2 px-3" @click="cancelBranchStockEdit">إلغاء</button>
+            </template>
+            <button v-else type="button" class="btn-yellow text-sm py-2 px-3" @click="startBranchStockEdit(m)">تعديل المخزون</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- سطح المكتب: جدول -->
+      <div class="hidden sm:block bg-white shadow-lg rounded-xl overflow-x-auto mb-8 no-print">
         <table class="w-full min-w-[900px] text-end text-sm">
           <thead class="bg-gray-200">
             <tr>
@@ -250,11 +333,12 @@
               <th class="p-3">مخزون الفرع (قطع)</th>
               <th class="p-3">بالوحدة الاستهلاكية</th>
               <th class="p-3">حد التنبيه</th>
+              <th v-if="branchDetail.can_edit_stock" class="p-3 text-center">تعديل المخزون</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="!branchDetail.materials?.length">
-              <td colspan="5" class="p-6 text-center text-gray-500">لا توجد مواد خام في هذا العرض.</td>
+              <td :colspan="branchDetail.can_edit_stock ? 6 : 5" class="p-6 text-center text-gray-500">لا توجد مواد خام في هذا العرض.</td>
             </tr>
             <tr
               v-for="m in branchDetail.materials"
@@ -263,9 +347,42 @@
             >
               <td class="p-3 font-semibold">{{ m.name }}</td>
               <td class="p-3">{{ m.category?.name || '—' }}</td>
-              <td class="p-3 font-mono font-bold">{{ m.branch_stock_pieces }} {{ m.unit }}</td>
-              <td class="p-3 text-gray-600">{{ m.branch_stock_consume }} {{ m.consume_unit }}</td>
+              <td class="p-3 font-mono font-bold">
+                <template v-if="branchStockEdit.productId === m.id">
+                  <input
+                    :value="branchStockEdit.pieces"
+                    type="number"
+                    min="0"
+                    step="any"
+                    class="w-24 border border-amber-400 rounded p-1 text-center"
+                    @input="onBranchPiecesInput(m, $event)"
+                  />
+                  <span class="text-gray-600 font-normal text-xs mr-1">{{ m.unit }}</span>
+                </template>
+                <template v-else>{{ m.branch_stock_pieces }} {{ m.unit }}</template>
+              </td>
+              <td class="p-3 text-gray-600">
+                <template v-if="branchStockEdit.productId === m.id">
+                  <input
+                    :value="branchStockEdit.consume"
+                    type="number"
+                    min="0"
+                    step="any"
+                    class="w-24 border border-amber-400 rounded p-1 text-center font-mono font-bold text-gray-800"
+                    @input="onBranchConsumeInput(m, $event)"
+                  />
+                  <span class="text-gray-600 font-normal text-xs mr-1">{{ m.consume_unit }}</span>
+                </template>
+                <template v-else>{{ m.branch_stock_consume }} {{ m.consume_unit }}</template>
+              </td>
               <td class="p-3">{{ m.alert_pieces != null ? m.alert_pieces + ' ' + (m.unit || '') : '—' }}</td>
+              <td v-if="branchDetail.can_edit_stock" class="p-3 text-center whitespace-nowrap">
+                <template v-if="branchStockEdit.productId === m.id">
+                  <button type="button" class="btn-primary text-xs py-1 px-2" @click="saveBranchStock(m)">حفظ</button>
+                  <button type="button" class="btn-gray text-xs py-1 px-2 mr-1" @click="cancelBranchStockEdit">إلغاء</button>
+                </template>
+                <button v-else type="button" class="btn-yellow text-xs py-1 px-2" @click="startBranchStockEdit(m)">تعديل</button>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -276,7 +393,37 @@
         <p v-if="branchDetail.businessDayLabel" class="text-sm text-blue-700 bg-blue-50 rounded-lg px-3 py-2 mb-4 inline-block">
           {{ branchDetail.businessDayLabel }}
         </p>
-        <div class="overflow-x-auto border border-gray-200 rounded-xl bg-white">
+        <div class="sm:hidden space-y-3">
+          <p
+            v-if="!branchDetail.todayPulls?.length"
+            class="text-center text-gray-500 p-6 bg-white rounded-xl border border-gray-200"
+          >
+            لا توجد سحوبات لهذا اليوم.
+          </p>
+          <div
+            v-for="pull in branchDetail.todayPulls"
+            :key="'pull-card-' + pull.id"
+            class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm"
+          >
+            <div class="font-semibold text-gray-800">{{ pull.product_name }}</div>
+            <div class="mt-2 grid grid-cols-2 gap-2 text-sm">
+              <div>
+                <span class="text-gray-500">الوقت</span>
+                <div class="font-medium">{{ pull.received_at }}</div>
+              </div>
+              <div>
+                <span class="text-gray-500">القطع</span>
+                <div class="font-medium">{{ pull.piece_count }} {{ pull.unit }}</div>
+              </div>
+            </div>
+            <div class="mt-2 text-sm">
+              <span class="text-gray-500">الكود</span>
+              <div class="font-mono text-xs mt-0.5 break-all">{{ pull.label_code }}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="hidden sm:block overflow-x-auto border border-gray-200 rounded-xl bg-white">
           <table class="w-full text-sm border-collapse">
             <thead class="bg-gray-100">
               <tr>
@@ -456,6 +603,12 @@ export default {
         created: false,
         label_code: '',
       },
+      branchStockEdit: {
+        productId: null,
+        pieces: 0,
+        consume: 0,
+      },
+      branchStockSaving: false,
     };
   },
   watch: {
@@ -575,6 +728,73 @@ export default {
       if (confirm("هل أنت متأكد من حذف هذه المادة الخام؟")) {
         Inertia.delete(route("admin.raw-materials.destroy", id));
       }
+    },
+    formatBranchStockNum(n) {
+      if (Number.isNaN(n)) return '';
+      return n % 1 === 0 ? n : parseFloat(n.toFixed(4));
+    },
+    branchQpu(m) {
+      const qpu = parseFloat(m.quantity_per_unit);
+      return qpu > 0 ? qpu : 1;
+    },
+    startBranchStockEdit(m) {
+      const pieces = parseFloat(m.branch_stock_pieces) || 0;
+      const consume = parseFloat(m.branch_stock_consume) || 0;
+      this.branchStockEdit = {
+        productId: m.id,
+        pieces: this.formatBranchStockNum(pieces),
+        consume: this.formatBranchStockNum(consume),
+      };
+    },
+    cancelBranchStockEdit() {
+      this.branchStockEdit = { productId: null, pieces: 0, consume: 0 };
+    },
+    onBranchPiecesInput(m, event) {
+      const raw = event.target.value;
+      const pieces = raw === '' ? NaN : parseFloat(raw);
+      this.branchStockEdit.pieces = raw === '' ? '' : pieces;
+      if (Number.isNaN(pieces)) {
+        this.branchStockEdit.consume = '';
+        return;
+      }
+      this.branchStockEdit.consume = this.formatBranchStockNum(pieces * this.branchQpu(m));
+    },
+    onBranchConsumeInput(m, event) {
+      const raw = event.target.value;
+      const consume = raw === '' ? NaN : parseFloat(raw);
+      this.branchStockEdit.consume = raw === '' ? '' : consume;
+      if (Number.isNaN(consume)) {
+        this.branchStockEdit.pieces = '';
+        return;
+      }
+      const qpu = this.branchQpu(m);
+      this.branchStockEdit.pieces = this.formatBranchStockNum(consume / qpu);
+    },
+    saveBranchStock(m) {
+      if (!this.branchDetail?.branch_id) return;
+      const consume = parseFloat(this.branchStockEdit.consume);
+      if (Number.isNaN(consume) || consume < 0) {
+        alert('أدخل كمية استهلاكية صالحة (0 أو أكثر).');
+        return;
+      }
+      this.branchStockSaving = true;
+      Inertia.put(
+        route('admin.raw-materials.branch-stock.update', {
+          branch: this.branchDetail.branch_id,
+          raw_material: m.id,
+        }),
+        {
+          stock_consume: consume,
+          category_id: this.filterCategoryId || undefined,
+        },
+        {
+          preserveScroll: true,
+          onFinish: () => {
+            this.branchStockSaving = false;
+            this.cancelBranchStockEdit();
+          },
+        }
+      );
     },
     isStockLow(material) {
         if (!material.stock_alert_threshold) return false;
