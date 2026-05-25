@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Admin\FridgeController;
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\BranchRawMaterialStock;
@@ -95,14 +96,18 @@ class RawMaterialController extends Controller
             $branchDetail = $this->buildBranchDetail((int) $viewScope, $request);
         }
 
+        $fridgeBranchId = $viewScope !== 'central' ? (int) $viewScope : null;
+
         return Inertia::render('Admin/RawMaterials/Index', [
             'rawMaterials' => $rawMaterials,
             'rawMaterialCategories' => Category::forRawMaterials()->orderBy('name')->get(['id', 'name']),
             'hubBranches' => $hubBranches,
             'branchDetail' => $branchDetail,
+            'fridge' => FridgeController::buildIndexPayload($fridgeBranchId),
             'filters' => [
                 'category_id' => $categoryId,
                 'view_scope' => $viewScope,
+                'tab' => $request->get('tab', 'materials'),
             ],
         ]);
     }
@@ -238,12 +243,8 @@ class RawMaterialController extends Controller
         }
 
         $amount = (float) $label->consume_amount;
-
-        if ((float) $product->stock < $amount) {
-            return back()->withErrors([
-                'label_code' => 'المخزون المركزي غير كافٍ لهذه الكمية. المتاح: '.round((float) $product->stock, 2).' '.$product->consume_unit,
-            ])->withInput();
-        }
+        $centralBefore = (float) $product->stock;
+        $wasInsufficient = $centralBefore < $amount;
 
         DB::transaction(function () use ($product, $label, $amount, $branchId) {
             $product->decrement('stock', $amount);
@@ -272,8 +273,14 @@ class RawMaterialController extends Controller
             ]);
         });
 
+        $message = 'تم سحب الكمية وإضافتها لمخزون الفرع.';
+        if ($wasInsufficient) {
+            $message .= ' تنبيه: المخزون المركزي كان '.round($centralBefore, 2).' '.$product->consume_unit
+                .' — تم السحب رغم النقص (قد يصبح المخزون سالباً).';
+        }
+
         return redirect()->route('admin.raw-materials.branch-pull')
-            ->with('success', 'تم سحب الكمية وإضافتها لمخزون الفرع.');
+            ->with('success', $message);
     }
 
     public function receiveByBarcodeForm(): RedirectResponse

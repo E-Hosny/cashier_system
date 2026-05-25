@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BranchFridgeStock;
 use App\Models\BranchRawMaterialStock;
 use App\Models\Category;
+use App\Models\FridgeProductConfig;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
@@ -15,6 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use App\Models\StockMovement;
 use App\Models\CashierShift;
+use App\Services\FridgeInventoryService;
 use App\Services\InvoiceNumberService;
 use Illuminate\Support\Facades\Auth;
 
@@ -23,6 +26,10 @@ use Mpdf\Mpdf;
 
 class CashierController extends Controller
 {
+    public function __construct(
+        private FridgeInventoryService $fridgeService
+    ) {}
+
     //comment
   public function index()
 {
@@ -39,9 +46,54 @@ class CashierController extends Controller
     });
     // فقط فئات المنتجات النهائية — لا تُعرض فئات المواد الخام على شاشة الكاشير
     $categories = Category::forProducts()->orderBy('name')->get();
+
+    $fridgeProducts = [];
+    if (BranchContext::hasBranch()) {
+        $branchId = BranchContext::requireId();
+        $configs = FridgeProductConfig::query()
+            ->with('product:id,name,size_variants,image')
+            ->where('is_active', true)
+            ->get();
+        $stocks = BranchFridgeStock::query()
+            ->where('branch_id', $branchId)
+            ->where('quantity', '>', 0)
+            ->get()
+            ->keyBy(fn ($s) => $s->product_id.'|'.$s->size);
+
+        foreach ($configs as $config) {
+            $key = $config->product_id.'|'.($config->size ?? '');
+            $stock = $stocks->get($key);
+            if (! $stock || (float) $stock->quantity <= 0) {
+                continue;
+            }
+            $product = $config->product;
+            if (! $product) {
+                continue;
+            }
+            $variants = collect($product->size_variants ?? []);
+            $price = 0;
+            if ($config->size !== '' && $variants->isNotEmpty()) {
+                $variant = $variants->firstWhere('size', $config->size);
+                $price = (float) ($variant['price'] ?? 0);
+            } elseif ($variants->isNotEmpty()) {
+                $price = (float) ($variants->first()['price'] ?? 0);
+            }
+            $fridgeProducts[] = [
+                'config_id' => $config->id,
+                'product_id' => $config->product_id,
+                'name' => $product->name,
+                'size' => $config->size !== '' ? $config->size : null,
+                'price' => $price,
+                'fridge_quantity' => (float) $stock->quantity,
+                'image' => $product->image,
+            ];
+        }
+    }
+
     return Inertia::render('Cashier', [
         'products' => $products,
         'categories' => $categories,
+        'fridgeProducts' => $fridgeProducts,
     ]);
 }
 
@@ -77,6 +129,7 @@ class CashierController extends Controller
             'items.*.price' => 'required|numeric',
             'items.*.product_name' => 'required|string',
             'items.*.size' => 'nullable|string',
+            'items.*.from_fridge' => 'sometimes|boolean',
         ]);
 
         $draftProductIds = Product::whereIn('id', collect($data['items'])->pluck('product_id'))
@@ -124,6 +177,7 @@ class CashierController extends Controller
                         'quantity' => $item['quantity'],
                         'price' => $item['price'],
                         'size' => $item['size'],
+                        'from_fridge' => ! empty($item['from_fridge']),
                         'tenant_id' => $tenantId,
                         'created_at' => now(),
                         'updated_at' => now(),
@@ -153,9 +207,52 @@ class CashierController extends Controller
                         ->groupBy('finished_product_id');
                 }
                 
+                $fridgeConfigs = FridgeProductConfig::query()
+                    ->with('ingredientRules')
+                    ->where('is_active', true)
+                    ->get()
+                    ->keyBy(fn ($c) => $c->product_id.'|'.($c->size ?? ''));
+
+                $branchId = (int) ($order->branch_id ?? BranchContext::requireId());
+
                 foreach ($data['items'] as $item) {
                     $product = $products->get($item['product_id']);
                     if (!$product) continue;
+
+                    $fromFridge = ! empty($item['from_fridge']);
+                    $sizeKey = (string) ($item['size'] ?? '');
+                    $configKey = $product->id.'|'.$sizeKey;
+                    $fridgeConfig = $fromFridge ? $fridgeConfigs->get($configKey) : null;
+
+                    if ($fromFridge && $fridgeConfig) {
+                        $qty = (float) $item['quantity'];
+                        BranchFridgeStock::deduct(
+                            $branchId,
+                            (int) $product->id,
+                            $sizeKey,
+                            $qty,
+                            $tenantId
+                        );
+
+                        $saleDeductions = $this->fridgeService->aggregateDeductions($fridgeConfig, 'sale', $qty);
+                        foreach ($saleDeductions as $rawId => $amount) {
+                            if (! isset($stockUpdates[$rawId])) {
+                                $stockUpdates[$rawId] = 0;
+                            }
+                            $stockUpdates[$rawId] -= $amount;
+                            $stockMovements[] = [
+                                'product_id' => $rawId,
+                                'quantity' => -$amount,
+                                'type' => 'fridge_sale_ingredient',
+                                'related_order_id' => $order->id,
+                                'tenant_id' => $tenantId,
+                                'created_at' => now(),
+                                'updated_at' => now(),
+                            ];
+                        }
+
+                        continue;
+                    }
 
                     // A) إذا كان منتج نهائي، ابحث عن المكونات للمقاس المحدد
                     if ($product->type === 'finished') {
@@ -201,8 +298,6 @@ class CashierController extends Controller
                         ];
                     }
                 }
-                
-                $branchId = (int) ($order->branch_id ?? BranchContext::requireId());
 
                 foreach ($stockUpdates as $productId => $change) {
                     if ($change >= 0) {

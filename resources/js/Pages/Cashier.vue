@@ -42,8 +42,15 @@
         <div class="flex-1 overflow-y-auto hover:overflow-y-scroll scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 px-3 pb-3">
           <div class="space-y-1">
             <div
+              v-if="fridgeProducts.length"
+              class="cursor-pointer px-3 py-2 rounded-lg text-center font-bold shadow transition-colors text-sm border-2"
+              :class="showFridgeView ? 'bg-cyan-500 text-white border-cyan-600' : 'bg-cyan-50 text-cyan-800 border-cyan-300 hover:bg-cyan-100'"
+              @click="selectFridgeView()"
+            >🧊 التلاجة</div>
+
+            <div
               class="cursor-pointer px-3 py-2 bg-blue-100 hover:bg-blue-200 rounded-lg text-center font-bold text-blue-800 shadow transition-colors text-sm"
-              :class="{ 'bg-blue-300': selectedCategoryId === null }"
+              :class="{ 'bg-blue-300': !showFridgeView && selectedCategoryId === null }"
               @click="selectCategory(null)"
             >📋 كل المنتجات</div>
 
@@ -51,7 +58,7 @@
               v-for="cat in categories"
               :key="cat.id"
               class="cursor-pointer px-3 py-2 bg-white hover:bg-gray-100 rounded-lg text-center font-semibold shadow transition-colors border border-gray-200 text-sm"
-              :class="{ 'bg-green-200 border-green-300': selectedCategoryId === cat.id }"
+              :class="{ 'bg-green-200 border-green-300': !showFridgeView && selectedCategoryId === cat.id }"
               @click="selectCategory(cat.id)"
             >{{ cat.name }}</div>
           </div>
@@ -74,9 +81,10 @@
         <div class="flex-1 overflow-y-auto p-4">
           <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
             <div
-              v-for="product in filteredProducts"
-              :key="product.id"
-              class="bg-white rounded-lg shadow-lg overflow-hidden transform transition-all hover:scale-105 flex flex-col border border-gray-200 text-sm"
+              v-for="product in displayProducts"
+              :key="product.cartKey || product.id"
+              class="bg-white rounded-lg shadow-lg overflow-hidden transform transition-all hover:scale-105 flex flex-col border text-sm"
+              :class="product.from_fridge ? 'border-cyan-400' : 'border-gray-200'"
             >
               <!-- <div class="relative w-full h-32">
                 <img v-if="product.image" :src="`/storage/${product.image}`" alt="صورة المنتج" class="w-full h-full object-contain rounded-t-lg" />
@@ -85,10 +93,13 @@
                 </div>
               </div> -->
               <div class="p-3 flex-1 flex flex-col justify-between">
-                <h3 class="text-sm font-semibold text-gray-800 text-center leading-tight">{{ product.name }}</h3>
+                <h3 class="text-sm font-semibold text-gray-800 text-center leading-tight">
+                  {{ product.name }}
+                  <span v-if="product.from_fridge" class="text-cyan-600 text-xs block">تلاجة ({{ product.fridge_quantity }})</span>
+                </h3>
                 
                 <!-- Size Selection -->
-                <div v-if="hasVariants(product)" class="my-2 flex justify-center gap-1">
+                <div v-if="!product.from_fridge && hasVariants(product)" class="my-2 flex justify-center gap-1">
                     <button 
                       v-for="(variant, v_idx) in product.size_variants" 
                       :key="variant.size"
@@ -105,7 +116,11 @@
 
                 <div class="mt-auto text-center">
                   <input v-model.number="product.quantityToAdd" type="number" min="1" placeholder="العدد" class="p-2 border border-gray-300 rounded-lg text-center w-full text-sm" />
-                  <button @click="addToCart(product)" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg transition mt-2 w-full text-sm">إضافة للسلة</button>
+                  <button
+                    @click="product.from_fridge ? addFridgeToCart(product) : addToCart(product)"
+                    class="text-white px-3 py-1.5 rounded-lg transition mt-2 w-full text-sm"
+                    :class="product.from_fridge ? 'bg-cyan-600 hover:bg-cyan-700' : 'bg-blue-500 hover:bg-blue-600'"
+                  >إضافة للسلة</button>
                 </div>
               </div>
             </div>
@@ -341,11 +356,13 @@ export default {
   props: {
     products: Array,
     categories: Array,
+    fridgeProducts: { type: Array, default: () => [] },
   },
   data() {
     return {
       searchQuery: '',
       selectedCategoryId: null,
+      showFridgeView: false,
       cart: [],
       orderId: null,
       iframeVisible: false,
@@ -381,6 +398,20 @@ export default {
         .filter(p => this.selectedCategoryId === null || p.category_id === this.selectedCategoryId)
         .filter(p => p.name.toLowerCase().includes(this.searchQuery.toLowerCase()));
     },
+    filteredFridgeProducts() {
+      return (this.fridgeProducts || [])
+        .filter(p => p.name.toLowerCase().includes(this.searchQuery.toLowerCase()))
+        .map(p => ({
+          ...p,
+          from_fridge: true,
+          cartKey: `fridge-${p.product_id}-${p.size || ''}`,
+          quantityToAdd: 1,
+          selectedVariantIndex: -1,
+        }));
+    },
+    displayProducts() {
+      return this.showFridgeView ? this.filteredFridgeProducts : this.filteredProducts;
+    },
     totalAmount() {
       return this.cart.reduce((total, item) => total + item.price * item.quantity, 0).toFixed(2);
     },
@@ -397,6 +428,9 @@ export default {
         return product.size_variants && product.size_variants.length > 0;
     },
     getProductPrice(product) {
+        if (product.from_fridge) {
+            return `${product.price} جنيه`;
+        }
         if (this.hasVariants(product) && product.selectedVariantIndex !== -1) {
             return `${product.size_variants[product.selectedVariantIndex].price} جنيه`;
         }
@@ -409,7 +443,39 @@ export default {
         return this.sizeTranslations[size] || size;
     },
     selectCategory(id) {
+      this.showFridgeView = false;
       this.selectedCategoryId = id;
+    },
+    selectFridgeView() {
+      this.showFridgeView = true;
+      this.selectedCategoryId = null;
+    },
+    addFridgeToCart(product) {
+      const quantity = product.quantityToAdd || 1;
+      if (quantity > product.fridge_quantity) {
+        alert('الكمية المطلوبة أكبر من مخزون التلاجة.');
+        return;
+      }
+      const cartItemId = `fridge-${product.product_id}-${product.size || ''}`;
+      const found = this.cart.find(item => item.cartItemId === cartItemId);
+      if (found) {
+        if (found.quantity + quantity > product.fridge_quantity) {
+          alert('الكمية المطلوبة أكبر من مخزون التلاجة.');
+          return;
+        }
+        found.quantity += quantity;
+      } else {
+        this.cart.push({
+          cartItemId,
+          product_id: product.product_id,
+          name: product.name,
+          size: product.size,
+          price: parseFloat(product.price) || 0,
+          quantity,
+          from_fridge: true,
+        });
+      }
+      product.quantityToAdd = 1;
     },
     selectVariant(product, variantIndex) {
         product.selectedVariantIndex = variantIndex;
@@ -484,7 +550,8 @@ export default {
           product_name: item.name,
           quantity: parseInt(item.quantity) || 0,
           price: parseFloat(item.price) || 0,
-          size: item.size
+          size: item.size,
+          from_fridge: !!item.from_fridge,
         })),
         total_price: parseFloat(this.totalAmount) || 0,
         payment_method: 'cash'

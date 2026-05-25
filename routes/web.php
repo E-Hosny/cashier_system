@@ -9,6 +9,7 @@ use App\Http\Controllers\Admin\SalesReportController;
 use App\Http\Controllers\CashierController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\Admin\CategoryController;
+use App\Http\Controllers\Admin\FridgeController;
 use App\Http\Controllers\Admin\RawMaterialController;
 use App\Http\Controllers\Admin\RawMaterialCategoryController;
 use App\Http\Controllers\Admin\UserController;
@@ -91,6 +92,13 @@ Route::middleware([
     Route::get('raw-materials/{raw_material}/add-quantity', [RawMaterialController::class, 'addQuantityForm'])->name('admin.raw-materials.add-quantity');
     Route::post('raw-materials/{raw_material}/add-quantity', [RawMaterialController::class, 'addQuantity'])->name('admin.raw-materials.add-quantity.store');
 
+    Route::get('/raw-materials/fridge/ingredients', [FridgeController::class, 'productIngredients'])->name('admin.fridge.ingredients');
+    Route::post('/raw-materials/fridge/configs', [FridgeController::class, 'storeConfig'])->name('admin.fridge.configs.store');
+    Route::put('/raw-materials/fridge/configs/{config}', [FridgeController::class, 'updateConfig'])->name('admin.fridge.configs.update');
+    Route::delete('/raw-materials/fridge/configs/{config}', [FridgeController::class, 'destroyConfig'])->name('admin.fridge.configs.destroy');
+    Route::post('/raw-materials/fridge/configs/{config}/labels', [FridgeController::class, 'storeLabel'])->name('admin.fridge.labels.store');
+    Route::get('/raw-materials/fridge/labels/{label}/print', [FridgeController::class, 'printLabel'])->name('admin.fridge.labels.print');
+
     // Users Management (super admin only)
     Route::middleware(['super_admin'])->group(function () {
         Route::get('/raw-material-categories', [RawMaterialCategoryController::class, 'index'])->name('admin.raw-material-categories.index');
@@ -122,6 +130,8 @@ Route::middleware([
     Route::middleware(['branch.context'])->group(function () {
         Route::get('/raw-materials/branch-pull', [RawMaterialController::class, 'branchPullForm'])->name('admin.raw-materials.branch-pull');
         Route::post('/raw-materials/branch-pull', [RawMaterialController::class, 'branchPullStore'])->name('admin.raw-materials.branch-pull.store');
+        Route::get('/raw-materials/fridge-pull', [FridgeController::class, 'fridgePullForm'])->name('admin.fridge.pull');
+        Route::post('/raw-materials/fridge-pull', [FridgeController::class, 'fridgePullStore'])->name('admin.fridge.pull.store');
 
         // Employees Management (admin and cashier with attendance permission)
         Route::middleware(['employee.attendance'])->group(function () {

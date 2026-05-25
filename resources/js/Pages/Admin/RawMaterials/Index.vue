@@ -8,6 +8,42 @@
       </div>
     </div>
 
+    <div class="mb-4 flex flex-wrap gap-2 no-print">
+      <button
+        type="button"
+        class="px-4 py-2 rounded-lg font-semibold transition"
+        :class="pageTab === 'materials' ? 'bg-slate-700 text-white' : 'bg-white border border-slate-300 text-gray-700'"
+        @click="setPageTab('materials')"
+      >
+        🛢️ المواد الخام
+      </button>
+      <button
+        type="button"
+        class="px-4 py-2 rounded-lg font-semibold transition"
+        :class="pageTab === 'fridge' ? 'bg-cyan-700 text-white' : 'bg-white border border-cyan-300 text-cyan-800'"
+        @click="setPageTab('fridge')"
+      >
+        🧊 التلاجة
+      </button>
+      <a
+        v-if="canReceive && !isCentralView"
+        :href="route('admin.fridge.pull')"
+        class="px-4 py-2 rounded-lg font-semibold bg-cyan-100 text-cyan-900 border border-cyan-300 hover:bg-cyan-200 mr-auto"
+      >
+        سحب للتلاجة (الفرع)
+      </a>
+    </div>
+
+    <FridgePanel
+      v-if="pageTab === 'fridge'"
+      :fridge="fridge"
+      :is-central-view="isCentralView"
+      :can-manage="canManageFridge"
+      :view-scope="viewScopeSelect"
+    />
+
+    <template v-else-if="pageTab === 'materials'">
+
     <div class="mb-6 bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-wrap items-center gap-4 no-print">
       <span class="text-gray-800 font-semibold whitespace-nowrap">عرض المخزون:</span>
       <select
@@ -266,8 +302,10 @@
       </div>
     </template>
 
+    </template>
+
     <div
-      v-if="isCentralView && printModal.open"
+      v-if="pageTab === 'materials' && isCentralView && printModal.open"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       @click.self="closePrintModal"
     >
@@ -335,9 +373,11 @@
 import { Inertia } from "@inertiajs/inertia";
 import JsBarcode from 'jsbarcode';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import FridgePanel from '@/Components/Admin/FridgePanel.vue';
 
 export default {
   layout: AppLayout,
+  components: { FridgePanel },
   props: {
     rawMaterials: Array,
     rawMaterialCategories: {
@@ -356,8 +396,15 @@ export default {
       type: Object,
       default: null,
     },
+    fridge: {
+      type: Object,
+      default: () => ({ configs: [], finishedProducts: [], stocks: [] }),
+    },
   },
   computed: {
+    canManageFridge() {
+      return this.isAdmin || this.isSuperAdmin;
+    },
     isCentralView() {
       return this.viewScopeSelect === 'central';
     },
@@ -397,6 +444,7 @@ export default {
   },
   data() {
     return {
+      pageTab: this.filters?.tab === 'fridge' ? 'fridge' : 'materials',
       viewScopeSelect: this.filters?.view_scope != null ? String(this.filters.view_scope) : 'central',
       filterCategoryId: this.filters?.category_id != null && this.filters.category_id !== '' ? String(this.filters.category_id) : '',
       rawMaterialsLocal: this.rawMaterials,
@@ -425,22 +473,36 @@ export default {
         if (val?.view_scope != null) {
           this.viewScopeSelect = String(val.view_scope);
         }
+        if (val?.tab === 'fridge' || val?.tab === 'materials') {
+          this.pageTab = val.tab;
+        }
       },
     },
   },
   methods: {
     filterQueryParams() {
-      const params = { view_scope: this.viewScopeSelect };
+      const params = { view_scope: this.viewScopeSelect, tab: this.pageTab };
       if (this.filterCategoryId) {
         params.category_id = this.filterCategoryId;
       }
       return params;
     },
+    setPageTab(tab) {
+      this.pageTab = tab;
+      Inertia.get(route('admin.raw-materials.index'), this.filterQueryParams(), {
+        preserveState: true,
+        replace: true,
+      });
+    },
     applyViewScope() {
       if (this.viewScopeSelect !== 'central') {
         this.filterCategoryId = this.filterCategoryId || '';
       }
-      Inertia.get(route('admin.raw-materials.index'), this.filterQueryParams(), {
+      const params = this.filterQueryParams();
+      if (this.pageTab === 'fridge') {
+        params.tab = 'fridge';
+      }
+      Inertia.get(route('admin.raw-materials.index'), params, {
         preserveState: true,
         replace: true,
       });

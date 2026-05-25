@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue';
-import { useForm, usePage, router } from '@inertiajs/vue3';
+import { useForm, usePage, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
 const props = defineProps({
@@ -38,6 +38,16 @@ function submit() {
 
         <div class="py-12" dir="rtl">
             <div class="max-w-4xl mx-auto sm:px-6 lg:px-8 space-y-6">
+                <div class="flex flex-wrap gap-2">
+                    <span class="px-4 py-2 rounded-lg bg-green-600 text-white font-semibold">سحب مواد خام</span>
+                    <Link
+                        :href="route('admin.fridge.pull')"
+                        class="px-4 py-2 rounded-lg border border-cyan-400 text-cyan-800 hover:bg-cyan-50 font-semibold"
+                    >
+                        🧊 سحب للتلاجة
+                    </Link>
+                </div>
+
                 <div
                     v-if="page.props.flash?.success"
                     class="bg-green-100 border border-green-300 text-green-900 px-4 py-3 rounded-lg text-sm"
