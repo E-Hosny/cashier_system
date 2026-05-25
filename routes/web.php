@@ -96,6 +96,7 @@ Route::middleware([
     Route::post('/raw-materials/fridge/configs', [FridgeController::class, 'storeConfig'])->name('admin.fridge.configs.store');
     Route::put('/raw-materials/fridge/configs/{config}', [FridgeController::class, 'updateConfig'])->name('admin.fridge.configs.update');
     Route::delete('/raw-materials/fridge/configs/{config}', [FridgeController::class, 'destroyConfig'])->name('admin.fridge.configs.destroy');
+    Route::post('/raw-materials/fridge/combined-labels', [FridgeController::class, 'storeCombinedLabel'])->name('admin.fridge.combined-labels.store');
     Route::post('/raw-materials/fridge/configs/{config}/labels', [FridgeController::class, 'storeLabel'])->name('admin.fridge.labels.store');
     Route::get('/raw-materials/fridge/labels/{label}/print', [FridgeController::class, 'printLabel'])->name('admin.fridge.labels.print');
 

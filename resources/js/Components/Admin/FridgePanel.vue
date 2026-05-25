@@ -19,6 +19,89 @@ const editingConfig = ref(null);
 const printModal = ref({ open: false, configId: null, labelId: null, productName: '', unit_count: 1, label_code: '', created: false });
 const barcodeSvg = ref(null);
 
+/** @type {import('vue').Ref<Record<number, { selected: boolean, unit_count: number }>>} */
+const rowSelection = ref({});
+
+const combinedModal = ref({
+    open: false,
+    created: false,
+    label_code: '',
+    labelId: null,
+    resultLines: [],
+});
+const combinedBarcodeSvg = ref(null);
+
+const selectedRows = computed(() =>
+    configs.value.filter((c) => rowSelection.value[c.id]?.selected)
+);
+
+const allRowsSelected = computed(() => {
+    if (!configs.value.length) return false;
+    return configs.value.every((c) => rowSelection.value[c.id]?.selected);
+});
+
+function initRowSelection() {
+    const next = { ...rowSelection.value };
+    configs.value.forEach((c) => {
+        if (!next[c.id]) {
+            next[c.id] = { selected: false, unit_count: 1 };
+        }
+    });
+    rowSelection.value = next;
+}
+
+watch(configs, () => initRowSelection(), { immediate: true });
+
+function toggleSelectAll() {
+    const select = !allRowsSelected.value;
+    const next = { ...rowSelection.value };
+    configs.value.forEach((c) => {
+        next[c.id] = { ...next[c.id], selected: select, unit_count: next[c.id]?.unit_count ?? 1 };
+    });
+    rowSelection.value = next;
+}
+
+function openCombinedModal() {
+    if (selectedRows.value.length < 2) {
+        alert('اختر منتجين على الأقل من الجدول (مربع الاختيار).');
+        return;
+    }
+    combinedModal.value = { open: true, created: false, label_code: '', labelId: null, resultLines: [] };
+}
+
+function submitCombinedPrint() {
+    const items = selectedRows.value.map((c) => ({
+        fridge_product_config_id: c.id,
+        unit_count: parseFloat(rowSelection.value[c.id]?.unit_count) || 1,
+    }));
+
+    window.axios
+        .post(route('admin.fridge.combined-labels.store'), { items })
+        .then((res) => {
+            const d = res.data || {};
+            combinedModal.value.created = true;
+            combinedModal.value.label_code = d.label_code || '';
+            combinedModal.value.labelId = d.id || null;
+            combinedModal.value.resultLines = d.items || [];
+
+            items.forEach((item) => {
+                const c = configs.value.find((x) => x.id === item.fridge_product_config_id);
+                if (c) {
+                    c.pending_units = (parseFloat(c.pending_units) || 0) + item.unit_count;
+                }
+            });
+
+            const next = { ...rowSelection.value };
+            selectedRows.value.forEach((c) => {
+                next[c.id] = { selected: false, unit_count: 1 };
+            });
+            rowSelection.value = next;
+
+            nextTick(() => renderBarcode(combinedBarcodeSvg.value, combinedModal.value.label_code));
+        })
+        .catch((err) => alert(err?.response?.data?.message || 'حدث خطأ.'));
+}
+
 const deductModes = [
     { value: 'none', label: 'بدون سحب مقادير' },
     { value: 'all', label: 'كل المقادير' },
@@ -355,10 +438,35 @@ function goToBranchScope(branchId) {
             لا يوجد مخزون في تلاجة هذا الفرع حالياً.
         </div>
 
+        <div
+            v-if="canManage && isCentralView && configs.length"
+            class="flex flex-wrap items-center gap-3 mb-3 no-print"
+        >
+            <button
+                type="button"
+                class="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-40"
+                :disabled="selectedRows.length < 2"
+                @click="openCombinedModal"
+            >
+                🖨️ طباعة كود مجمّع
+                <span v-if="selectedRows.length >= 2">({{ selectedRows.length }} منتجات)</span>
+            </button>
+            <span class="text-sm text-gray-600">حدّد منتجين أو أكثر من الجدول، ثم اضبط الكمية واطبع باركوداً واحداً.</span>
+        </div>
+
         <div class="overflow-x-auto">
             <table class="min-w-full bg-white shadow rounded-xl text-sm">
                 <thead class="bg-cyan-700 text-white">
                     <tr>
+                        <th v-if="canManage && isCentralView" class="p-3 text-center w-12">
+                            <input
+                                type="checkbox"
+                                class="rounded"
+                                :checked="allRowsSelected"
+                                title="تحديد الكل"
+                                @change="toggleSelectAll"
+                            />
+                        </th>
                         <th class="p-3 text-right">المنتج</th>
                         <th class="p-3 text-right">المقاس</th>
                         <th class="p-3 text-right">مقادير عند البيع</th>
@@ -367,7 +475,10 @@ function goToBranchScope(branchId) {
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="cfg in configs" :key="cfg.id" class="border-t hover:bg-gray-50">
+                    <tr v-for="cfg in configs" :key="cfg.id" class="border-t hover:bg-gray-50" :class="{ 'bg-cyan-50': rowSelection[cfg.id]?.selected }">
+                        <td v-if="canManage && isCentralView" class="p-3 text-center">
+                            <input v-model="rowSelection[cfg.id].selected" type="checkbox" class="rounded" />
+                        </td>
                         <td class="p-3 font-semibold">{{ cfg.product_name }}</td>
                         <td class="p-3">{{ translateSize(cfg.size) }}</td>
                         <td class="p-3">{{ saleModeLabel(cfg.deduct_on_sale) }}</td>
@@ -378,14 +489,26 @@ function goToBranchScope(branchId) {
                             <span v-if="!isCentralView" class="text-cyan-800">بالتلاجة: {{ stockForConfig(cfg) }}</span>
                             <span v-if="isCentralView && cfg.pending_units <= 0" class="text-gray-400">—</span>
                         </td>
-                        <td v-if="canManage && isCentralView" class="p-3 text-center space-x-1 space-x-reverse">
+                        <td v-if="canManage && isCentralView" class="p-3 text-center">
+                            <div v-if="rowSelection[cfg.id]?.selected" class="mb-2">
+                                <label class="text-xs text-gray-600">كمية التكويد:</label>
+                                <input
+                                    v-model.number="rowSelection[cfg.id].unit_count"
+                                    type="number"
+                                    min="0.001"
+                                    step="1"
+                                    class="w-16 border rounded p-1 text-center text-xs mr-1"
+                                />
+                            </div>
+                            <div class="space-x-1 space-x-reverse">
                             <button type="button" class="btn-green text-xs" @click="openPrint(cfg)">تكويد</button>
                             <button type="button" class="btn-yellow text-xs" @click="openEditConfig(cfg)">تعديل</button>
                             <button type="button" class="btn-red text-xs" @click="deleteConfig(cfg.id)">حذف</button>
+                            </div>
                         </td>
                     </tr>
                     <tr v-if="!configs.length">
-                        <td colspan="5" class="p-8 text-center text-gray-500">لا توجد منتجات مُعرَّفة للتلاجة بعد.</td>
+                        <td :colspan="canManage && isCentralView ? 6 : 5" class="p-8 text-center text-gray-500">لا توجد منتجات مُعرَّفة للتلاجة بعد.</td>
                     </tr>
                 </tbody>
             </table>
@@ -477,6 +600,43 @@ function goToBranchScope(branchId) {
                         <button type="submit" class="btn-primary" :disabled="configForm.processing">حفظ</button>
                     </div>
                 </form>
+            </div>
+        </div>
+
+        <!-- كود مجمّع من الجدول -->
+        <div v-if="combinedModal.open" class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" @click.self="combinedModal.open = false">
+            <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6" dir="rtl">
+                <h3 class="text-lg font-bold mb-3">كود مجمّع للتلاجة</h3>
+                <template v-if="!combinedModal.created">
+                    <ul class="text-sm mb-4 space-y-2 border rounded-lg p-3 bg-gray-50">
+                        <li v-for="cfg in selectedRows" :key="cfg.id" class="flex justify-between gap-2">
+                            <span>
+                                {{ cfg.product_name }}
+                                <span class="text-gray-500">({{ translateSize(cfg.size) }})</span>
+                            </span>
+                            <strong>{{ rowSelection[cfg.id]?.unit_count }} وحدة</strong>
+                        </li>
+                    </ul>
+                    <button type="button" class="btn-primary w-full" @click="submitCombinedPrint">إنشاء الباركود المجمّع</button>
+                </template>
+                <template v-else>
+                    <ul class="text-sm mb-3 space-y-1 text-right">
+                        <li v-for="(row, i) in combinedModal.resultLines" :key="i">
+                            {{ row.product_name }}
+                            <span v-if="row.size" class="text-gray-500">({{ translateSize(row.size) }})</span>
+                            — {{ row.unit_count }} وحدة
+                        </li>
+                    </ul>
+                    <svg ref="combinedBarcodeSvg" class="mx-auto mb-2"></svg>
+                    <p class="font-mono text-center text-sm break-all mb-3">{{ combinedModal.label_code }}</p>
+                    <a
+                        v-if="combinedModal.labelId"
+                        :href="route('admin.fridge.labels.print', combinedModal.labelId)"
+                        target="_blank"
+                        class="btn-primary w-full block text-center"
+                    >🖨️ صفحة طباعة</a>
+                </template>
+                <button type="button" class="btn-gray w-full mt-3" @click="combinedModal.open = false">إغلاق</button>
             </div>
         </div>
 

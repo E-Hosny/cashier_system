@@ -7,16 +7,29 @@
 
     <div class="label-print-area bg-white border rounded-xl p-8 max-w-md mx-auto text-center shadow">
       <h2 class="text-xl font-bold text-gray-900 mb-2">{{ productName }}</h2>
-      <p v-if="label.size" class="text-gray-600 mb-2">المقاس: {{ translateSize(label.size) }}</p>
-      <p class="text-gray-700 mb-4">
-        <span class="font-semibold">{{ label.unit_count }}</span> وحدة
-      </p>
+
+      <ul v-if="lines && lines.length > 1" class="text-right text-sm mb-4 space-y-2 border rounded-lg p-3">
+        <li v-for="(row, i) in lines" :key="i" class="flex justify-between gap-2 border-b pb-1 last:border-0">
+          <span>
+            {{ row.product_name }}
+            <span v-if="row.size" class="text-gray-500">({{ translateSize(row.size) }})</span>
+          </span>
+          <span class="font-bold">{{ row.unit_count }}</span>
+        </li>
+      </ul>
+      <template v-else>
+        <p v-if="label.size" class="text-gray-600 mb-2">المقاس: {{ translateSize(label.size) }}</p>
+        <p v-if="label.unit_count" class="text-gray-700 mb-4">
+          <span class="font-semibold">{{ label.unit_count }}</span> وحدة
+        </p>
+      </template>
+
       <div class="flex justify-center mb-3">
         <svg ref="barcodeSvg" class="max-w-full h-auto"></svg>
       </div>
       <p class="font-mono text-sm break-all text-gray-800 mb-4">{{ label.label_code }}</p>
       <p v-if="label.status === 'pending'" class="text-amber-800 bg-amber-50 border border-amber-200 rounded-lg py-2 px-3 text-sm">
-        تم التكويد — بانتظار مسح الفرع (إضافة للتلاجة بدون خصم مقادير).
+        {{ lines && lines.length > 1 ? 'كود مجمّع — مسح واحد في الفرع يُدخل كل المنتجات للتلاجة.' : 'بانتظار مسح الفرع.' }}
       </p>
     </div>
   </div>
@@ -32,6 +45,7 @@ export default {
   props: {
     label: { type: Object, required: true },
     productName: { type: String, default: '' },
+    lines: { type: Array, default: () => [] },
   },
   mounted() {
     this.renderBarcode();

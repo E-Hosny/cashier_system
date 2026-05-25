@@ -5,6 +5,8 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 
 class FridgePendingLabel extends Model
 {
@@ -52,6 +54,41 @@ class FridgePendingLabel extends Model
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function items(): HasMany
+    {
+        return $this->hasMany(FridgePendingLabelItem::class, 'fridge_pending_label_id');
+    }
+
+    public function isCombined(): bool
+    {
+        return $this->items()->count() > 1;
+    }
+
+    /** @return Collection<int, FridgePendingLabelItem> */
+    public function resolveLines(): Collection
+    {
+        $this->loadMissing(['items.product', 'items.config', 'product', 'config']);
+
+        if ($this->items->isNotEmpty()) {
+            return $this->items;
+        }
+
+        if ($this->fridge_product_config_id) {
+            $line = new FridgePendingLabelItem([
+                'fridge_product_config_id' => $this->fridge_product_config_id,
+                'product_id' => $this->product_id,
+                'size' => $this->size ?? '',
+                'unit_count' => $this->unit_count,
+            ]);
+            $line->setRelation('product', $this->product);
+            $line->setRelation('config', $this->config);
+
+            return collect([$line]);
+        }
+
+        return collect();
     }
 
     public function isPending(): bool

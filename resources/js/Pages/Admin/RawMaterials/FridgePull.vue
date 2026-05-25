@@ -101,13 +101,26 @@ function submit() {
                                 <td colspan="4" class="text-center p-6 text-gray-500">لا توجد سحوبات اليوم.</td>
                             </tr>
                             <tr v-for="pull in todayPulls" :key="pull.id">
-                                <td class="border p-2 text-center">{{ pull.received_at }}</td>
-                                <td class="border p-2 text-center">
-                                    {{ pull.product_name }}
-                                    <span v-if="pull.size" class="text-gray-500 text-xs">({{ translateSize(pull.size) }})</span>
+                                <td class="border p-2 text-center align-top">{{ pull.received_at }}</td>
+                                <td class="border p-2 text-center align-top">
+                                    <ul v-if="pull.lines?.length" class="text-xs text-right space-y-1">
+                                        <li v-for="(ln, i) in pull.lines" :key="i">
+                                            {{ ln.product_name }}
+                                            <span v-if="ln.size" class="text-gray-500">({{ translateSize(ln.size) }})</span>
+                                        </li>
+                                    </ul>
+                                    <template v-else>
+                                        {{ pull.product_name }}
+                                        <span v-if="pull.size" class="text-gray-500 text-xs">({{ translateSize(pull.size) }})</span>
+                                    </template>
                                 </td>
-                                <td class="border p-2 text-center">{{ pull.unit_count }}</td>
-                                <td class="border p-2 text-center font-mono text-xs">{{ pull.label_code }}</td>
+                                <td class="border p-2 text-center align-top">
+                                    <ul v-if="pull.lines?.length" class="text-xs space-y-1">
+                                        <li v-for="(ln, i) in pull.lines" :key="i">{{ ln.unit_count }}</li>
+                                    </ul>
+                                    <template v-else>{{ pull.unit_count }}</template>
+                                </td>
+                                <td class="border p-2 text-center font-mono text-xs align-top">{{ pull.label_code }}</td>
                             </tr>
                         </tbody>
                     </table>

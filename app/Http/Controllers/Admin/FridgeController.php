@@ -8,6 +8,7 @@ use App\Models\BranchFridgeStock;
 use App\Models\Category;
 use App\Models\Employee;
 use App\Models\FridgePendingLabel;
+use App\Models\FridgePendingLabelItem;
 use App\Models\FridgeProductConfig;
 use App\Models\Product;
 use App\Services\FridgeInventoryService;
@@ -67,11 +68,7 @@ class FridgeController extends Controller
                 ];
             });
 
-        $pendingSums = FridgePendingLabel::query()
-            ->where('status', FridgePendingLabel::STATUS_PENDING)
-            ->selectRaw('fridge_product_config_id, SUM(unit_count) as total')
-            ->groupBy('fridge_product_config_id')
-            ->pluck('total', 'fridge_product_config_id');
+        $pendingSums = self::pendingUnitsByConfigId();
 
         $configs = $configs->map(function (array $row) use ($pendingSums) {
             $row['pending_units'] = (float) ($pendingSums[$row['id']] ?? 0);
@@ -280,6 +277,86 @@ class FridgeController extends Controller
         return response()->json(['ingredients' => $rows]);
     }
 
+    /** @return array<int, float> */
+    public static function pendingUnitsByConfigId(): array
+    {
+        $totals = [];
+
+        foreach (DB::table('fridge_pending_label_items')
+            ->join('fridge_pending_labels', 'fridge_pending_labels.id', '=', 'fridge_pending_label_items.fridge_pending_label_id')
+            ->where('fridge_pending_labels.status', FridgePendingLabel::STATUS_PENDING)
+            ->selectRaw('fridge_pending_label_items.fridge_product_config_id as cid, SUM(fridge_pending_label_items.unit_count) as total')
+            ->groupBy('fridge_pending_label_items.fridge_product_config_id')
+            ->get() as $row) {
+            $totals[(int) $row->cid] = (float) $row->total;
+        }
+
+        foreach (FridgePendingLabel::query()
+            ->where('status', FridgePendingLabel::STATUS_PENDING)
+            ->whereNotNull('fridge_product_config_id')
+            ->whereDoesntHave('items')
+            ->get() as $label) {
+            $id = (int) $label->fridge_product_config_id;
+            $totals[$id] = ($totals[$id] ?? 0) + (float) $label->unit_count;
+        }
+
+        return $totals;
+    }
+
+    public function storeCombinedLabel(Request $request): JsonResponse
+    {
+        $this->requireHubRoles();
+        if (! $this->isCentralHub()) {
+            abort(403);
+        }
+
+        $data = $request->validate([
+            'items' => 'required|array|min:2',
+            'items.*.fridge_product_config_id' => 'required|exists:fridge_product_configs,id',
+            'items.*.unit_count' => 'required|numeric|min:0.001',
+        ]);
+
+        $configs = FridgeProductConfig::query()
+            ->whereIn('id', collect($data['items'])->pluck('fridge_product_config_id'))
+            ->get()
+            ->keyBy('id');
+
+        $label = DB::transaction(function () use ($data, $configs) {
+            $label = FridgePendingLabel::create([
+                'label_code' => 'FR-'.strtoupper(Str::ulid()),
+                'status' => FridgePendingLabel::STATUS_PENDING,
+            ]);
+
+            foreach ($data['items'] as $row) {
+                $config = $configs->get((int) $row['fridge_product_config_id']);
+                if (! $config) {
+                    continue;
+                }
+                FridgePendingLabelItem::create([
+                    'fridge_pending_label_id' => $label->id,
+                    'fridge_product_config_id' => $config->id,
+                    'product_id' => $config->product_id,
+                    'size' => $config->size ?? '',
+                    'unit_count' => (float) $row['unit_count'],
+                ]);
+            }
+
+            return $label;
+        });
+
+        $label->load(['items.product']);
+
+        return response()->json([
+            'id' => $label->id,
+            'label_code' => $label->label_code,
+            'items' => $label->items->map(fn (FridgePendingLabelItem $item) => [
+                'product_name' => $item->product?->name,
+                'size' => $item->size,
+                'unit_count' => (float) $item->unit_count,
+            ])->values()->all(),
+        ]);
+    }
+
     public function storeLabel(Request $request, FridgeProductConfig $config): JsonResponse|RedirectResponse
     {
         $this->requireHubRoles();
@@ -300,6 +377,14 @@ class FridgeController extends Controller
             'label_code' => 'FR-'.strtoupper(Str::ulid()),
             'unit_count' => $units,
             'status' => FridgePendingLabel::STATUS_PENDING,
+        ]);
+
+        FridgePendingLabelItem::create([
+            'fridge_pending_label_id' => $label->id,
+            'fridge_product_config_id' => $config->id,
+            'product_id' => $config->product_id,
+            'size' => $config->size ?? '',
+            'unit_count' => $units,
         ]);
 
         $label->loadMissing('product');
@@ -324,16 +409,23 @@ class FridgeController extends Controller
             abort(403);
         }
 
-        $label->loadMissing(['product', 'config']);
+        $lines = $label->resolveLines();
 
         return Inertia::render('Admin/RawMaterials/PrintFridgeLabel', [
             'label' => [
                 'label_code' => $label->label_code,
-                'unit_count' => (float) $label->unit_count,
                 'status' => $label->status,
-                'size' => $label->size,
+                'unit_count' => $lines->count() === 1 ? (float) $lines->first()->unit_count : null,
+                'size' => $lines->count() === 1 ? $lines->first()->size : null,
             ],
-            'productName' => $label->product?->name ?? '',
+            'productName' => $lines->count() === 1
+                ? ($lines->first()->product?->name ?? '')
+                : 'كود مجمّع — '.$lines->count().' منتجات',
+            'lines' => $lines->map(fn (FridgePendingLabelItem $item) => [
+                'product_name' => $item->product?->name ?? '—',
+                'size' => $item->size,
+                'unit_count' => (float) $item->unit_count,
+            ])->values()->all(),
         ]);
     }
 
@@ -353,20 +445,32 @@ class FridgeController extends Controller
         [$dayStart, $dayEnd] = Employee::businessDayBoundsForAnchor(Employee::businessDayAnchorFromNow());
 
         $todayPulls = FridgePendingLabel::query()
-            ->with('product:id,name')
+            ->with(['product:id,name', 'items.product:id,name'])
             ->where('branch_id', $branchId)
             ->where('status', FridgePendingLabel::STATUS_RECEIVED)
             ->whereBetween('received_at', [$dayStart, $dayEnd])
             ->orderByDesc('received_at')
             ->get()
-            ->map(fn (FridgePendingLabel $l) => [
-                'id' => $l->id,
-                'received_at' => $l->received_at?->format('H:i'),
-                'product_name' => $l->product?->name ?? '—',
-                'unit_count' => (float) $l->unit_count,
-                'size' => $l->size,
-                'label_code' => $l->label_code,
-            ]);
+            ->map(function (FridgePendingLabel $l) {
+                $lines = $l->resolveLines();
+                $combined = $lines->count() > 1;
+
+                return [
+                    'id' => $l->id,
+                    'received_at' => $l->received_at?->format('H:i'),
+                    'product_name' => $combined
+                        ? 'كود مجمّع ('.$lines->count().' منتجات)'
+                        : ($lines->first()?->product?->name ?? '—'),
+                    'unit_count' => $combined ? null : (float) ($lines->first()?->unit_count ?? 0),
+                    'size' => $combined ? null : $lines->first()?->size,
+                    'label_code' => $l->label_code,
+                    'lines' => $combined ? $lines->map(fn ($item) => [
+                        'product_name' => $item->product?->name,
+                        'unit_count' => (float) $item->unit_count,
+                        'size' => $item->size,
+                    ])->values()->all() : [],
+                ];
+            });
 
         return Inertia::render('Admin/RawMaterials/FridgePull', [
             'todayPulls' => $todayPulls,
@@ -395,22 +499,29 @@ class FridgeController extends Controller
             return back()->withErrors(['label_code' => 'كود التلاجة غير صالح أو تم سحبه مسبقاً.'])->withInput();
         }
 
-        $config = FridgeProductConfig::query()->find($label->fridge_product_config_id);
+        $lines = $label->resolveLines();
 
-        if (! $config) {
-            return back()->withErrors(['label_code' => 'إعدادات المنتج غير موجودة.'])->withInput();
+        if ($lines->isEmpty()) {
+            return back()->withErrors(['label_code' => 'الملصق فارغ.'])->withInput();
         }
 
-        $units = (float) $label->unit_count;
+        $count = 0;
 
-        DB::transaction(function () use ($label, $config, $branchId, $units) {
-            BranchFridgeStock::adjust(
-                $branchId,
-                $config->product_id,
-                $config->size ?? '',
-                $units,
-                $label->tenant_id
-            );
+        DB::transaction(function () use ($label, $lines, $branchId, &$count) {
+            foreach ($lines as $line) {
+                $config = $line->config ?? FridgeProductConfig::find($line->fridge_product_config_id);
+                if (! $config) {
+                    continue;
+                }
+                BranchFridgeStock::adjust(
+                    $branchId,
+                    $config->product_id,
+                    $config->size ?? '',
+                    (float) $line->unit_count,
+                    $label->tenant_id
+                );
+                $count++;
+            }
 
             $label->update([
                 'status' => FridgePendingLabel::STATUS_RECEIVED,
@@ -419,7 +530,10 @@ class FridgeController extends Controller
             ]);
         });
 
-        return redirect()->route('admin.fridge.pull')
-            ->with('success', 'تم سحب المنتج إلى تلاجة الفرع.');
+        $message = $count > 1
+            ? "تم سحب {$count} منتجات إلى التلاجة."
+            : 'تم سحب المنتج إلى تلاجة الفرع.';
+
+        return redirect()->route('admin.fridge.pull')->with('success', $message);
     }
 }
