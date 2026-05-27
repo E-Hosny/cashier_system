@@ -352,6 +352,12 @@ function saleModeLabel(mode) {
     return deductModes.find((m) => m.value === mode)?.label || mode;
 }
 
+function formatIngredientQty(qty) {
+    const n = parseFloat(qty);
+    if (Number.isNaN(n)) return '—';
+    return n % 1 === 0 ? String(n) : n.toFixed(2);
+}
+
 function stockForConfig(cfg) {
     const row = (props.fridge?.stocks || []).find(
         (s) => s.product_id === cfg.product_id && (s.size || '') === (cfg.size || '')
@@ -481,7 +487,31 @@ function goToBranchScope(branchId) {
                         </td>
                         <td class="p-3 font-semibold">{{ cfg.product_name }}</td>
                         <td class="p-3">{{ translateSize(cfg.size) }}</td>
-                        <td class="p-3">{{ saleModeLabel(cfg.deduct_on_sale) }}</td>
+                        <td class="p-3">
+                            <div class="font-medium">{{ saleModeLabel(cfg.deduct_on_sale) }}</div>
+                            <ul
+                                v-if="cfg.sale_ingredients?.length"
+                                class="mt-1.5 space-y-0.5 text-xs text-gray-700"
+                            >
+                                <li
+                                    v-for="ing in cfg.sale_ingredients"
+                                    :key="ing.raw_material_id"
+                                    class="flex flex-wrap items-baseline gap-1"
+                                >
+                                    <span class="font-semibold text-gray-800">{{ ing.name }}</span>
+                                    <span class="text-gray-500">
+                                        {{ formatIngredientQty(ing.quantity_consumed) }} {{ ing.consume_unit }}
+                                        <span class="text-gray-400">/ وحدة</span>
+                                    </span>
+                                </li>
+                            </ul>
+                            <p
+                                v-else-if="cfg.deduct_on_sale !== 'none'"
+                                class="mt-1 text-xs text-amber-700"
+                            >
+                                لا توجد مقادير مربوطة بهذا المنتج/المقاس.
+                            </p>
+                        </td>
                         <td class="p-3">
                             <span v-if="cfg.pending_units > 0" class="text-amber-800 font-semibold block">
                                 مكوّد: {{ cfg.pending_units }}

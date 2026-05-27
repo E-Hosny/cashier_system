@@ -45,6 +45,37 @@ class FridgeInventoryService
     }
 
     /**
+     * @return array<int, array{raw_material_id: int, name: string, quantity_consumed: float, consume_unit: string}>
+     */
+    public function saleIngredientsForDisplay(FridgeProductConfig $config): array
+    {
+        if ($config->deduct_on_sale === FridgeProductConfig::MODE_NONE) {
+            return [];
+        }
+
+        $rows = $this->ingredientsToDeduct($config, 'sale');
+        if ($rows->isEmpty()) {
+            return [];
+        }
+
+        $materials = DB::table('products')
+            ->whereIn('id', $rows->pluck('raw_material_id')->all())
+            ->get(['id', 'name', 'consume_unit'])
+            ->keyBy('id');
+
+        return $rows->map(function ($row) use ($materials) {
+            $material = $materials[$row->raw_material_id] ?? null;
+
+            return [
+                'raw_material_id' => (int) $row->raw_material_id,
+                'name' => $material->name ?? '—',
+                'quantity_consumed' => (float) $row->quantity_consumed,
+                'consume_unit' => $material->consume_unit ?? '',
+            ];
+        })->values()->all();
+    }
+
+    /**
      * @return array<int, float> raw_material_id => total consume to deduct
      */
     public function aggregateDeductions(FridgeProductConfig $config, string $context, float $unitCount): array

@@ -48,8 +48,11 @@ class FridgeController extends Controller
             ->with(['product:id,name,size_variants,type', 'ingredientRules.rawMaterial:id,name,consume_unit'])
             ->where('is_active', true)
             ->orderBy('id')
-            ->get()
-            ->map(function (FridgeProductConfig $c) {
+            ->get();
+
+        $fridgeService = app(FridgeInventoryService::class);
+
+        $configs = $configs->map(function (FridgeProductConfig $c) use ($fridgeService) {
                 $variants = $c->product?->size_variants ?? [];
                 $sizeLabel = $c->size !== '' ? $c->size : (count($variants) ? null : '—');
 
@@ -65,6 +68,7 @@ class FridgeController extends Controller
                         'name' => $r->rawMaterial?->name,
                         'deduct_on_sale' => $r->deduct_on_sale,
                     ])->values()->all(),
+                    'sale_ingredients' => $fridgeService->saleIngredientsForDisplay($c),
                 ];
             });
 
