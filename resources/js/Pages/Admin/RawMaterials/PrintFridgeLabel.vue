@@ -79,7 +79,47 @@ export default {
 
 <style scoped>
 @media print {
-  .no-print { display: none !important; }
+  @page {
+    size: 58mm 40mm;
+    margin: 0;
+  }
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .label-print-area {
+    width: 58mm !important;
+    height: 40mm !important;
+    padding: 2mm !important;
+    margin: 0 auto !important;
+    box-shadow: none !important;
+    border: 0.2mm dashed #d1d5db !important;
+    border-radius: 0 !important;
+    max-width: 58mm !important;
+    display: flex !important;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1mm;
+    page-break-inside: avoid;
+    overflow: hidden;
+  }
+  .label-print-area h2 {
+    font-size: 11px !important;
+    line-height: 1.2 !important;
+    margin: 0 !important;
+  }
+  .label-print-area p {
+    margin: 0 !important;
+    line-height: 1.2 !important;
+    font-size: 9px !important;
+  }
+  .label-print-area svg {
+    width: 52mm !important;
+    height: 14mm !important;
+  }
 }
 .btn-primary { @apply bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg; }
 .btn-gray { @apply bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg; }

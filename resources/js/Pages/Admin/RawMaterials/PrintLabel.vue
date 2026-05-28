@@ -13,10 +13,10 @@
       <p class="text-sm text-gray-600 mb-4">
         ≈ {{ formatNum(label.consume_amount) }} {{ consumeUnit }}
       </p>
-      <div class="flex justify-center mb-3">
+      <div class="flex justify-center mb-2">
         <svg ref="barcodeSvg" class="max-w-full h-auto"></svg>
       </div>
-      <p class="font-mono text-sm break-all text-gray-800 mb-4">{{ label.label_code }}</p>
+      <p class="font-mono text-xs break-all text-gray-800 mb-2">{{ label.label_code }}</p>
       <p v-if="label.status === 'pending'" class="text-amber-800 bg-amber-50 border border-amber-200 rounded-lg py-2 px-3 text-sm">
         تم تكويد {{ label.piece_count }} {{ unit || 'قطعة' }} — بانتظار سحب الفرع عبر الباركود.
       </p>
@@ -80,13 +80,46 @@ export default {
 
 <style scoped>
 @media print {
+  @page {
+    size: 58mm 40mm;
+    margin: 0;
+  }
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
   .no-print {
     display: none !important;
   }
   .label-print-area {
+    width: 58mm !important;
+    height: 40mm !important;
+    padding: 2mm !important;
+    margin: 0 auto !important;
     box-shadow: none !important;
-    border: none !important;
-    max-width: 100% !important;
+    border: 0.2mm dashed #d1d5db !important;
+    border-radius: 0 !important;
+    max-width: 58mm !important;
+    display: flex !important;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1mm;
+    page-break-inside: avoid;
+    overflow: hidden;
+  }
+  .label-print-area h2 {
+    font-size: 11px !important;
+    line-height: 1.2 !important;
+    margin: 0 !important;
+  }
+  .label-print-area p {
+    margin: 0 !important;
+    line-height: 1.2 !important;
+    font-size: 9px !important;
+  }
+  .label-print-area svg {
+    width: 52mm !important;
+    height: 14mm !important;
   }
 }
 .input-style {

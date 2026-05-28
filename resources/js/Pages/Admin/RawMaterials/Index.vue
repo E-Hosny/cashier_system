@@ -1,5 +1,5 @@
 <template>
-  <div class="mx-auto max-w-screen-2xl w-full p-4 sm:p-6" dir="rtl">
+  <div class="raw-materials-page mx-auto max-w-screen-2xl w-full p-4 sm:p-6" dir="rtl">
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4 no-print">
       <h1 class="text-3xl font-bold text-gray-800">🛢️ إدارة المواد الخام</h1>
       <div v-if="isCentralView" class="flex flex-wrap gap-2">
@@ -453,21 +453,21 @@
 
     <div
       v-if="pageTab === 'materials' && isCentralView && printModal.open"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      class="sticker-print-modal fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       @click.self="closePrintModal"
     >
-      <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 print-only" dir="rtl">
-        <h3 class="text-lg font-bold text-gray-800 mb-2">طباعة كود — {{ printModal.materialName }}</h3>
+      <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6" dir="rtl">
+        <h3 class="no-print text-lg font-bold text-gray-800 mb-2">طباعة كود — {{ printModal.materialName }}</h3>
 
-        <p v-if="!printModal.created" class="text-sm text-gray-600 mb-4">
+        <p v-if="!printModal.created" class="no-print text-sm text-gray-600 mb-4">
           أدخل عدد القطع المراد تكويدها (تُسحب لاحقاً من الفرع عبر الباركود).
         </p>
 
-        <p v-else class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg py-2 px-3 mb-4">
+        <p v-else class="no-print text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg py-2 px-3 mb-4">
           تم تكويد {{ printModal.piece_count }} {{ printModal.unit || 'قطعة' }} — بانتظار سحب الفرع.
         </p>
 
-        <div v-if="!printModal.created">
+        <div v-if="!printModal.created" class="no-print">
           <label class="block text-gray-700 text-sm mb-1">عدد القطع</label>
           <input
             v-model.number="printModal.piece_count"
@@ -479,18 +479,29 @@
         </div>
 
         <div v-else>
-          <p class="text-sm text-gray-700 mb-2">
-            الكود: <span class="font-mono break-all">{{ printModal.label_code }}</span>
-          </p>
-          <div class="flex justify-center mb-3">
-            <svg ref="barcodeSvgPreview" class="max-w-full h-auto"></svg>
+          <div class="no-print border border-gray-200 rounded-lg p-3 mb-3 bg-gray-50">
+            <p class="text-sm text-gray-700 mb-1">
+              الكود: <span class="font-mono break-all">{{ printModal.label_code }}</span>
+            </p>
+            <div class="flex justify-center mb-2">
+              <svg ref="barcodeSvgPreview" class="max-w-full h-auto"></svg>
+            </div>
           </div>
-          <p class="text-xs text-gray-600 mb-4">
+
+          <div class="sticker-label print-only">
+            <p class="sticker-title">{{ printModal.materialName }}</p>
+            <p class="sticker-qty">{{ printModal.piece_count }} {{ printModal.unit || 'قطعة' }}</p>
+            <div class="sticker-barcode-wrap">
+              <svg ref="barcodeSvgPrint" class="sticker-barcode"></svg>
+            </div>
+            <p class="sticker-code">{{ printModal.label_code }}</p>
+          </div>
+          <p class="no-print text-xs text-gray-600 mb-4">
             يُسحب الكود من الفرع لإضافة الكمية لمخزون ذلك الفرع.
           </p>
         </div>
 
-        <div class="flex gap-2 justify-end">
+        <div class="no-print flex gap-2 justify-end">
           <button type="button" class="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300" @click="closePrintModal">
             إغلاق
           </button>
@@ -707,14 +718,27 @@ export default {
           }
 
           this.$nextTick(() => {
-            const el = this.$refs.barcodeSvgPreview;
-            if (el && this.printModal.label_code) {
-              JsBarcode(el, this.printModal.label_code, {
+            if (!this.printModal.label_code) return;
+            const previewEl = this.$refs.barcodeSvgPreview;
+            const printEl = this.$refs.barcodeSvgPrint;
+
+            if (previewEl) {
+              JsBarcode(previewEl, this.printModal.label_code, {
                 format: 'CODE128',
                 width: 2,
                 height: 72,
                 displayValue: false,
                 margin: 8,
+              });
+            }
+
+            if (printEl) {
+              JsBarcode(printEl, this.printModal.label_code, {
+                format: 'CODE128',
+                width: 1.6,
+                height: 40,
+                displayValue: false,
+                margin: 2,
               });
             }
           });
@@ -857,6 +881,10 @@ export default {
   @apply bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition;
 }
 
+.print-only {
+  display: none !important;
+}
+
 @media print {
   .no-print {
     display: none !important;
@@ -865,6 +893,52 @@ export default {
     display: block !important;
     box-shadow: none !important;
     border: none !important;
+  }
+  .sticker-print-modal {
+    background: transparent !important;
+    padding: 0 !important;
+  }
+  .sticker-label {
+    width: 58mm;
+    height: 40mm;
+    padding: 2mm;
+    margin: 0 auto;
+    border: 0.2mm dashed #d1d5db;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.2mm;
+    overflow: hidden;
+  }
+  .sticker-title {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
+    text-align: center;
+    margin: 0;
+  }
+  .sticker-qty {
+    font-size: 10px;
+    line-height: 1.1;
+    margin: 0;
+  }
+  .sticker-barcode-wrap {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+  }
+  .sticker-barcode {
+    max-width: 100%;
+    height: 14mm;
+  }
+  .sticker-code {
+    font-size: 9px;
+    margin: 0;
+    text-align: center;
+    font-family: monospace;
+    line-height: 1;
   }
 }
 
@@ -902,3 +976,36 @@ export default {
   }
 }
 </style> 
+
+<style>
+@media print {
+  @page {
+    size: 58mm 40mm;
+    margin: 0;
+  }
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .raw-materials-page * {
+    visibility: hidden !important;
+  }
+  .raw-materials-page .print-only,
+  .raw-materials-page .print-only * {
+    visibility: visible !important;
+  }
+  .raw-materials-page .print-only {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 58mm !important;
+    height: 40mm !important;
+    max-width: 58mm !important;
+    margin: auto !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+  }
+}
+</style>
