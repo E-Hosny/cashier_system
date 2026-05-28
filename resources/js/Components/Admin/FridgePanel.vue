@@ -30,6 +30,8 @@ const combinedModal = ref({
     resultLines: [],
 });
 const combinedBarcodeSvg = ref(null);
+const branchStockEdit = ref({ configId: null, quantity: '' });
+const branchStockSaving = ref(false);
 
 const selectedRows = computed(() =>
     configs.value.filter((c) => rowSelection.value[c.id]?.selected)
@@ -365,6 +367,42 @@ function stockForConfig(cfg) {
     return row ? row.quantity : 0;
 }
 
+const canEditBranchStock = computed(() => {
+    const roles = page.props?.auth?.user?.roles || [];
+    return !props.isCentralView && roles.includes('super admin');
+});
+
+function startBranchStockEdit(cfg) {
+    branchStockEdit.value = {
+        configId: cfg.id,
+        quantity: stockForConfig(cfg),
+    };
+}
+
+function cancelBranchStockEdit() {
+    branchStockEdit.value = { configId: null, quantity: '' };
+}
+
+function saveBranchStock(cfg) {
+    const branchId = parseInt(props.viewScope, 10);
+    const quantity = parseFloat(branchStockEdit.value.quantity);
+    if (!branchId || Number.isNaN(quantity) || quantity < 0) {
+        alert('أدخل كمية صحيحة (0 أو أكثر).');
+        return;
+    }
+
+    branchStockSaving.value = true;
+    router.put(route('admin.fridge.branch-stock.update', { branch: branchId, config: cfg.id }), {
+        quantity,
+    }, {
+        preserveScroll: true,
+        onFinish: () => {
+            branchStockSaving.value = false;
+            cancelBranchStockEdit();
+        },
+    });
+}
+
 function goToBranchScope(branchId) {
     router.get(route('admin.raw-materials.index'), {
         tab: 'fridge',
@@ -460,7 +498,83 @@ function goToBranchScope(branchId) {
             <span class="text-sm text-gray-600">حدّد منتجين أو أكثر من الجدول، ثم اضبط الكمية واطبع باركوداً واحداً.</span>
         </div>
 
-        <div class="overflow-x-auto">
+        <div class="sm:hidden space-y-3">
+            <div
+                v-for="cfg in configs"
+                :key="'mobile-' + cfg.id"
+                class="bg-white border border-gray-200 rounded-xl shadow p-4"
+                :class="{ 'ring-2 ring-cyan-200': rowSelection[cfg.id]?.selected }"
+            >
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <div class="font-bold text-gray-900">{{ cfg.product_name }}</div>
+                        <div class="text-sm text-gray-600 mt-1">المقاس: {{ translateSize(cfg.size) }}</div>
+                    </div>
+                    <div v-if="canManage && isCentralView">
+                        <input v-model="rowSelection[cfg.id].selected" type="checkbox" class="rounded mt-1" />
+                    </div>
+                </div>
+
+                <div class="mt-3 text-sm">
+                    <div class="font-medium text-gray-800">{{ saleModeLabel(cfg.deduct_on_sale) }}</div>
+                    <ul v-if="cfg.sale_ingredients?.length" class="mt-1 space-y-0.5 text-xs text-gray-700">
+                        <li v-for="ing in cfg.sale_ingredients" :key="'m-' + cfg.id + '-' + ing.raw_material_id" class="flex flex-wrap items-baseline gap-1">
+                            <span class="font-semibold text-gray-800">{{ ing.name }}</span>
+                            <span class="text-gray-500">
+                                {{ formatIngredientQty(ing.quantity_consumed) }} {{ ing.consume_unit }}
+                                <span class="text-gray-400">/ وحدة</span>
+                            </span>
+                        </li>
+                    </ul>
+                    <p v-else-if="cfg.deduct_on_sale !== 'none'" class="mt-1 text-xs text-amber-700">
+                        لا توجد مقادير مربوطة بهذا المنتج/المقاس.
+                    </p>
+                </div>
+
+                <div class="mt-3 text-sm">
+                    <span v-if="cfg.pending_units > 0" class="text-amber-800 font-semibold block">
+                        مكوّد: {{ cfg.pending_units }}
+                    </span>
+                    <span v-if="!isCentralView" class="text-cyan-800 font-semibold">بالتلاجة: {{ stockForConfig(cfg) }}</span>
+                    <span v-if="isCentralView && cfg.pending_units <= 0" class="text-gray-400">—</span>
+                </div>
+
+                <div v-if="canManage && isCentralView && rowSelection[cfg.id]?.selected" class="mt-3">
+                    <label class="text-xs text-gray-600">كمية التكويد:</label>
+                    <input
+                        v-model.number="rowSelection[cfg.id].unit_count"
+                        type="number"
+                        min="0.001"
+                        step="1"
+                        class="w-20 border rounded p-1 text-center text-xs mr-1"
+                    />
+                </div>
+
+                <div v-if="canManage && isCentralView" class="mt-3 flex flex-wrap gap-2 justify-end">
+                    <button type="button" class="btn-green text-xs" @click="openPrint(cfg)">تكويد</button>
+                    <button type="button" class="btn-yellow text-xs" @click="openEditConfig(cfg)">تعديل</button>
+                    <button type="button" class="btn-red text-xs" @click="deleteConfig(cfg.id)">حذف</button>
+                </div>
+
+                <div v-if="canEditBranchStock" class="mt-3 flex flex-wrap gap-2 justify-end">
+                    <template v-if="branchStockEdit.configId === cfg.id">
+                        <input
+                            v-model.number="branchStockEdit.quantity"
+                            type="number"
+                            min="0"
+                            step="any"
+                            class="w-24 border rounded p-1 text-center text-xs"
+                        />
+                        <button type="button" class="btn-primary text-xs" :disabled="branchStockSaving" @click="saveBranchStock(cfg)">حفظ</button>
+                        <button type="button" class="btn-gray text-xs" @click="cancelBranchStockEdit">إلغاء</button>
+                    </template>
+                    <button v-else type="button" class="btn-yellow text-xs" @click="startBranchStockEdit(cfg)">تعديل المخزون</button>
+                </div>
+            </div>
+            <div v-if="!configs.length" class="p-8 text-center text-gray-500 bg-white rounded-xl border border-gray-200">لا توجد منتجات مُعرَّفة للتلاجة بعد.</div>
+        </div>
+
+        <div class="hidden sm:block overflow-x-auto">
             <table class="min-w-full bg-white shadow rounded-xl text-sm">
                 <thead class="bg-cyan-700 text-white">
                     <tr>
@@ -478,6 +592,7 @@ function goToBranchScope(branchId) {
                         <th class="p-3 text-right">مقادير عند البيع</th>
                         <th class="p-3 text-right">مكوّد / بالتلاجة</th>
                         <th v-if="canManage && isCentralView" class="p-3 text-center">إجراءات</th>
+                        <th v-if="canEditBranchStock" class="p-3 text-center">تعديل مخزون الفرع</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -536,9 +651,30 @@ function goToBranchScope(branchId) {
                             <button type="button" class="btn-red text-xs" @click="deleteConfig(cfg.id)">حذف</button>
                             </div>
                         </td>
+                        <td v-if="canEditBranchStock" class="p-3 text-center whitespace-nowrap">
+                            <template v-if="branchStockEdit.configId === cfg.id">
+                                <input
+                                    v-model.number="branchStockEdit.quantity"
+                                    type="number"
+                                    min="0"
+                                    step="any"
+                                    class="w-24 border rounded p-1 text-center text-xs ml-2"
+                                />
+                                <button
+                                    type="button"
+                                    class="btn-primary text-xs"
+                                    :disabled="branchStockSaving"
+                                    @click="saveBranchStock(cfg)"
+                                >
+                                    حفظ
+                                </button>
+                                <button type="button" class="btn-gray text-xs mr-1" @click="cancelBranchStockEdit">إلغاء</button>
+                            </template>
+                            <button v-else type="button" class="btn-yellow text-xs" @click="startBranchStockEdit(cfg)">تعديل</button>
+                        </td>
                     </tr>
                     <tr v-if="!configs.length">
-                        <td :colspan="canManage && isCentralView ? 6 : 5" class="p-8 text-center text-gray-500">لا توجد منتجات مُعرَّفة للتلاجة بعد.</td>
+                        <td :colspan="canManage && isCentralView ? 6 : (canEditBranchStock ? 6 : 5)" class="p-8 text-center text-gray-500">لا توجد منتجات مُعرَّفة للتلاجة بعد.</td>
                     </tr>
                 </tbody>
             </table>

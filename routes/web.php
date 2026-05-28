@@ -104,6 +104,8 @@ Route::middleware([
     Route::middleware(['super_admin'])->group(function () {
         Route::put('/raw-materials/branch/{branch}/stock/{raw_material}', [RawMaterialController::class, 'updateBranchStock'])
             ->name('admin.raw-materials.branch-stock.update');
+        Route::put('/raw-materials/fridge/branch/{branch}/stocks/{config}', [FridgeController::class, 'updateBranchStock'])
+            ->name('admin.fridge.branch-stock.update');
         Route::get('/raw-material-categories', [RawMaterialCategoryController::class, 'index'])->name('admin.raw-material-categories.index');
         Route::post('/raw-material-categories', [RawMaterialCategoryController::class, 'store'])->name('admin.raw-material-categories.store');
         Route::put('/raw-material-categories/{category}', [RawMaterialCategoryController::class, 'update'])->name('admin.raw-material-categories.update');

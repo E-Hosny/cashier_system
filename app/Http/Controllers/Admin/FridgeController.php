@@ -236,6 +236,41 @@ class FridgeController extends Controller
         return back()->with('success', 'تم تحديث إعدادات منتج التلاجة.');
     }
 
+    public function updateBranchStock(Request $request, Branch $branch, FridgeProductConfig $config): RedirectResponse
+    {
+        $user = auth()->user();
+        if (! $user || ! $user->hasRole('super admin')) {
+            abort(403);
+        }
+        if (! $this->isCentralHub()) {
+            return redirect()->route('admin.raw-materials.index', ['tab' => 'fridge'])
+                ->with('error', 'تعديل مخزون تلاجة الفرع متاح من العرض المركزي فقط.');
+        }
+
+        $data = $request->validate([
+            'quantity' => 'required|numeric|min:0',
+        ]);
+
+        $newQuantity = (float) $data['quantity'];
+
+        BranchFridgeStock::query()->updateOrCreate(
+            [
+                'branch_id' => $branch->id,
+                'product_id' => $config->product_id,
+                'size' => $config->size ?? '',
+            ],
+            [
+                'tenant_id' => $config->tenant_id ?? $user->tenant_id,
+                'quantity' => $newQuantity,
+            ]
+        );
+
+        return redirect()->route('admin.raw-materials.index', [
+            'tab' => 'fridge',
+            'view_scope' => (string) $branch->id,
+        ])->with('success', 'تم تحديث مخزون التلاجة في الفرع.');
+    }
+
     public function destroyConfig(FridgeProductConfig $config): RedirectResponse
     {
         $this->requireHubRoles();
