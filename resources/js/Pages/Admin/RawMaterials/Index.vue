@@ -735,10 +735,10 @@ export default {
             if (printEl) {
               JsBarcode(printEl, this.printModal.label_code, {
                 format: 'CODE128',
-                width: 1.6,
-                height: 40,
+                width: 1.2,
+                height: 52,
                 displayValue: false,
-                margin: 2,
+                margin: 10,
               });
             }
           });

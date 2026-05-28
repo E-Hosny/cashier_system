@@ -39,6 +39,20 @@ class FridgeController extends Controller
         return auth()->user()?->hasRole('super admin') && ! BranchContext::hasBranch();
     }
 
+    private function generateFridgeLabelCode(): string
+    {
+        // Keep barcode short for reliable scanner reading on small stickers.
+        for ($i = 0; $i < 10; $i++) {
+            $code = 'FR'.strtoupper(Str::random(8));
+            $exists = FridgePendingLabel::query()->where('label_code', $code)->exists();
+            if (! $exists) {
+                return $code;
+            }
+        }
+
+        return 'FR'.strtoupper(Str::random(12));
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -327,7 +341,7 @@ class FridgeController extends Controller
 
         $label = DB::transaction(function () use ($data, $configs) {
             $label = FridgePendingLabel::create([
-                'label_code' => 'FR-'.strtoupper(Str::ulid()),
+                'label_code' => $this->generateFridgeLabelCode(),
                 'status' => FridgePendingLabel::STATUS_PENDING,
             ]);
 
@@ -378,7 +392,7 @@ class FridgeController extends Controller
             'fridge_product_config_id' => $config->id,
             'product_id' => $config->product_id,
             'size' => $config->size ?? '',
-            'label_code' => 'FR-'.strtoupper(Str::ulid()),
+            'label_code' => $this->generateFridgeLabelCode(),
             'unit_count' => $units,
             'status' => FridgePendingLabel::STATUS_PENDING,
         ]);

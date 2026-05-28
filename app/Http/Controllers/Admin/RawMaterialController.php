@@ -20,6 +20,20 @@ use Symfony\Component\HttpFoundation\RedirectResponse;
 
 class RawMaterialController extends Controller
 {
+    private function generateRawLabelCode(): string
+    {
+        // Keep barcode short for reliable scanner reading on small stickers.
+        for ($i = 0; $i < 10; $i++) {
+            $code = 'RM'.strtoupper(Str::random(8));
+            $exists = RawMaterialPendingLabel::query()->where('label_code', $code)->exists();
+            if (! $exists) {
+                return $code;
+            }
+        }
+
+        return 'RM'.strtoupper(Str::random(12));
+    }
+
     private function userHasAnyRole(array $roles): bool
     {
         $user = auth()->user();
@@ -513,7 +527,7 @@ class RawMaterialController extends Controller
 
         $label = RawMaterialPendingLabel::create([
             'product_id' => $raw_material->id,
-            'label_code' => strtoupper(Str::ulid()),
+            'label_code' => $this->generateRawLabelCode(),
             'piece_count' => $pieces,
             'consume_amount' => $consumeAmount,
             'status' => RawMaterialPendingLabel::STATUS_PENDING,

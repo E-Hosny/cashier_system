@@ -61,10 +61,10 @@ export default {
           }
           JsBarcode(el, this.label.label_code, {
             format: 'CODE128',
-            width: 2,
-            height: 72,
+            width: 1.2,
+            height: 52,
             displayValue: false,
-            margin: 8,
+            margin: 10,
           });
         } catch (e) {
           console.error(e);
