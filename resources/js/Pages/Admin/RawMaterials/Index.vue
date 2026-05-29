@@ -488,14 +488,6 @@
             </div>
           </div>
 
-          <div class="sticker-label print-only">
-            <p class="sticker-title">{{ printModal.materialName }}</p>
-            <p class="sticker-qty">{{ printModal.piece_count }} {{ printModal.unit || 'قطعة' }}</p>
-            <div class="sticker-barcode-wrap">
-              <svg ref="barcodeSvgPrint" class="sticker-barcode"></svg>
-            </div>
-            <p class="sticker-code">{{ printModal.label_code }}</p>
-          </div>
           <p class="no-print text-xs text-gray-600 mb-4">
             يُسحب الكود من الفرع لإضافة الكمية لمخزون ذلك الفرع.
           </p>
@@ -524,12 +516,26 @@
         </div>
       </div>
     </div>
+
+    <!-- ورقة طباعة منفصلة (خارج المودال) لتجنب مشاكل المعاينة -->
+    <div
+      v-if="pageTab === 'materials' && printModal.open && printModal.created && printModal.label_code"
+      class="sticker-print-sheet print-only sticker-label"
+      dir="rtl"
+    >
+      <p class="sticker-title">{{ printModal.materialName }}</p>
+      <p class="sticker-qty">{{ printModal.piece_count }} {{ printModal.unit || 'قطعة' }}</p>
+      <div class="sticker-barcode-wrap">
+        <svg ref="barcodeSvgPrint" class="sticker-barcode"></svg>
+      </div>
+      <p class="sticker-code">{{ printModal.label_code }}</p>
+    </div>
   </div>
 </template>
 
 <script>
 import { Inertia } from "@inertiajs/inertia";
-import JsBarcode from 'jsbarcode';
+import { renderPreviewBarcode, renderPrintBarcode } from '@/utils/barcodeLabel';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import FridgePanel from '@/Components/Admin/FridgePanel.vue';
 
@@ -723,23 +729,10 @@ export default {
             const printEl = this.$refs.barcodeSvgPrint;
 
             if (previewEl) {
-              JsBarcode(previewEl, this.printModal.label_code, {
-                format: 'CODE128',
-                width: 2,
-                height: 72,
-                displayValue: false,
-                margin: 8,
-              });
+              renderPreviewBarcode(previewEl, this.printModal.label_code);
             }
-
             if (printEl) {
-              JsBarcode(printEl, this.printModal.label_code, {
-                format: 'CODE128',
-                width: 1.2,
-                height: 52,
-                displayValue: false,
-                margin: 10,
-              });
+              renderPrintBarcode(printEl, this.printModal.label_code);
             }
           });
         })
@@ -881,67 +874,6 @@ export default {
   @apply bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition;
 }
 
-.print-only {
-  display: none !important;
-}
-
-@media print {
-  .no-print {
-    display: none !important;
-  }
-  .print-only {
-    display: block !important;
-    box-shadow: none !important;
-    border: none !important;
-  }
-  .sticker-print-modal {
-    background: transparent !important;
-    padding: 0 !important;
-  }
-  .sticker-label {
-    width: 58mm;
-    height: 40mm;
-    padding: 2mm;
-    margin: 0 auto;
-    border: 0.2mm dashed #d1d5db;
-    border-radius: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 1.2mm;
-    overflow: hidden;
-  }
-  .sticker-title {
-    font-size: 11px;
-    font-weight: 700;
-    line-height: 1.2;
-    text-align: center;
-    margin: 0;
-  }
-  .sticker-qty {
-    font-size: 10px;
-    line-height: 1.1;
-    margin: 0;
-  }
-  .sticker-barcode-wrap {
-    width: 100%;
-    display: flex;
-    justify-content: center;
-  }
-  .sticker-barcode {
-    max-width: 100%;
-    height: 14mm;
-  }
-  .sticker-code {
-    font-size: 9px;
-    margin: 0;
-    text-align: center;
-    font-family: monospace;
-    line-height: 1;
-  }
-}
-
 /* Styles for responsive table */
 @media (max-width: 640px) {
   td[data-label]::before {
@@ -973,39 +905,6 @@ export default {
 
   tr.block:last-child td:last-child {
     border-bottom: none;
-  }
-}
-</style> 
-
-<style>
-@media print {
-  @page {
-    size: 58mm 40mm;
-    margin: 0;
-  }
-  body {
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-  .raw-materials-page * {
-    visibility: hidden !important;
-  }
-  .raw-materials-page .print-only,
-  .raw-materials-page .print-only * {
-    visibility: visible !important;
-  }
-  .raw-materials-page .print-only {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    width: 58mm !important;
-    height: 40mm !important;
-    max-width: 58mm !important;
-    margin: auto !important;
-    padding: 0 !important;
-    border-radius: 0 !important;
   }
 }
 </style>
