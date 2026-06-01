@@ -1,16 +1,35 @@
 <script setup>
-import { ref } from 'vue';
-import { useForm, usePage, Link } from '@inertiajs/vue3';
+import { ref, watch } from 'vue';
+import { useForm, usePage, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
 const props = defineProps({
     todayPulls: { type: Array, default: () => [] },
+    selectedDate: { type: String, default: '' },
+    maxBusinessDay: { type: String, default: '' },
     businessDayLabel: { type: String, default: '' },
     branchName: { type: String, default: '' },
 });
 
 const page = usePage();
 const labelInput = ref(null);
+const filterDate = ref(props.selectedDate || props.maxBusinessDay || '');
+
+watch(
+    () => props.selectedDate,
+    (v) => {
+        if (v) filterDate.value = v;
+    }
+);
+
+function applyDateFilter() {
+    if (!filterDate.value) return;
+    router.get(
+        route('admin.raw-materials.branch-pull'),
+        { date: filterDate.value },
+        { preserveState: true, preserveScroll: true, replace: true }
+    );
+}
 
 const form = useForm({
     label_code: '',
@@ -84,7 +103,20 @@ function submit() {
                 </div>
 
                 <div class="bg-white shadow-xl rounded-lg p-6">
-                    <h3 class="text-lg font-semibold text-gray-800 mb-1">المسحوبات اليوم</h3>
+                    <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
+                        <h3 class="text-lg font-semibold text-gray-800">المسحوبات</h3>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <label for="pull_date" class="text-sm font-medium text-gray-700 whitespace-nowrap">يوم العمل:</label>
+                            <input
+                                id="pull_date"
+                                v-model="filterDate"
+                                type="date"
+                                class="border border-gray-300 rounded-lg p-2 text-sm"
+                                :max="maxBusinessDay"
+                                @change="applyDateFilter"
+                            />
+                        </div>
+                    </div>
                     <p v-if="businessDayLabel" class="text-sm text-blue-700 bg-blue-50 rounded-lg px-3 py-2 mb-4">
                         {{ businessDayLabel }}
                     </p>
@@ -100,7 +132,7 @@ function submit() {
                             </thead>
                             <tbody>
                                 <tr v-if="todayPulls.length === 0">
-                                    <td colspan="4" class="text-center p-6 text-gray-500">لا توجد مسحوبات لهذا اليوم.</td>
+                                    <td colspan="4" class="text-center p-6 text-gray-500">لا توجد مسحوبات في يوم العمل المحدد.</td>
                                 </tr>
                                 <tr v-for="row in todayPulls" :key="row.id">
                                     <td class="border border-gray-200 p-2 text-center">{{ row.received_at }}</td>

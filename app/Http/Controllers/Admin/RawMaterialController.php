@@ -12,6 +12,7 @@ use App\Models\Product;
 use App\Models\RawMaterialPendingLabel;
 use App\Models\StockMovement;
 use App\Support\BranchContext;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -266,7 +267,7 @@ class RawMaterialController extends Controller
             ->with('success', 'تم تحديث مخزون الفرع لـ «'.$raw_material->name.'».');
     }
 
-    public function branchPullForm()
+    public function branchPullForm(Request $request)
     {
         $this->requireAnyRole(['cashier', 'admin', 'super admin']);
 
@@ -276,7 +277,20 @@ class RawMaterialController extends Controller
         }
 
         $branchId = BranchContext::requireId();
-        [$dayStart, $dayEnd] = $this->currentBusinessDayBounds();
+        $maxBusinessDay = Employee::businessDayAnchorFromNow();
+        $selectedDate = $request->input('date', $maxBusinessDay);
+
+        try {
+            $selectedDate = Carbon::parse($selectedDate)->toDateString();
+        } catch (\Throwable) {
+            $selectedDate = $maxBusinessDay;
+        }
+
+        if ($selectedDate > $maxBusinessDay) {
+            $selectedDate = $maxBusinessDay;
+        }
+
+        [$dayStart, $dayEnd] = Employee::businessDayBoundsForAnchor($selectedDate);
 
         $todayPulls = RawMaterialPendingLabel::query()
             ->with('product:id,name,unit')
@@ -296,7 +310,9 @@ class RawMaterialController extends Controller
 
         return Inertia::render('Admin/RawMaterials/BranchPull', [
             'todayPulls' => $todayPulls,
-            'businessDayLabel' => Employee::periodTextForAnchorDate(Employee::businessDayAnchorFromNow()),
+            'selectedDate' => $selectedDate,
+            'maxBusinessDay' => $maxBusinessDay,
+            'businessDayLabel' => Employee::periodTextForAnchorDate($selectedDate),
             'branchName' => Branch::find($branchId)?->name ?? '',
         ]);
     }
