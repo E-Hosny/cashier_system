@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { useForm, usePage, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
@@ -20,6 +20,10 @@ watch(
     (v) => {
         if (v) filterDate.value = v;
     }
+);
+
+const fridgePullHref = computed(() =>
+    route('admin.fridge.pull', filterDate.value ? { date: filterDate.value } : {})
 );
 
 function applyDateFilter() {
@@ -60,7 +64,7 @@ function submit() {
                 <div class="flex flex-wrap gap-2">
                     <span class="px-4 py-2 rounded-lg bg-green-600 text-white font-semibold">سحب مواد خام</span>
                     <Link
-                        :href="route('admin.fridge.pull')"
+                        :href="fridgePullHref"
                         class="px-4 py-2 rounded-lg border border-cyan-400 text-cyan-800 hover:bg-cyan-50 font-semibold"
                     >
                         🧊 سحب للتلاجة

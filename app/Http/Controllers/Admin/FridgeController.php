@@ -13,6 +13,7 @@ use App\Models\FridgeProductConfig;
 use App\Models\Product;
 use App\Services\FridgeInventoryService;
 use App\Support\BranchContext;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -482,7 +483,7 @@ class FridgeController extends Controller
         ]);
     }
 
-    public function fridgePullForm()
+    public function fridgePullForm(Request $request)
     {
         $user = auth()->user();
         if (! $user || ! $user->hasAnyRole(['cashier', 'admin', 'super admin'])) {
@@ -495,7 +496,20 @@ class FridgeController extends Controller
         }
 
         $branchId = BranchContext::requireId();
-        [$dayStart, $dayEnd] = Employee::businessDayBoundsForAnchor(Employee::businessDayAnchorFromNow());
+        $maxBusinessDay = Employee::businessDayAnchorFromNow();
+        $selectedDate = $request->input('date', $maxBusinessDay);
+
+        try {
+            $selectedDate = Carbon::parse($selectedDate)->toDateString();
+        } catch (\Throwable) {
+            $selectedDate = $maxBusinessDay;
+        }
+
+        if ($selectedDate > $maxBusinessDay) {
+            $selectedDate = $maxBusinessDay;
+        }
+
+        [$dayStart, $dayEnd] = Employee::businessDayBoundsForAnchor($selectedDate);
 
         $todayPulls = FridgePendingLabel::query()
             ->with(['product:id,name', 'items.product:id,name'])
@@ -527,7 +541,9 @@ class FridgeController extends Controller
 
         return Inertia::render('Admin/RawMaterials/FridgePull', [
             'todayPulls' => $todayPulls,
-            'businessDayLabel' => Employee::periodTextForAnchorDate(Employee::businessDayAnchorFromNow()),
+            'selectedDate' => $selectedDate,
+            'maxBusinessDay' => $maxBusinessDay,
+            'businessDayLabel' => Employee::periodTextForAnchorDate($selectedDate),
             'branchName' => Branch::find($branchId)?->name ?? '',
         ]);
     }
