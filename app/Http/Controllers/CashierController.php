@@ -48,24 +48,25 @@ class CashierController extends Controller
     $categories = Category::forProducts()->orderBy('name')->get();
 
     $fridgeProducts = [];
+    $fridgeSectionEnabled = false;
     if (BranchContext::hasBranch()) {
         $branchId = BranchContext::requireId();
         $configs = FridgeProductConfig::query()
             ->with('product:id,name,size_variants,image')
             ->where('is_active', true)
             ->get();
+        $fridgeSectionEnabled = $configs->isNotEmpty();
+
         $stocks = BranchFridgeStock::query()
             ->where('branch_id', $branchId)
-            ->where('quantity', '>', 0)
             ->get()
             ->keyBy(fn ($s) => $s->product_id.'|'.$s->size);
 
         foreach ($configs as $config) {
             $key = $config->product_id.'|'.($config->size ?? '');
             $stock = $stocks->get($key);
-            if (! $stock || (float) $stock->quantity <= 0) {
-                continue;
-            }
+            $quantity = (float) ($stock?->quantity ?? 0);
+
             $product = $config->product;
             if (! $product) {
                 continue;
@@ -84,7 +85,7 @@ class CashierController extends Controller
                 'name' => $product->name,
                 'size' => $config->size !== '' ? $config->size : null,
                 'price' => $price,
-                'fridge_quantity' => (float) $stock->quantity,
+                'fridge_quantity' => $quantity,
                 'image' => $product->image,
             ];
         }
@@ -94,6 +95,7 @@ class CashierController extends Controller
         'products' => $products,
         'categories' => $categories,
         'fridgeProducts' => $fridgeProducts,
+        'fridgeSectionEnabled' => $fridgeSectionEnabled,
     ]);
 }
 

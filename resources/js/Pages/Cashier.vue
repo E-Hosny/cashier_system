@@ -42,7 +42,7 @@
         <div class="flex-1 overflow-y-auto hover:overflow-y-scroll scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 px-3 pb-3">
           <div class="space-y-1">
             <div
-              v-if="fridgeProducts.length"
+              v-if="fridgeSectionEnabled"
               class="cursor-pointer px-3 py-2 rounded-lg text-center font-bold shadow transition-colors text-sm border-2"
               :class="showFridgeView ? 'bg-cyan-500 text-white border-cyan-600' : 'bg-cyan-50 text-cyan-800 border-cyan-300 hover:bg-cyan-100'"
               @click="selectFridgeView()"
@@ -95,7 +95,10 @@
               <div class="p-3 flex-1 flex flex-col justify-between">
                 <h3 class="text-sm font-semibold text-gray-800 text-center leading-tight">
                   {{ product.name }}
-                  <span v-if="product.from_fridge" class="text-cyan-600 text-xs block">تلاجة ({{ product.fridge_quantity }})</span>
+                  <span v-if="product.from_fridge" class="text-cyan-600 text-xs block">
+                    تلاجة ({{ product.fridge_quantity }})
+                    <span v-if="product.outOfFridgeStock" class="text-red-600"> — نفد</span>
+                  </span>
                 </h3>
                 
                 <!-- Size Selection -->
@@ -118,9 +121,10 @@
                   <input v-model.number="product.quantityToAdd" type="number" min="1" placeholder="العدد" class="p-2 border border-gray-300 rounded-lg text-center w-full text-sm" />
                   <button
                     @click="product.from_fridge ? addFridgeToCart(product) : addToCart(product)"
-                    class="text-white px-3 py-1.5 rounded-lg transition mt-2 w-full text-sm"
+                    class="text-white px-3 py-1.5 rounded-lg transition mt-2 w-full text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                     :class="product.from_fridge ? 'bg-cyan-600 hover:bg-cyan-700' : 'bg-blue-500 hover:bg-blue-600'"
-                  >إضافة للسلة</button>
+                    :disabled="product.from_fridge && product.outOfFridgeStock"
+                  >{{ product.from_fridge && product.outOfFridgeStock ? 'غير متوفر' : 'إضافة للسلة' }}</button>
                 </div>
               </div>
             </div>
@@ -189,6 +193,38 @@
     </div>
 
 
+
+    <!-- نافذة: المنتج متوفر في التلاجة -->
+    <div
+      v-if="showFridgeAvailableModal"
+      class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
+      @click.self="closeFridgeAvailableModal"
+    >
+      <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-md" dir="rtl">
+        <h3 class="text-lg font-bold text-cyan-900 mb-2 text-center">🧊 متوفر في التلاجة</h3>
+        <p class="text-gray-700 text-sm mb-3 text-center">
+          «{{ fridgePromptLabel }}» متوفر في تلاجة الفرع
+          <span class="font-bold text-cyan-800">({{ fridgePromptEntry?.fridge_quantity }} وحدة)</span>.
+          يُفضَّل البيع من خانة التلاجة لخصم المخزون الصحيح.
+        </p>
+        <div class="flex flex-col sm:flex-row gap-2">
+          <button
+            type="button"
+            class="flex-1 bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 rounded-lg transition"
+            @click="goToFridgeFromPrompt"
+          >
+            الانتقال للتلاجة
+          </button>
+          <button
+            type="button"
+            class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 rounded-lg transition"
+            @click="skipFridgePromptAndAdd"
+          >
+            تخطي والمتابعة
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- نافذة بدء الوردية -->
     <div
@@ -357,6 +393,7 @@ export default {
     products: Array,
     categories: Array,
     fridgeProducts: { type: Array, default: () => [] },
+    fridgeSectionEnabled: { type: Boolean, default: false },
   },
   data() {
     return {
@@ -379,6 +416,9 @@ export default {
       showShiftModal: false,
       showCloseShiftModal: false,
       showSalesModal: false,
+      showFridgeAvailableModal: false,
+      fridgePromptProduct: null,
+      fridgePromptEntry: null,
       newShiftType: 'morning',
       isStartingShift: false,
 
@@ -407,6 +447,7 @@ export default {
           cartKey: `fridge-${p.product_id}-${p.size || ''}`,
           quantityToAdd: 1,
           selectedVariantIndex: -1,
+          outOfFridgeStock: parseFloat(p.fridge_quantity) <= 0,
         }));
     },
     displayProducts() {
@@ -414,6 +455,16 @@ export default {
     },
     totalAmount() {
       return this.cart.reduce((total, item) => total + item.price * item.quantity, 0).toFixed(2);
+    },
+    fridgePromptLabel() {
+      const p = this.fridgePromptProduct;
+      if (!p) return '';
+      let label = p.name;
+      const size = this.getProductSizeForCart(p);
+      if (size) {
+        label += ` (${this.translateSize(size)})`;
+      }
+      return label;
     },
   },
   methods: {
@@ -450,6 +501,42 @@ export default {
       this.showFridgeView = true;
       this.selectedCategoryId = null;
     },
+    getProductSizeForCart(product) {
+      if (this.hasVariants(product) && product.selectedVariantIndex !== -1) {
+        return product.size_variants[product.selectedVariantIndex]?.size ?? null;
+      }
+      return null;
+    },
+    findFridgeStockForProduct(product) {
+      if (!this.fridgeProducts?.length) {
+        return null;
+      }
+      const productId = product.id;
+      const size = this.getProductSizeForCart(product) ?? '';
+      return this.fridgeProducts.find((fp) => {
+        if (fp.product_id !== productId) {
+          return false;
+        }
+        const fpSize = fp.size ?? '';
+        return fpSize === size;
+      }) || null;
+    },
+    closeFridgeAvailableModal() {
+      this.showFridgeAvailableModal = false;
+      this.fridgePromptProduct = null;
+      this.fridgePromptEntry = null;
+    },
+    goToFridgeFromPrompt() {
+      this.closeFridgeAvailableModal();
+      this.selectFridgeView();
+    },
+    skipFridgePromptAndAdd() {
+      const product = this.fridgePromptProduct;
+      this.closeFridgeAvailableModal();
+      if (product) {
+        this.addToCartDirect(product);
+      }
+    },
     addFridgeToCart(product) {
       const quantity = product.quantityToAdd || 1;
       if (quantity > product.fridge_quantity) {
@@ -481,6 +568,18 @@ export default {
         product.selectedVariantIndex = variantIndex;
     },
     addToCart(product) {
+        if (!this.showFridgeView) {
+            const fridgeEntry = this.findFridgeStockForProduct(product);
+            if (fridgeEntry && parseFloat(fridgeEntry.fridge_quantity) > 0) {
+                this.fridgePromptProduct = product;
+                this.fridgePromptEntry = fridgeEntry;
+                this.showFridgeAvailableModal = true;
+                return;
+            }
+        }
+        this.addToCartDirect(product);
+    },
+    addToCartDirect(product) {
         const quantity = product.quantityToAdd || 1;
 
         if (this.hasVariants(product)) {
