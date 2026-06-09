@@ -171,17 +171,7 @@ class SalesReportController extends Controller
     protected function expensesSumForReport(string $dateFrom, ?string $dateTo, bool $salesReportHub, ?int $hubReportBranchId): float
     {
         $query = Expense::query();
-        $user = Auth::user();
-
-        if ($salesReportHub) {
-            if ($hubReportBranchId !== null) {
-                $query->where('branch_id', $hubReportBranchId);
-            }
-        } elseif ($user->hasRole('super admin') && BranchContext::id() === null) {
-            $query->whereNull('branch_id');
-        } elseif (($bid = BranchContext::id()) !== null) {
-            $query->where('branch_id', $bid);
-        }
+        $this->applySalesReportExpenseBranchScope($query, $salesReportHub, $hubReportBranchId);
 
         if ($dateTo) {
             $query->whereDate('expense_date', '>=', $dateFrom)
@@ -191,6 +181,30 @@ class SalesReportController extends Controller
         }
 
         return (float) $query->sum('amount');
+    }
+
+    /**
+     * نطاق المصروفات في التقرير: عند تحديد فرع نُضمّ المصروفات المركزية (branch_id null)
+     * لأنها تُسجَّل غالباً من المحور المركزي وتُطبَّق على كل الفروع.
+     */
+    protected function applySalesReportExpenseBranchScope($query, bool $salesReportHub, ?int $hubReportBranchId): void
+    {
+        $branchId = null;
+
+        if ($salesReportHub) {
+            $branchId = $hubReportBranchId;
+        } elseif (($bid = BranchContext::id()) !== null) {
+            $branchId = $bid;
+        }
+
+        if ($branchId === null) {
+            return;
+        }
+
+        $query->where(function ($q) use ($branchId) {
+            $q->where('branch_id', $branchId)
+                ->orWhereNull('branch_id');
+        });
     }
 
     protected function sumDeliveredSalariesForReport(string $dateFrom, ?string $dateTo, ?int $hubReportBranchId): float

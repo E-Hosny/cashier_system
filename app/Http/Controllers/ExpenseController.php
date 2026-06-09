@@ -199,7 +199,14 @@ class ExpenseController extends Controller
 
         $bid = BranchContext::id();
         if ($bid !== null) {
-            $query->where('branch_id', $bid);
+            if ($user->hasRole('super admin')) {
+                $query->where(function ($q) use ($bid) {
+                    $q->where('branch_id', $bid)
+                        ->orWhereNull('branch_id');
+                });
+            } else {
+                $query->where('branch_id', $bid);
+            }
         }
     }
 
