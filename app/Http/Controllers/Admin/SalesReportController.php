@@ -80,8 +80,8 @@ class SalesReportController extends Controller
             ])->sum('total_amount');
 
             $totalExpenses = $this->expensesSumForReport(
-                Carbon::parse($dateFrom)->setTime(7, 0, 0),
-                Carbon::parse($dateTo)->setTime(7, 0, 0),
+                $dateFrom,
+                $dateTo,
                 $salesReportHub,
                 $hubReportBranchId,
             );
@@ -91,8 +91,8 @@ class SalesReportController extends Controller
             $totalPurchases = \App\Models\Purchase::whereDate('purchase_date', $dateFrom)->sum('total_amount');
 
             $totalExpenses = $this->expensesSumForReport(
-                Carbon::parse($dateFrom)->setTime(7, 0, 0),
-                Carbon::parse($dateFrom)->addDay()->setTime(7, 0, 0),
+                $dateFrom,
+                null,
                 $salesReportHub,
                 $hubReportBranchId,
             );
@@ -108,16 +108,10 @@ class SalesReportController extends Controller
         if ($aggregateAllBranches) {
             $branchSalesSummary = $this->branchSalesTotals($dateFrom, $dateTo, $categoryId, $productId);
             if ($dateTo) {
-                $branchExpenseSummary = $this->branchExpenseTotals(
-                    Carbon::parse($dateFrom)->setTime(7, 0, 0),
-                    Carbon::parse($dateTo)->setTime(7, 0, 0)
-                );
+                $branchExpenseSummary = $this->branchExpenseTotals($dateFrom, $dateTo);
                 $branchSalarySummary = $this->branchSalaryTotals($dateFrom, $dateTo);
             } else {
-                $branchExpenseSummary = $this->branchExpenseTotals(
-                    Carbon::parse($dateFrom)->setTime(7, 0, 0),
-                    Carbon::parse($dateFrom)->addDay()->setTime(7, 0, 0)
-                );
+                $branchExpenseSummary = $this->branchExpenseTotals($dateFrom, null);
                 $branchSalarySummary = $this->branchSalaryTotals($dateFrom, null);
             }
         }
@@ -174,7 +168,7 @@ class SalesReportController extends Controller
         return $exists ? $id : null;
     }
 
-    protected function expensesSumForReport(Carbon $start, Carbon $end, bool $salesReportHub, ?int $hubReportBranchId): float
+    protected function expensesSumForReport(string $dateFrom, ?string $dateTo, bool $salesReportHub, ?int $hubReportBranchId): float
     {
         $query = Expense::query();
         $user = Auth::user();
@@ -189,7 +183,14 @@ class SalesReportController extends Controller
             $query->where('branch_id', $bid);
         }
 
-        return (float) $query->whereBetween('created_at', [$start, $end])->sum('amount');
+        if ($dateTo) {
+            $query->whereDate('expense_date', '>=', $dateFrom)
+                ->whereDate('expense_date', '<=', $dateTo);
+        } else {
+            $query->whereDate('expense_date', $dateFrom);
+        }
+
+        return (float) $query->sum('amount');
     }
 
     protected function sumDeliveredSalariesForReport(string $dateFrom, ?string $dateTo, ?int $hubReportBranchId): float
@@ -267,14 +268,22 @@ class SalesReportController extends Controller
     }
 
     /**
-     * توزيع المصروفات حسب الفرع (نفس نطاق created_at لإجمالي المصروفات في التقرير).
+     * توزيع المصروفات حسب الفرع (حسب تاريخ المصروف expense_date).
      *
      * @return array<int, array{branch_id: int|null, branch_name: string, total_expenses: float}>
      */
-    protected function branchExpenseTotals(Carbon $start, Carbon $end): array
+    protected function branchExpenseTotals(string $dateFrom, ?string $dateTo): array
     {
-        $rows = Expense::query()
-            ->whereBetween('created_at', [$start, $end])
+        $query = Expense::query();
+
+        if ($dateTo) {
+            $query->whereDate('expense_date', '>=', $dateFrom)
+                ->whereDate('expense_date', '<=', $dateTo);
+        } else {
+            $query->whereDate('expense_date', $dateFrom);
+        }
+
+        $rows = $query
             ->selectRaw('branch_id, SUM(amount) as total_expenses')
             ->groupBy('branch_id')
             ->get();

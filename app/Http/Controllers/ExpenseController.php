@@ -35,30 +35,23 @@ class ExpenseController extends Controller
         if ($request->filled('expense_date')) {
             $query->whereDate('expense_date', $request->expense_date);
         } elseif ($request->filled('from') && $request->filled('to')) {
-            $startDate = Carbon::parse($request->from)->setTime(7, 0, 0);
-            $endDate = Carbon::parse($request->to)->setTime(7, 0, 0);
-            $query->whereBetween('created_at', [$startDate, $endDate]);
+            $query->whereDate('expense_date', '>=', $request->from)
+                ->whereDate('expense_date', '<=', $request->to);
         } elseif ($request->filled('from')) {
-            $startDate = Carbon::parse($request->from)->setTime(7, 0, 0);
-            $query->where('created_at', '>=', $startDate);
+            $query->whereDate('expense_date', '>=', $request->from);
         } elseif ($request->filled('to')) {
-            $endDate = Carbon::parse($request->to)->setTime(7, 0, 0);
-            $query->where('created_at', '<=', $endDate);
+            $query->whereDate('expense_date', '<=', $request->to);
         } else {
             $now = Carbon::now();
             $currentHour = $now->hour;
 
             if ($currentHour < 7) {
-                $startDate = $now->copy()->subDay()->setTime(7, 0, 0);
-                $endDate = $now->copy()->setTime(7, 0, 0);
                 $defaultDate = $now->copy()->subDay()->toDateString();
             } else {
-                $startDate = $now->copy()->setTime(7, 0, 0);
-                $endDate = $now->copy()->addDay()->setTime(7, 0, 0);
                 $defaultDate = $now->toDateString();
             }
 
-            $query->whereBetween('created_at', [$startDate, $endDate]);
+            $query->whereDate('expense_date', $defaultDate);
         }
 
         $expenses = $query->get();
