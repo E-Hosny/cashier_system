@@ -47,7 +47,7 @@
 
 <script>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Inertia } from '@inertiajs/inertia';
+import { router } from '@inertiajs/vue3';
 
 export default {
   layout: AppLayout,
@@ -81,12 +81,12 @@ export default {
       
       const method = this.editingCategory ? "put" : "post";
 
-      Inertia.visit(url, {
+      router.visit(url, {
           method: method,
           data: this.form,
           onSuccess: () => {
               this.resetForm();
-              Inertia.reload({ only: ['categories'] });
+              router.reload({ only: ['categories'] });
           },
           onError: (errors) => {
               console.error("Error:", errors);
@@ -108,9 +108,9 @@ export default {
     },
     deleteCategory(id) {
       if (confirm("هل أنت متأكد من حذف هذه الفئة؟ سيتم حذف جميع المنتجات المتعلقة بها.")) {
-        Inertia.delete(route('admin.categories.destroy', id), {
+        router.delete(route('admin.categories.destroy', id), {
             onSuccess: () => {
-                Inertia.reload({ only: ['categories'] });
+                router.reload({ only: ['categories'] });
             }
         });
       }

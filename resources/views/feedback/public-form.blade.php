@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تقييم محل العصائر</title>
-    <meta name="description" content="شاركنا رأيك في محل العصائر - تقييمك مهم لنا">
+    <title>تقييم الخدمة</title>
+    <meta name="description" content="شاركنا رأيك - تقييمك مهم لنا">
     
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -331,9 +331,6 @@
     
     <div class="container">
         <div class="header">
-            <div class="logo">
-                <img src="/images/mylogo.png" alt="محل العصائر">
-            </div>
             <h1 class="title">قيم تجربتك معنا</h1>
             <p class="subtitle">شاركنا رأيك وساعدنا في تحسين خدماتنا</p>
         </div>
@@ -403,7 +400,7 @@
         </div>
         
         <div class="footer">
-            <p>&copy; {{ date('Y') }} محل العصائر - جميع الحقوق محفوظة</p>
+            <p>&copy; {{ date('Y') }} جميع الحقوق محفوظة</p>
         </div>
     </div>
     

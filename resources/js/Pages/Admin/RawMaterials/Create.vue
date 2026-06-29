@@ -91,7 +91,7 @@
 </template>
 
 <script>
-import { Inertia } from '@inertiajs/inertia';
+import { router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
 export default {
@@ -150,7 +150,7 @@ export default {
         stock_alert_threshold,
         unit_consume_price: unitConsumePrice,
       };
-      Inertia.post(route('admin.raw-materials.store'), submitData);
+      router.post(route('admin.raw-materials.store'), submitData);
     },
   },
 };

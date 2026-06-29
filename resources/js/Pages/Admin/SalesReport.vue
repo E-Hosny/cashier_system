@@ -199,7 +199,7 @@
 </template>
 
 <script>
-import { Inertia } from "@inertiajs/inertia";
+import { router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
 export default {
@@ -323,7 +323,7 @@ export default {
       if (this.salesReportHub && this.selectedReportBranchId) {
         params.report_branch_id = this.selectedReportBranchId;
       }
-      Inertia.get(route("admin.sales.report"), params);
+      router.get(route("admin.sales.report"), params);
     },
     onCategoryChange() {
       // إعادة تعيين المنتج المحدد عند تغيير الفئة
@@ -385,13 +385,13 @@ export default {
         expenseParams.expense_branch = String(this.selectedReportBranchId);
       }
       
-      Inertia.get(route('expenses.index'), expenseParams);
+      router.get(route('expenses.index'), expenseParams);
     },
 
     // دالة الانتقال لصفحة الموظفين مع التاريخ المحدد
     goToEmployees() {
       // الانتقال إلى صفحة الموظفين (لا تحتاج لمعاملات تاريخ لأنها تعرض اليوم الحالي)
-      Inertia.get(route('admin.employees.index'));
+      router.get(route('admin.employees.index'));
     },
     // دالة لعرض نص التاريخ المحدد
     getSelectedDateText() {

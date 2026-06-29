@@ -61,7 +61,7 @@
 </template>
 
 <script>
-import { Inertia } from '@inertiajs/inertia';
+import { router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
 export default {
@@ -99,7 +99,7 @@ export default {
   },
   methods: {
     submit() {
-      Inertia.post(
+      router.post(
         route('admin.raw-materials.add-quantity.store', this.rawMaterial.id),
         this.form
       );

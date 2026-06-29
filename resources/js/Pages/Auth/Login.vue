@@ -1,7 +1,6 @@
 <script setup>
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import AuthenticationCard from '@/Components/AuthenticationCard.vue';
-import AuthenticationCardLogo from '@/Components/AuthenticationCardLogo.vue';
 import Checkbox from '@/Components/Checkbox.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
@@ -35,8 +34,7 @@ const submit = () => {
     <div class="min-h-screen flex flex-col justify-center items-center bg-gradient-to-br from-yellow-100 via-green-100 to-white">
         <div class="w-full max-w-md bg-white rounded-2xl shadow-lg p-8 border-t-8 border-green-400">
             <div class="flex flex-col items-center mb-6">
-                <AuthenticationCardLogo />
-                <h1 class="mt-4 text-2xl font-bold text-green-700">مرحباً بك في نظام عصائر عم حسني</h1>
+                <h1 class="text-2xl font-bold text-green-700">تسجيل الدخول</h1>
                 <p class="text-gray-500 mt-1">يرجى تسجيل الدخول للمتابعة</p>
             </div>
 

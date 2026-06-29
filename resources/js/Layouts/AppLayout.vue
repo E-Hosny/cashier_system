@@ -1,7 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import ApplicationMark from '@/Components/ApplicationMark.vue';
 import Banner from '@/Components/Banner.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
@@ -80,10 +79,9 @@ const logout = () => {
                 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div class="flex justify-between h-16">
                         <div class="flex">
-                            <!-- Logo -->
                             <div class="shrink-0 flex items-center">
-                                <Link :href="route('dashboard')">
-                                    <ApplicationMark class="block h-12 w-auto" />
+                                <Link :href="route('dashboard')" class="text-lg font-bold text-gray-800 hover:text-gray-600">
+                                    نظام الكاشير
                                 </Link>
                             </div>
 
@@ -303,8 +301,8 @@ const logout = () => {
                     <!-- Sidebar Header -->
                     <div class="p-4 border-b flex justify-between items-center">
                         <div class="shrink-0 flex items-center">
-                            <Link :href="route('dashboard')">
-                                <ApplicationMark class="block h-9 w-auto" />
+                            <Link :href="route('dashboard')" class="text-base font-bold text-gray-800">
+                                نظام الكاشير
                             </Link>
                         </div>
                         <button @click="showingSidebar = false" class="text-gray-500 hover:text-gray-700">

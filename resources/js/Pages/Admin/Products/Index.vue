@@ -157,7 +157,7 @@
 </template>
 
 <script>
-import { Inertia } from "@inertiajs/inertia";
+import { router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
 export default {
@@ -189,7 +189,7 @@ export default {
   methods: {
     deleteProduct(id) {
       if (confirm("هل أنت متأكد من حذف هذا المنتج؟")) {
-        Inertia.delete(route("admin.products.destroy", id));
+        router.delete(route("admin.products.destroy", id));
       }
     },
     toggleDraft(product) {
@@ -197,7 +197,7 @@ export default {
       if (!confirm(action)) {
         return;
       }
-      Inertia.post(route('admin.products.toggle-draft', product.id), {
+      router.post(route('admin.products.toggle-draft', product.id), {
         category_id: this.selectedCategory,
         searchTerm: this.searchTerm,
       }, {
@@ -237,7 +237,7 @@ export default {
     },
     filterProducts() {
       // إرسال الفلاتر إلى السيرفر
-      Inertia.get(route('admin.products.index'), {
+      router.get(route('admin.products.index'), {
         category_id: this.selectedCategory,
         searchTerm: this.searchTerm,
       }, {

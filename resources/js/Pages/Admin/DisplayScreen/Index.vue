@@ -93,7 +93,7 @@
 </template>
 
 <script>
-import { Inertia } from '@inertiajs/inertia';
+import { router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
 export default {
@@ -125,7 +125,7 @@ export default {
       const formData = new FormData();
       formData.append('image', this.selectedFile);
       formData.append('duration_seconds', duration);
-      Inertia.post(route('admin.display-screen.slides.store'), formData, {
+      router.post(route('admin.display-screen.slides.store'), formData, {
         forceFormData: true,
         onSuccess: () => {
           this.selectedFile = null;
@@ -136,11 +136,11 @@ export default {
     },
     updateDuration(slideId, value) {
       const sec = Math.max(1, Math.min(60, parseInt(value, 10) || 3));
-      Inertia.put(route('admin.display-screen.slides.update', slideId), { duration_seconds: sec });
+      router.put(route('admin.display-screen.slides.update', slideId), { duration_seconds: sec });
     },
     deleteSlide(id) {
       if (!confirm('حذف هذه الصورة؟')) return;
-      Inertia.delete(route('admin.display-screen.slides.destroy', id));
+      router.delete(route('admin.display-screen.slides.destroy', id));
     },
   },
 };

@@ -134,7 +134,7 @@
 </template>
 
 <script>
-import { Inertia } from "@inertiajs/inertia";
+import { router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
 export default {
@@ -163,7 +163,7 @@ export default {
   },
   methods: {
     applyFilters() {
-      Inertia.get(route('admin.products.cost-analysis'), {
+      router.get(route('admin.products.cost-analysis'), {
         category_id: this.selectedCategory || undefined,
       }, {
         replace: true,

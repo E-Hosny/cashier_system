@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تقييمات العملاء - محل العصائر</title>
-    <meta name="description" content="شاهد تقييمات العملاء لمحل العصائر">
+    <title>تقييمات العملاء</title>
+    <meta name="description" content="شاهد تقييمات العملاء">
     
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -278,9 +278,6 @@
 <body>
     <div class="container">
         <div class="header">
-            <div class="logo">
-                <img src="/images/mylogo.png" alt="محل العصائر">
-            </div>
             <h1 class="title">تقييمات العملاء</h1>
             <p class="subtitle">شاهد ما يقوله عملاؤنا عن خدماتنا</p>
         </div>
@@ -388,7 +385,7 @@
         </div>
         
         <div class="footer">
-            <p>&copy; {{ date('Y') }} محل العصائر - جميع الحقوق محفوظة</p>
+            <p>&copy; {{ date('Y') }} جميع الحقوق محفوظة</p>
         </div>
     </div>
 </body>

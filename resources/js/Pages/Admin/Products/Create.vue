@@ -135,7 +135,7 @@
 </template>
 
 <script>
-import { Inertia } from '@inertiajs/inertia';
+import { router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
 export default {
@@ -251,7 +251,7 @@ export default {
                 });
             });
 
-            Inertia.post(route('admin.products.store'), formData);
+            router.post(route('admin.products.store'), formData);
         },
     },
 };

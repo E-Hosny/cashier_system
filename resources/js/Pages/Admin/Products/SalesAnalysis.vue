@@ -100,7 +100,7 @@
 </template>
 
 <script>
-import { Inertia } from '@inertiajs/inertia';
+import { router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
 export default {
@@ -137,7 +137,7 @@ export default {
       const params = { group_by: this.groupBy };
       if (this.dateFrom) params.date_from = this.dateFrom;
       if (this.dateTo) params.date_to = this.dateTo;
-      Inertia.get(route('admin.products.sales-analysis'), params);
+      router.get(route('admin.products.sales-analysis'), params);
     },
     formatPrice(price) {
       return price != null ? Number(price).toFixed(2) : '0.00';

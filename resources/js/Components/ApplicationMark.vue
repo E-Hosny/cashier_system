@@ -1,3 +1,3 @@
 <template>
-  <img src="/images/mylogo.png" alt="Logo" />
+  <span class="font-bold text-gray-800">نظام الكاشير</span>
 </template>

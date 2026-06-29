@@ -3,7 +3,7 @@ import { Link } from '@inertiajs/vue3';
 </script>
 
 <template>
-    <Link :href="'/'">
-        <img class="w-32" src="/images/mylogo.png" alt="Logo" />
+    <Link :href="'/'" class="text-xl font-bold text-green-700">
+        نظام الكاشير
     </Link>
 </template>

@@ -534,7 +534,7 @@
 </template>
 
 <script>
-import { Inertia } from "@inertiajs/inertia";
+import { router } from '@inertiajs/vue3';
 import { renderPreviewBarcode, renderPrintBarcode } from '@/utils/barcodeLabel';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import FridgePanel from '@/Components/Admin/FridgePanel.vue';
@@ -659,7 +659,7 @@ export default {
     },
     setPageTab(tab) {
       this.pageTab = tab;
-      Inertia.get(route('admin.raw-materials.index'), this.filterQueryParams(), {
+      router.get(route('admin.raw-materials.index'), this.filterQueryParams(), {
         preserveState: true,
         replace: true,
       });
@@ -672,13 +672,13 @@ export default {
       if (this.pageTab === 'fridge') {
         params.tab = 'fridge';
       }
-      Inertia.get(route('admin.raw-materials.index'), params, {
+      router.get(route('admin.raw-materials.index'), params, {
         preserveState: true,
         replace: true,
       });
     },
     applyFilters() {
-      Inertia.get(route('admin.raw-materials.index'), this.filterQueryParams(), {
+      router.get(route('admin.raw-materials.index'), this.filterQueryParams(), {
         preserveState: true,
         replace: true,
       });
@@ -743,7 +743,7 @@ export default {
     },
     deleteMaterial(id) {
       if (confirm("هل أنت متأكد من حذف هذه المادة الخام؟")) {
-        Inertia.delete(route("admin.raw-materials.destroy", id));
+        router.delete(route("admin.raw-materials.destroy", id));
       }
     },
     formatBranchStockNum(n) {
@@ -795,7 +795,7 @@ export default {
         return;
       }
       this.branchStockSaving = true;
-      Inertia.put(
+      router.put(
         route('admin.raw-materials.branch-stock.update', {
           branch: this.branchDetail.branch_id,
           raw_material: m.id,

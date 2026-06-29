@@ -24,10 +24,6 @@
                 🔒 تقفيل الوردية
               </button>
             </div>
-            
-
-            
-            <img src="/images/mylogo.png" alt="Logo" class="w-14" />
           </div>
         </div>
     </div>
@@ -747,12 +743,6 @@ export default {
         this.closeIframe();
       }
     },
-    preloadInvoiceImage() {
-      // تحميل صورة الشعار مسبقاً لتسريع عرض الفاتورة
-      const img = new Image();
-      img.src = '/images/mylogo.png';
-    },
-
     // === إدارة الورديات ===
     
     // بدء وردية جديدة
@@ -903,9 +893,6 @@ export default {
     this.initializeProducts();
     document.addEventListener('keydown', this.handleEscape);
     window.addEventListener('message', this.handleIframeMessage);
-    
-    // تحسين الأداء: تحميل الصورة مسبقاً
-    this.preloadInvoiceImage();
     
     // الحصول على الوردية الحالية
     this.getCurrentShift();
