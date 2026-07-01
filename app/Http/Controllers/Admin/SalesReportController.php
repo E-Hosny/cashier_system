@@ -41,6 +41,7 @@ class SalesReportController extends Controller
         $aggregateAllBranches = $salesReportHub && $hubReportBranchId === null;
 
         $salesQuery = OrderItem::whereHas('order', function ($query) use ($dateFrom, $dateTo, $hubReportBranchId) {
+            $query->where('status', 'completed');
             if ($dateTo) {
                 $query->whereBetween('created_at', [
                     Carbon::parse($dateFrom)->setTime(7, 0, 0),
@@ -241,7 +242,8 @@ class SalesReportController extends Controller
     protected function branchSalesTotals(string $dateFrom, ?string $dateTo, ?string $categoryId, ?string $productId): array
     {
         $query = OrderItem::query()
-            ->join('orders', 'order_items.order_id', '=', 'orders.id');
+            ->join('orders', 'order_items.order_id', '=', 'orders.id')
+            ->where('orders.status', 'completed');
 
         if ($dateTo) {
             $query->whereBetween('orders.created_at', [

@@ -20,6 +20,7 @@ use App\Models\StockMovement;
 use App\Models\CashierShift;
 use App\Services\FridgeInventoryService;
 use App\Services\InvoiceNumberService;
+use App\Services\OrderRefundService;
 use Illuminate\Support\Facades\Auth;
 
 use Illuminate\Support\Facades\Storage;
@@ -28,7 +29,8 @@ use Mpdf\Mpdf;
 class CashierController extends Controller
 {
     public function __construct(
-        private FridgeInventoryService $fridgeService
+        private FridgeInventoryService $fridgeService,
+        private OrderRefundService $orderRefundService,
     ) {}
 
     //comment
@@ -420,6 +422,124 @@ class CashierController extends Controller
             'end' => $end->toDateTimeString(),
             'selectedDate' => $selectedDate,
         ]);
+    }
+
+    public function refundRecentOrders()
+    {
+        [$start, $end] = $this->businessDayRange(null);
+
+        $orders = Order::with('items')
+            ->whereBetween('created_at', [$start, $end])
+            ->where('status', 'completed')
+            ->orderByDesc('created_at')
+            ->limit(20)
+            ->get()
+            ->map(fn (Order $order) => $this->formatOrderForRefund($order));
+
+        return response()->json([
+            'success' => true,
+            'orders' => $orders,
+        ]);
+    }
+
+    public function refundLookup(Request $request)
+    {
+        $request->validate([
+            'q' => 'required|string|max:64',
+        ]);
+
+        $q = trim($request->input('q'));
+        $branchId = BranchContext::requireId();
+
+        $query = Order::with('items')->where('branch_id', $branchId);
+
+        $order = (clone $query)
+            ->where('invoice_number', $q)
+            ->first();
+
+        if (! $order && ctype_digit($q)) {
+            $order = (clone $query)->whereKey((int) $q)->first();
+        }
+
+        if (! $order) {
+            return response()->json([
+                'success' => false,
+                'message' => 'لم يتم العثور على فاتورة بهذا الرقم.',
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'order' => $this->formatOrderForRefund($order),
+        ]);
+    }
+
+    public function refundOrder(Order $order)
+    {
+        abort_if((int) $order->branch_id !== (int) BranchContext::requireId(), 403);
+
+        try {
+            $refunded = $this->orderRefundService->refund($order, Auth::id());
+
+            return response()->json([
+                'success' => true,
+                'message' => 'تم إرجاع الفاتورة وإعادة المخزون بنجاح.',
+                'order' => $this->formatOrderForRefund($refunded),
+            ]);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'حدث خطأ أثناء إرجاع الفاتورة: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * @return array{0: \Carbon\Carbon, 1: \Carbon\Carbon}
+     */
+    protected function businessDayRange(?string $selectedDate): array
+    {
+        if ($selectedDate) {
+            $date = \Carbon\Carbon::parse($selectedDate);
+            $start = $date->copy()->setTime(7, 0, 0);
+            $end = $start->copy()->addDay();
+
+            return [$start, $end];
+        }
+
+        $now = now();
+        $start = $now->hour < 7
+            ? $now->copy()->subDay()->setTime(7, 0, 0)
+            : $now->copy()->setTime(7, 0, 0);
+
+        return [$start, $start->copy()->addDay()];
+    }
+
+    protected function formatOrderForRefund(Order $order): array
+    {
+        return [
+            'id' => $order->id,
+            'invoice_number' => $order->invoice_number,
+            'total' => (float) $order->total,
+            'status' => $order->status,
+            'is_refunded' => $order->isRefunded(),
+            'can_refund' => $this->orderRefundService->canRefund($order),
+            'created_at' => $order->created_at?->toIso8601String(),
+            'refunded_at' => $order->refunded_at?->toIso8601String(),
+            'items' => $order->items->map(fn ($item) => [
+                'product_name' => $item->product_name,
+                'quantity' => (int) $item->quantity,
+                'price' => (float) $item->price,
+                'size' => $item->size,
+                'from_fridge' => (bool) $item->from_fridge,
+                'line_total' => round((float) $item->price * (int) $item->quantity, 2),
+            ])->values()->all(),
+        ];
     }
 
 

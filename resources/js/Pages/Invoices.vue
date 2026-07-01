@@ -101,11 +101,16 @@ const translateSize = (size) => {
         </div>
       </div>
       <div v-if="orders.length === 0" class="text-center text-gray-500 py-12 text-lg">لا توجد فواتير في هذه الفترة.</div>
-      <div v-for="order in orders" :key="order.id" class="mb-8 bg-white rounded-lg shadow p-6 border border-gray-200">
-        <div class="flex flex-col md:flex-row md:justify-between md:items-center mb-4">
-          <div class="font-bold text-lg text-indigo-700">فاتورة رقم: {{ order.invoice_number || order.id }}</div>
+      <div v-for="order in orders" :key="order.id" class="mb-8 bg-white rounded-lg shadow p-6 border" :class="order.status === 'refunded' ? 'border-red-200 opacity-80' : 'border-gray-200'">
+        <div class="flex flex-col md:flex-row md:justify-between md:items-center mb-4 gap-2">
+          <div class="font-bold text-lg" :class="order.status === 'refunded' ? 'text-red-600 line-through' : 'text-indigo-700'">
+            فاتورة رقم: {{ order.invoice_number || order.id }}
+            <span v-if="order.status === 'refunded'" class="text-sm no-underline font-semibold text-red-600 mr-2">(مرتجع)</span>
+          </div>
           <div class="text-gray-600 text-sm">التاريخ: {{ formatDate(order.created_at) }}</div>
-          <div class="text-green-700 font-bold text-lg">الإجمالي: {{ order.total }} جنيه</div>
+          <div class="font-bold text-lg" :class="order.status === 'refunded' ? 'text-gray-500 line-through' : 'text-green-700'">
+            الإجمالي: {{ order.total }} جنيه
+          </div>
         </div>
         <div class="overflow-x-auto" dir="rtl">
           <table class="min-w-full text-sm border">

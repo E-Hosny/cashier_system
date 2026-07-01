@@ -78,7 +78,9 @@ class CashierShift extends Model
      */
     public function calculateTotalSales()
     {
-        return Order::where('cashier_shift_id', $this->id)->sum('total');
+        return Order::where('cashier_shift_id', $this->id)
+            ->where('status', 'completed')
+            ->sum('total');
     }
 
     /**
@@ -139,6 +141,7 @@ class CashierShift extends Model
                 SUM(order_items.quantity * order_items.price) as total_amount
             ')
             ->where('orders.cashier_shift_id', $this->id)
+            ->where('orders.status', 'completed')
             ->groupBy('order_items.product_name', 'order_items.size')
             ->orderBy('total_amount', 'desc')
             ->get();

@@ -172,6 +172,9 @@ Route::middleware([
         // Cashier & Invoices
         Route::get('/cashier', [CashierController::class, 'index'])->name('cashier.index');
         Route::post('/store-order', [CashierController::class, 'store'])->name('cashier.store');
+        Route::get('/cashier/refunds/recent', [CashierController::class, 'refundRecentOrders'])->name('cashier.refunds.recent');
+        Route::get('/cashier/refunds/lookup', [CashierController::class, 'refundLookup'])->name('cashier.refunds.lookup');
+        Route::post('/cashier/orders/{order}/refund', [CashierController::class, 'refundOrder'])->name('cashier.orders.refund');
         Route::get('/invoice/{orderId}', [CashierController::class, 'invoice'])->name('invoice.show');
         Route::get('/invoice-html/{orderId}', [CashierController::class, 'invoiceHtml']);
         Route::get('/invoices', [CashierController::class, 'invoicesToday'])->name('invoices.today');

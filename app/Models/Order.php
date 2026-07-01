@@ -21,8 +21,22 @@ class Order extends Model
         'branch_id',
         'user_id',
         'cashier_shift_id',
-        'invoice_number'
+        'invoice_number',
+        'refunded_at',
+        'refunded_by',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'refunded_at' => 'datetime',
+        ];
+    }
+
+    public function isRefunded(): bool
+    {
+        return $this->status === 'refunded' || $this->refunded_at !== null;
+    }
 
     public function items()
     {

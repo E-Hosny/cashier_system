@@ -17,6 +17,13 @@
             
             <!-- زر إدارة الوردية -->
             <div class="flex items-center gap-2">
+              <button
+                type="button"
+                @click="openRefundModal"
+                class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+              >
+                ↩️ مرتجع
+              </button>
               <button 
                 v-if="!currentShift" 
                 @click="showShiftModal = true"
@@ -386,6 +393,128 @@
         </div>
       </div>
     </div>
+
+    <!-- نافذة المرتجع -->
+    <div
+      v-if="showRefundModal"
+      class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
+      @click.self="closeRefundModal"
+    >
+      <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col" dir="rtl">
+        <div class="p-5 border-b border-gray-200 flex items-center justify-between">
+          <h3 class="text-lg font-bold text-gray-800">↩️ مرتجع فاتورة</h3>
+          <button type="button" class="text-gray-500 hover:text-gray-700 text-2xl leading-none" @click="closeRefundModal">×</button>
+        </div>
+
+        <div class="p-5 overflow-y-auto flex-1 space-y-5">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">ابحث برقم الفاتورة</label>
+            <div class="flex gap-2">
+              <input
+                v-model="refundSearchQuery"
+                type="text"
+                class="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                placeholder="مثال: 1042"
+                @keyup.enter="searchRefundInvoice"
+              />
+              <button
+                type="button"
+                class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg font-semibold disabled:opacity-50"
+                :disabled="refundLoading || !refundSearchQuery.trim()"
+                @click="searchRefundInvoice"
+              >
+                بحث
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <h4 class="text-sm font-semibold text-gray-700 mb-2">فواتير اليوم (الأحدث)</h4>
+            <div v-if="refundRecentLoading" class="text-sm text-gray-500 py-4 text-center">جاري التحميل...</div>
+            <div v-else-if="refundRecentOrders.length === 0" class="text-sm text-gray-500 py-4 text-center">لا توجد فواتير قابلة للإرجاع اليوم.</div>
+            <div v-else class="space-y-2 max-h-44 overflow-y-auto">
+              <button
+                v-for="order in refundRecentOrders"
+                :key="order.id"
+                type="button"
+                class="w-full text-right p-3 rounded-lg border transition flex justify-between items-center gap-3"
+                :class="selectedRefundOrder?.id === order.id ? 'border-amber-500 bg-amber-50' : 'border-gray-200 hover:bg-gray-50'"
+                @click="selectRefundOrder(order)"
+              >
+                <div>
+                  <div class="font-semibold text-gray-800">#{{ order.invoice_number || order.id }}</div>
+                  <div class="text-xs text-gray-500">{{ formatRefundDate(order.created_at) }}</div>
+                </div>
+                <div class="text-left">
+                  <div class="font-bold text-green-700">{{ order.total }} جنيه</div>
+                  <span v-if="order.is_refunded" class="text-xs text-red-600">مرتجع</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <div v-if="refundError" class="rounded-lg bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm">
+            {{ refundError }}
+          </div>
+
+          <div v-if="selectedRefundOrder" class="rounded-xl border border-gray-200 overflow-hidden">
+            <div class="bg-gray-50 px-4 py-3 flex flex-wrap justify-between gap-2 items-center">
+              <div>
+                <div class="font-bold text-gray-800">فاتورة #{{ selectedRefundOrder.invoice_number || selectedRefundOrder.id }}</div>
+                <div class="text-xs text-gray-500">{{ formatRefundDate(selectedRefundOrder.created_at) }}</div>
+              </div>
+              <div class="font-bold text-lg text-green-700">{{ selectedRefundOrder.total }} جنيه</div>
+            </div>
+
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead class="bg-gray-100">
+                  <tr>
+                    <th class="p-2 text-right">المنتج</th>
+                    <th class="p-2 text-center">الكمية</th>
+                    <th class="p-2 text-center">السعر</th>
+                    <th class="p-2 text-center">الإجمالي</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(item, idx) in selectedRefundOrder.items" :key="idx" class="border-t">
+                    <td class="p-2">
+                      {{ item.product_name }}
+                      <span v-if="item.from_fridge" class="text-cyan-600 text-xs"> (تلاجة)</span>
+                    </td>
+                    <td class="p-2 text-center">{{ item.quantity }}</td>
+                    <td class="p-2 text-center">{{ item.price }}</td>
+                    <td class="p-2 text-center">{{ item.line_total }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div v-if="selectedRefundOrder.is_refunded" class="p-4 bg-red-50 text-red-700 text-sm text-center font-medium">
+              تم إرجاع هذه الفاتورة مسبقاً
+            </div>
+          </div>
+        </div>
+
+        <div class="p-5 border-t border-gray-200 flex gap-3">
+          <button
+            type="button"
+            class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg transition disabled:bg-gray-400"
+            :disabled="refundLoading || !selectedRefundOrder || !selectedRefundOrder.can_refund"
+            @click="confirmRefund"
+          >
+            {{ refundLoading ? 'جاري الإرجاع...' : 'تأكيد المرتجع وإعادة المخزون' }}
+          </button>
+          <button
+            type="button"
+            class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 rounded-lg transition"
+            @click="closeRefundModal"
+          >
+            إلغاء
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -432,6 +561,13 @@ export default {
       cashAmount: 0,
       shiftNotes: '',
       salesDetails: [],
+      showRefundModal: false,
+      refundSearchQuery: '',
+      refundRecentOrders: [],
+      selectedRefundOrder: null,
+      refundLoading: false,
+      refundRecentLoading: false,
+      refundError: '',
       
 
     };
@@ -743,6 +879,10 @@ export default {
     },
     handleEscape(e) {
       if (e.key === 'Escape') {
+        if (this.showRefundModal) {
+          this.closeRefundModal();
+          return;
+        }
         this.closeIframe();
       }
     },
@@ -752,6 +892,85 @@ export default {
       }
     },
     // === إدارة الورديات ===
+    
+    async openRefundModal() {
+      this.showRefundModal = true;
+      this.refundError = '';
+      this.selectedRefundOrder = null;
+      this.refundSearchQuery = '';
+      await this.loadRefundRecentOrders();
+    },
+    closeRefundModal() {
+      this.showRefundModal = false;
+      this.refundError = '';
+      this.selectedRefundOrder = null;
+      this.refundSearchQuery = '';
+    },
+    formatRefundDate(dateString) {
+      if (!dateString) return '';
+      return new Date(dateString).toLocaleString('ar-EG', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    },
+    async loadRefundRecentOrders() {
+      this.refundRecentLoading = true;
+      try {
+        const { data } = await axios.get('/cashier/refunds/recent');
+        this.refundRecentOrders = data.orders || [];
+      } catch (error) {
+        console.error(error);
+        this.refundRecentOrders = [];
+      } finally {
+        this.refundRecentLoading = false;
+      }
+    },
+    selectRefundOrder(order) {
+      this.selectedRefundOrder = order;
+      this.refundError = '';
+    },
+    async searchRefundInvoice() {
+      const q = this.refundSearchQuery.trim();
+      if (!q) return;
+
+      this.refundLoading = true;
+      this.refundError = '';
+      try {
+        const { data } = await axios.get('/cashier/refunds/lookup', { params: { q } });
+        this.selectedRefundOrder = data.order;
+      } catch (error) {
+        this.selectedRefundOrder = null;
+        this.refundError = error.response?.data?.message || 'لم يتم العثور على الفاتورة.';
+      } finally {
+        this.refundLoading = false;
+      }
+    },
+    async confirmRefund() {
+      if (!this.selectedRefundOrder?.can_refund) return;
+
+      const label = this.selectedRefundOrder.invoice_number || this.selectedRefundOrder.id;
+      if (!confirm(`تأكيد مرتجع الفاتورة #${label}؟\n\nسيتم إعادة المكونات والمخزون تلقائياً.`)) {
+        return;
+      }
+
+      this.refundLoading = true;
+      this.refundError = '';
+      try {
+        const { data } = await axios.post(`/cashier/orders/${this.selectedRefundOrder.id}/refund`);
+        this.selectedRefundOrder = data.order;
+        await this.loadRefundRecentOrders();
+        alert(data.message || 'تم الإرجاع بنجاح');
+      } catch (error) {
+        this.refundError = error.response?.data?.message || 'فشل إرجاع الفاتورة.';
+      } finally {
+        this.refundLoading = false;
+      }
+    },
+
+    // === إدارة الورديات (تابع) ===
     
     // بدء وردية جديدة
     async startShift() {
