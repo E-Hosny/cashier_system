@@ -9,6 +9,7 @@ use App\Models\FridgeProductConfig;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Models\Tenant;
 use App\Support\BranchContext;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Dompdf\Options;
@@ -350,8 +351,10 @@ class CashierController extends Controller
     public function invoice($orderId)
     {
         $order = Order::with('items.product')
-            ->select('id', 'total', 'created_at', 'invoice_number')
+            ->select('id', 'total', 'created_at', 'invoice_number', 'tenant_id')
             ->findOrFail($orderId);
+
+        $logoUrl = $this->invoiceLogoUrl($order->tenant_id);
     
         $mpdf = new Mpdf([
             'format' => [80, 297],
@@ -359,19 +362,33 @@ class CashierController extends Controller
             'mode' => 'utf-8',
         ]);
     
-        $html = view('invoice-html', compact('order'))->render();
+        $html = view('invoice-html', compact('order', 'logoUrl'))->render();
         $mpdf->WriteHTML($html);
         return $mpdf->Output("invoice_{$order->id}.pdf", 'I');
     }
 
     public function invoiceHtml($orderId)
     {
-        $order = Order::select('id', 'total', 'created_at', 'invoice_number')
+        $order = Order::select('id', 'total', 'created_at', 'invoice_number', 'tenant_id')
             ->with(['items' => function($query) {
                 $query->select('order_id', 'product_name', 'quantity', 'price', 'size');
             }])
             ->findOrFail($orderId);
-        return view('invoice-html', compact('order'));
+
+        $logoUrl = $this->invoiceLogoUrl($order->tenant_id);
+
+        return view('invoice-html', compact('order', 'logoUrl'));
+    }
+
+    protected function invoiceLogoUrl(?int $tenantId): ?string
+    {
+        if (! $tenantId) {
+            return null;
+        }
+
+        $tenant = Tenant::find($tenantId);
+
+        return $tenant?->logo_url;
     }
 
     public function invoicesToday(Request $request)

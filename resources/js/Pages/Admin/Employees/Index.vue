@@ -227,12 +227,23 @@
 
                       <!-- زر التعديل -->
                       <Link
-                        v-if="isAdmin"
+                        v-if="isAdmin || isSuperAdmin"
                         :href="route('admin.employees.edit', employee.id)"
                         class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm font-medium"
                       >
                         ✏️ تعديل
                       </Link>
+
+                      <!-- زر الحذف (سوبر أدمن فقط) -->
+                      <button
+                        v-if="isSuperAdmin"
+                        @click="deleteEmployee(employee)"
+                        :disabled="loading"
+                        class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm font-medium disabled:opacity-50"
+                        title="حذف الموظف نهائياً"
+                      >
+                        🗑️ حذف
+                      </button>
 
                       <!-- زر الخصم -->
                       <button
@@ -564,6 +575,23 @@ export default {
       } finally {
         this.loading = false;
       }
+    },
+
+    deleteEmployee(employee) {
+      if (!confirm(
+        `هل تريد حذف الموظف "${employee.name}" نهائياً؟\n\nسيتم حذف سجلات الحضور والرواتب والخصومات المرتبطة به.`
+      )) {
+        return;
+      }
+
+      this.loading = true;
+      const qs = this.selectedDate ? `?date=${encodeURIComponent(this.selectedDate)}` : '';
+      router.delete(route('admin.employees.destroy', employee.id) + qs, {
+        preserveScroll: true,
+        onFinish: () => {
+          this.loading = false;
+        },
+      });
     },
 
     // فتح modal إضافة خصم

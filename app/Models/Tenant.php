@@ -4,10 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 
 class Tenant extends Model
 {
-    protected $fillable = ['name', 'slug'];
+    protected $fillable = ['name', 'slug', 'logo_path'];
 
     /**
      * المستخدمون التابعون لهذا الـ tenant
@@ -32,5 +33,18 @@ class Tenant extends Model
                 $tenant->slug = \Illuminate\Support\Str::slug($tenant->name);
             }
         });
+    }
+
+    public function getLogoUrlAttribute(): ?string
+    {
+        if (! $this->logo_path) {
+            return null;
+        }
+
+        if (! Storage::disk('public')->exists($this->logo_path)) {
+            return null;
+        }
+
+        return asset('storage/'.$this->logo_path);
     }
 }

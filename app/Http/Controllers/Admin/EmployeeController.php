@@ -173,14 +173,23 @@ class EmployeeController extends Controller
     }
 
     /**
-     * حذف موظف
+     * حذف موظف (سوبر أدمن فقط)
      */
-    public function destroy(Employee $employee)
+    public function destroy(Request $request, Employee $employee)
     {
+        abort_unless(auth()->user()?->hasRole('super admin'), 403);
+
+        if ($employee->isCurrentlyPresent()) {
+            return redirect()->route('admin.employees.index', array_filter([
+                'date' => $request->query('date'),
+            ]))->with('error', 'لا يمكن حذف موظف حاضر حالياً. سجّل انصرافه أولاً.');
+        }
+
         $employee->delete();
 
-        return redirect()->route('admin.employees.index')
-            ->with('success', 'تم حذف الموظف بنجاح');
+        return redirect()->route('admin.employees.index', array_filter([
+            'date' => $request->query('date'),
+        ]))->with('success', 'تم حذف الموظف بنجاح');
     }
 
     /**

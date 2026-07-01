@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Branch;
+use App\Models\Tenant;
 use App\Support\BranchContext;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -46,10 +47,23 @@ class HandleInertiaRequests extends Middleware
             'branches' => [],
         ];
 
+        $tenantBranding = [
+            'name' => null,
+            'logoUrl' => null,
+        ];
+
         if ($user && $user->tenant_id) {
             $bid = BranchContext::id();
             if ($bid) {
                 $branchContext['activeBranchName'] = Branch::where('id', $bid)->value('name');
+            }
+
+            $tenant = Tenant::find($user->tenant_id);
+            if ($tenant) {
+                $tenantBranding = [
+                    'name' => $tenant->name,
+                    'logoUrl' => $tenant->logo_url,
+                ];
             }
 
             if ($user->hasRole('super admin')) {
@@ -75,6 +89,7 @@ class HandleInertiaRequests extends Middleware
                 ] : null,
             ],
             'branchContext' => $branchContext,
+            'tenantBranding' => $tenantBranding,
         ]);
     }
 }

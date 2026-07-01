@@ -16,6 +16,8 @@ const page = usePage();
 const branchContext = computed(() => page.props.branchContext || {});
 const hideBranchScopedNav = computed(() => branchContext.value?.isSuperAdminHub === true);
 const userRoles = computed(() => page.props.auth?.user?.roles || []);
+const isSuperAdmin = computed(() => userRoles.value.includes('super admin'));
+const tenantBranding = computed(() => page.props.tenantBranding || { name: null, logoUrl: null });
 const isBaristaOnly = computed(() =>
     userRoles.value.includes('barista') &&
     !userRoles.value.includes('admin') &&
@@ -80,8 +82,14 @@ const logout = () => {
                     <div class="flex justify-between h-16">
                         <div class="flex">
                             <div class="shrink-0 flex items-center">
-                                <Link :href="route('dashboard')" class="text-lg font-bold text-gray-800 hover:text-gray-600">
-                                    نظام الكاشير
+                                <Link :href="route('dashboard')" class="flex items-center gap-2">
+                                    <img
+                                        v-if="tenantBranding.logoUrl"
+                                        :src="tenantBranding.logoUrl"
+                                        :alt="tenantBranding.name || 'الشعار'"
+                                        class="h-10 w-auto max-w-[140px] object-contain"
+                                    />
+                                    <span v-else class="text-lg font-bold text-gray-800">نظام الكاشير</span>
                                 </Link>
                             </div>
 
@@ -228,6 +236,10 @@ const logout = () => {
                                             Profile
                                         </DropdownLink>
 
+                                        <DropdownLink v-if="isSuperAdmin" :href="route('admin.tenant-settings.index')">
+                                            الإعدادات
+                                        </DropdownLink>
+
                                         <DropdownLink v-if="$page.props.jetstream.hasApiFeatures" :href="route('api-tokens.index')">
                                             API Tokens
                                         </DropdownLink>
@@ -301,8 +313,14 @@ const logout = () => {
                     <!-- Sidebar Header -->
                     <div class="p-4 border-b flex justify-between items-center">
                         <div class="shrink-0 flex items-center">
-                            <Link :href="route('dashboard')" class="text-base font-bold text-gray-800">
-                                نظام الكاشير
+                            <Link :href="route('dashboard')" class="flex items-center gap-2">
+                                <img
+                                    v-if="tenantBranding.logoUrl"
+                                    :src="tenantBranding.logoUrl"
+                                    :alt="tenantBranding.name || 'الشعار'"
+                                    class="h-8 w-auto max-w-[120px] object-contain"
+                                />
+                                <span v-else class="text-base font-bold text-gray-800">نظام الكاشير</span>
                             </Link>
                         </div>
                         <button @click="showingSidebar = false" class="text-gray-500 hover:text-gray-700">
@@ -383,6 +401,10 @@ const logout = () => {
                             <div class="mt-3 space-y-1">
                                 <ResponsiveNavLink :href="route('profile.show')" :active="route().current('profile.show')" @click="showingSidebar = false">
                                     الملف الشخصي
+                                </ResponsiveNavLink>
+
+                                <ResponsiveNavLink v-if="isSuperAdmin" :href="route('admin.tenant-settings.index')" :active="route().current('admin.tenant-settings.*')" @click="showingSidebar = false">
+                                    الإعدادات
                                 </ResponsiveNavLink>
 
                                 <ResponsiveNavLink v-if="$page.props.jetstream.hasApiFeatures" :href="route('api-tokens.index')" :active="route().current('api-tokens.index')" @click="showingSidebar = false">

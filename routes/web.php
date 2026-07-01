@@ -24,6 +24,7 @@ use App\Http\Controllers\Admin\FeedbackController as AdminFeedbackController;
 use App\Http\Controllers\Admin\DisplayScreenController;
 use App\Http\Controllers\Admin\AttendanceGroupController;
 use App\Http\Controllers\Admin\BranchController;
+use App\Http\Controllers\Admin\TenantSettingsController;
 use App\Http\Controllers\BranchContextController;
 
 Route::get('/', function () {
@@ -130,6 +131,13 @@ Route::middleware([
         Route::put('/slides/order', [DisplayScreenController::class, 'updateOrder'])->name('slides.order');
         Route::put('/slides/{slide}', [DisplayScreenController::class, 'updateSlide'])->name('slides.update');
         Route::delete('/slides/{slide}', [DisplayScreenController::class, 'destroySlide'])->name('slides.destroy');
+    });
+
+    // إعدادات البراند (سوبر أدمن فقط)
+    Route::middleware(['super_admin'])->prefix('admin/settings')->name('admin.tenant-settings.')->group(function () {
+        Route::get('/', [TenantSettingsController::class, 'index'])->name('index');
+        Route::post('/logo', [TenantSettingsController::class, 'updateLogo'])->name('logo.update');
+        Route::delete('/logo', [TenantSettingsController::class, 'destroyLogo'])->name('logo.destroy');
     });
 
     Route::middleware(['branch.context'])->group(function () {

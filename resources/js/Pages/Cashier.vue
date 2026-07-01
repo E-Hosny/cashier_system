@@ -3,7 +3,15 @@
     <!-- Header ثابت -->
     <div class="flex-shrink-0 bg-white border-b border-gray-200 p-2 px-4">
               <div class="flex justify-between items-center gap-2">
-          <h1 class="text-xl font-extrabold text-gray-800">🍹 واجهة الكاشير</h1>
+          <div class="flex items-center gap-3">
+            <img
+              v-if="$page.props.tenantBranding?.logoUrl"
+              :src="$page.props.tenantBranding.logoUrl"
+              :alt="$page.props.tenantBranding?.name || 'الشعار'"
+              class="h-10 w-auto max-w-[120px] object-contain"
+            />
+            <h1 class="text-xl font-extrabold text-gray-800">🍹 واجهة الكاشير</h1>
+          </div>
           <div class="flex items-center gap-4">
 
             
