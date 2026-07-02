@@ -367,6 +367,13 @@ function stockForConfig(cfg) {
     return row ? row.quantity : 0;
 }
 
+function stockQtyClass(qty) {
+    const n = parseFloat(qty);
+    if (Number.isNaN(n) || n > 0) return 'text-cyan-800 font-semibold';
+    if (n === 0) return 'text-amber-700 font-semibold';
+    return 'text-red-600 font-semibold';
+}
+
 const canEditBranchStock = computed(() => {
     const roles = page.props?.auth?.user?.roles || [];
     return !props.isCentralView && roles.includes('super admin');
@@ -386,8 +393,8 @@ function cancelBranchStockEdit() {
 function saveBranchStock(cfg) {
     const branchId = parseInt(props.viewScope, 10);
     const quantity = parseFloat(branchStockEdit.value.quantity);
-    if (!branchId || Number.isNaN(quantity) || quantity < 0) {
-        alert('أدخل كمية صحيحة (0 أو أكثر).');
+    if (!branchId || Number.isNaN(quantity)) {
+        alert('أدخل كمية صحيحة.');
         return;
     }
 
@@ -474,7 +481,7 @@ function goToBranchScope(branchId) {
             <ul class="space-y-2 text-sm">
                 <li v-for="s in fridge.stocks" :key="s.product_id + '-' + s.size" class="flex justify-between">
                     <span>{{ s.product_name }} <span v-if="s.size" class="text-gray-500">({{ translateSize(s.size) }})</span></span>
-                    <span class="font-bold">{{ s.quantity }} وحدة</span>
+                    <span class="font-bold" :class="stockQtyClass(s.quantity)">{{ s.quantity }} وحدة</span>
                 </li>
             </ul>
         </div>
@@ -535,7 +542,7 @@ function goToBranchScope(branchId) {
                     <span v-if="cfg.pending_units > 0" class="text-amber-800 font-semibold block">
                         مكوّد: {{ cfg.pending_units }}
                     </span>
-                    <span v-if="!isCentralView" class="text-cyan-800 font-semibold">بالتلاجة: {{ stockForConfig(cfg) }}</span>
+                    <span v-if="!isCentralView" :class="stockQtyClass(stockForConfig(cfg))">بالتلاجة: {{ stockForConfig(cfg) }}</span>
                     <span v-if="isCentralView && cfg.pending_units <= 0" class="text-gray-400">—</span>
                 </div>
 
@@ -561,7 +568,6 @@ function goToBranchScope(branchId) {
                         <input
                             v-model.number="branchStockEdit.quantity"
                             type="number"
-                            min="0"
                             step="any"
                             class="w-24 border rounded p-1 text-center text-xs"
                         />
@@ -631,7 +637,7 @@ function goToBranchScope(branchId) {
                             <span v-if="cfg.pending_units > 0" class="text-amber-800 font-semibold block">
                                 مكوّد: {{ cfg.pending_units }}
                             </span>
-                            <span v-if="!isCentralView" class="text-cyan-800">بالتلاجة: {{ stockForConfig(cfg) }}</span>
+                            <span v-if="!isCentralView" :class="stockQtyClass(stockForConfig(cfg))">بالتلاجة: {{ stockForConfig(cfg) }}</span>
                             <span v-if="isCentralView && cfg.pending_units <= 0" class="text-gray-400">—</span>
                         </td>
                         <td v-if="canManage && isCentralView" class="p-3 text-center">
@@ -656,7 +662,6 @@ function goToBranchScope(branchId) {
                                 <input
                                     v-model.number="branchStockEdit.quantity"
                                     type="number"
-                                    min="0"
                                     step="any"
                                     class="w-24 border rounded p-1 text-center text-xs ml-2"
                                 />

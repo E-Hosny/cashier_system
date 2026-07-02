@@ -126,15 +126,22 @@ class FridgeController extends Controller
         $stocksByBranch = [];
 
         if ($branchId) {
-            $stocks = BranchFridgeStock::query()
+            $stockRows = BranchFridgeStock::query()
                 ->where('branch_id', $branchId)
-                ->where('quantity', '>', 0)
-                ->with('product:id,name')
-                ->orderBy('product_id')
                 ->get()
-                ->map($mapStockRow)
-                ->values()
-                ->all();
+                ->keyBy(fn (BranchFridgeStock $s) => $s->product_id.'|'.($s->size ?? ''));
+
+            $stocks = $configs->map(function (array $cfg) use ($stockRows) {
+                $key = $cfg['product_id'].'|'.($cfg['size'] ?? '');
+                $stock = $stockRows->get($key);
+
+                return [
+                    'product_id' => $cfg['product_id'],
+                    'product_name' => $cfg['product_name'],
+                    'size' => $cfg['size'],
+                    'quantity' => (float) ($stock?->quantity ?? 0),
+                ];
+            })->values()->all();
         } else {
             $branches = Branch::query()->orderBy('name')->get(['id', 'name']);
             $grouped = BranchFridgeStock::query()
@@ -249,7 +256,7 @@ class FridgeController extends Controller
         }
 
         $data = $request->validate([
-            'quantity' => 'required|numeric|min:0',
+            'quantity' => 'required|numeric',
         ]);
 
         $newQuantity = (float) $data['quantity'];

@@ -57,17 +57,6 @@ class BranchFridgeStock extends Model
 
     public static function deduct(int $branchId, int $productId, string $size, float $amount, ?int $tenantId = null): self
     {
-        $row = static::query()
-            ->where('branch_id', $branchId)
-            ->where('product_id', $productId)
-            ->where('size', $size ?? '')
-            ->first();
-
-        $available = (float) ($row?->quantity ?? 0);
-        if ($available < $amount) {
-            throw new \RuntimeException('مخزون التلاجة غير كافٍ لهذا المنتج.');
-        }
-
         return static::adjust($branchId, $productId, $size, -abs($amount), $tenantId);
     }
 }

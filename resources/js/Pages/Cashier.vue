@@ -132,10 +132,9 @@
                   <input v-model.number="product.quantityToAdd" type="number" min="1" placeholder="العدد" class="p-2 border border-gray-300 rounded-lg text-center w-full text-sm" />
                   <button
                     @click="product.from_fridge ? addFridgeToCart(product) : addToCart(product)"
-                    class="text-white px-3 py-1.5 rounded-lg transition mt-2 w-full text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    class="text-white px-3 py-1.5 rounded-lg transition mt-2 w-full text-sm"
                     :class="product.from_fridge ? 'bg-cyan-600 hover:bg-cyan-700' : 'bg-blue-500 hover:bg-blue-600'"
-                    :disabled="product.from_fridge && product.outOfFridgeStock"
-                  >{{ product.from_fridge && product.outOfFridgeStock ? 'غير متوفر' : 'إضافة للسلة' }}</button>
+                  >إضافة للسلة</button>
                 </div>
               </div>
             </div>
@@ -679,17 +678,9 @@ export default {
     },
     addFridgeToCart(product) {
       const quantity = product.quantityToAdd || 1;
-      if (quantity > product.fridge_quantity) {
-        alert('الكمية المطلوبة أكبر من مخزون التلاجة.');
-        return;
-      }
       const cartItemId = `fridge-${product.product_id}-${product.size || ''}`;
       const found = this.cart.find(item => item.cartItemId === cartItemId);
       if (found) {
-        if (found.quantity + quantity > product.fridge_quantity) {
-          alert('الكمية المطلوبة أكبر من مخزون التلاجة.');
-          return;
-        }
         found.quantity += quantity;
       } else {
         this.cart.push({
