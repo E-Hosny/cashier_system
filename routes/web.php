@@ -23,6 +23,7 @@ use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\Admin\FeedbackController as AdminFeedbackController;
 use App\Http\Controllers\Admin\DisplayScreenController;
 use App\Http\Controllers\Admin\AttendanceGroupController;
+use App\Http\Controllers\Admin\EmployeeAttendanceSettingsController;
 use App\Http\Controllers\Admin\BranchController;
 use App\Http\Controllers\Admin\TenantSettingsController;
 use App\Http\Controllers\BranchContextController;
@@ -167,6 +168,14 @@ Route::middleware([
             Route::post('/', [AttendanceGroupController::class, 'store'])->name('store');
             Route::put('/{attendanceGroup}', [AttendanceGroupController::class, 'update'])->name('update');
             Route::delete('/{attendanceGroup}', [AttendanceGroupController::class, 'destroy'])->name('destroy');
+        });
+
+        Route::middleware(['admin'])->prefix('employees/attendance-settings')->name('admin.employees.attendance-settings.')->group(function () {
+            Route::get('/', [EmployeeAttendanceSettingsController::class, 'index'])->name('index');
+            Route::post('/schedules', [EmployeeAttendanceSettingsController::class, 'updateSchedules'])->name('schedules');
+            Route::post('/rules', [EmployeeAttendanceSettingsController::class, 'storeRule'])->name('rules.store');
+            Route::put('/rules/{attendanceDeductionRule}', [EmployeeAttendanceSettingsController::class, 'updateRule'])->name('rules.update');
+            Route::delete('/rules/{attendanceDeductionRule}', [EmployeeAttendanceSettingsController::class, 'destroyRule'])->name('rules.destroy');
         });
 
         // Cashier & Invoices

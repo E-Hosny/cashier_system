@@ -13,6 +13,7 @@ class EmployeeAttendance extends Model
     protected $fillable = [
         'employee_id',
         'checkin_time',
+        'late_minutes',
         'checkout_time',
         'total_hours',
         'total_amount',
@@ -22,6 +23,7 @@ class EmployeeAttendance extends Model
     protected $casts = [
         'checkin_time' => 'datetime',
         'checkout_time' => 'datetime',
+        'late_minutes' => 'integer',
         'total_hours' => 'decimal:2',
         'total_amount' => 'decimal:2',
     ];

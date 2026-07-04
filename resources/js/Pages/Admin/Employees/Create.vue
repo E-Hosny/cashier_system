@@ -91,6 +91,28 @@
               <div v-if="errors.notes" class="text-red-500 text-sm mt-1">{{ errors.notes }}</div>
             </div>
 
+            <div v-if="canManageSchedule" class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <h4 class="font-bold text-blue-900 mb-3">⏰ مواعيد الحضور والانصراف</h4>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label class="block text-gray-700 text-sm font-bold mb-2">موعد الحضور المتوقع</label>
+                  <input v-model="form.expected_checkin_time" type="time" class="w-full p-3 border border-gray-300 rounded-lg" />
+                </div>
+                <div>
+                  <label class="block text-gray-700 text-sm font-bold mb-2">موعد الانصراف المتوقع</label>
+                  <input v-model="form.expected_checkout_time" type="time" class="w-full p-3 border border-gray-300 rounded-lg" />
+                </div>
+                <div>
+                  <label class="block text-gray-700 text-sm font-bold mb-2">فترة السماح (دقيقة)</label>
+                  <input v-model.number="form.grace_minutes" type="number" min="0" max="120" class="w-full p-3 border border-gray-300 rounded-lg" />
+                </div>
+              </div>
+              <label class="flex items-center mt-3">
+                <input v-model="form.late_deductions_enabled" type="checkbox" class="rounded border-gray-300 text-blue-600" />
+                <span class="mr-2 text-sm font-medium text-gray-700">تطبيق قوانين خصم التأخير</span>
+              </label>
+            </div>
+
             <div v-if="canManageAttendanceDependency" class="mb-6">
               <label class="block text-gray-700 text-sm font-bold mb-2">
                 ربط الحضور بموظف آخر (اختياري)
@@ -180,6 +202,10 @@ export default {
       notes: '',
       attendance_dependency_employee_id: null,
       attendance_group_id: null,
+      expected_checkin_time: '',
+      expected_checkout_time: '',
+      grace_minutes: 0,
+      late_deductions_enabled: true,
     });
 
     return { form };
@@ -191,6 +217,10 @@ export default {
       default: () => [],
     },
     canManageAttendanceDependency: {
+      type: Boolean,
+      default: false,
+    },
+    canManageSchedule: {
       type: Boolean,
       default: false,
     },

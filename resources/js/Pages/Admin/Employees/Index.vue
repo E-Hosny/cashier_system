@@ -27,7 +27,7 @@
                 @change="onBusinessDayChange"
               />
             </div>
-            <div v-if="isAdmin || isSuperAdmin" class="flex gap-2">
+            <div v-if="isAdmin || isSuperAdmin" class="flex gap-2 flex-wrap">
               <Link
                 :href="route('admin.employees.create')"
                 class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition duration-200"
@@ -39,6 +39,12 @@
                 class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition duration-200"
               >
                 💰 حاسبة الرواتب
+              </Link>
+              <Link
+                :href="route('admin.employees.attendance-settings.index')"
+                class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition duration-200"
+              >
+                ⏰ الحضور والخصومات
               </Link>
             </div>
           </div>
@@ -102,6 +108,9 @@
                 <tr v-for="employee in employees" :key="employee.id" class="border-t hover:bg-gray-50">
                   <td class="p-4">
                     <div class="font-semibold">{{ employee.name }}</div>
+                    <div v-if="employee.expected_checkin_display" class="text-xs text-gray-500 font-normal">
+                      موعد: {{ employee.expected_checkin_display }}
+                    </div>
                     <div class="text-sm text-gray-500">{{ employee.phone || 'لا يوجد رقم' }}</div>
                     <div v-if="employee.attendance_dependency_employee_name" class="text-xs text-amber-700 mt-1">
                       مرتبط حضور مع: {{ employee.attendance_dependency_employee_name }}
@@ -134,6 +143,7 @@
                       <div v-for="record in employee.today_attendance_records" :key="record.id" class="text-xs">
                         <div class="flex justify-between items-center">
                           <span class="text-blue-600">حضور: {{ formatTime(record.checkin_time) }}</span>
+                          <span v-if="record.late_minutes > 0" class="text-amber-700 text-xs">(تأخير {{ record.late_minutes }} د)</span>
                           <span v-if="record.checkout_time" class="text-red-600">انصراف: {{ formatTime(record.checkout_time) }}</span>
                           <span v-else class="text-orange-600">قيد العمل</span>
                         </div>
@@ -156,7 +166,10 @@
                       <!-- عرض تفاصيل الخصومات -->
                       <div v-if="employee.today_discounts && employee.today_discounts.length > 0" class="mt-1 space-y-1">
                         <div v-for="discount in employee.today_discounts" :key="discount.id" class="border-r-2 border-red-300 pr-2">
-                          <div class="font-medium">-{{ formatPrice(discount.amount) }}</div>
+                          <div class="font-medium">
+                            -{{ formatPrice(discount.amount) }}
+                            <span v-if="discount.source === 'late_rule'" class="text-[10px] bg-amber-100 text-amber-800 px-1 rounded mr-1">تلقائي</span>
+                          </div>
                           <div v-if="discount.reason" class="text-gray-600 text-xs mt-0.5">
                             {{ discount.reason }}
                           </div>
@@ -448,15 +461,13 @@ export default {
           // تحديث الساعات والمبلغ
           employee.today_hours = data.total_hours;
           employee.today_amount = data.total_amount;
-          
-          console.log('Employee checkin successful:', {
-            employee: employee.name,
-            is_present: employee.is_present,
-            current_attendance: employee.current_attendance,
-            today_records: employee.today_attendance_records
+
+          router.reload({
+            only: ['employees', 'totalTodayAmount', 'totalTodayHours'],
+            preserveScroll: true,
           });
-          
-          alert('تم تسجيل الحضور بنجاح!');
+
+          alert(data.message || 'تم تسجيل الحضور بنجاح!');
         } else {
           alert(data.message);
         }

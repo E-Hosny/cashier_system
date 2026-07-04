@@ -17,6 +17,9 @@ class EmployeeDiscount extends Model
         'discount_date',
         'amount',
         'reason',
+        'source',
+        'attendance_deduction_rule_id',
+        'employee_attendance_id',
         'created_by',
         'tenant_id'
     ];
@@ -40,6 +43,21 @@ class EmployeeDiscount extends Model
     public function createdBy()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function attendanceDeductionRule()
+    {
+        return $this->belongsTo(AttendanceDeductionRule::class);
+    }
+
+    public function employeeAttendance()
+    {
+        return $this->belongsTo(EmployeeAttendance::class);
+    }
+
+    public function isAutomatic(): bool
+    {
+        return $this->source === 'late_rule';
     }
 
     protected static function booted()

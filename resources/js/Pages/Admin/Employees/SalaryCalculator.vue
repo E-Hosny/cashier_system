@@ -126,6 +126,77 @@
               </div>
             </div>
 
+            <!-- تجميع الخصومات -->
+            <div v-if="salaryData.discount_summary" class="bg-red-50 border border-red-200 rounded-lg p-6">
+              <h4 class="text-lg font-semibold text-red-900 mb-4">📉 تجميع الخصومات خلال الفترة</h4>
+
+              <div v-if="salaryData.discount_summary.count === 0" class="text-sm text-gray-600 text-center py-4">
+                لا توجد خصومات مسجّلة خلال هذه الفترة.
+              </div>
+
+              <template v-else>
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                  <div class="bg-white rounded-lg p-4 text-center border border-red-100">
+                    <div class="text-2xl font-bold text-red-600">{{ formatPrice(salaryData.discount_summary.total) }}</div>
+                    <div class="text-xs text-red-700 mt-1">إجمالي الخصومات</div>
+                  </div>
+                  <div class="bg-white rounded-lg p-4 text-center border border-red-100">
+                    <div class="text-2xl font-bold text-red-800">{{ salaryData.discount_summary.count }}</div>
+                    <div class="text-xs text-red-700 mt-1">عدد الخصومات</div>
+                  </div>
+                  <div class="bg-white rounded-lg p-4 text-center border border-amber-100">
+                    <div class="text-2xl font-bold text-amber-700">{{ formatPrice(salaryData.discount_summary.automatic_total) }}</div>
+                    <div class="text-xs text-amber-800 mt-1">تلقائي ({{ salaryData.discount_summary.automatic_count }})</div>
+                  </div>
+                  <div class="bg-white rounded-lg p-4 text-center border border-orange-100">
+                    <div class="text-2xl font-bold text-orange-700">{{ formatPrice(salaryData.discount_summary.manual_total) }}</div>
+                    <div class="text-xs text-orange-800 mt-1">يدوي ({{ salaryData.discount_summary.manual_count }})</div>
+                  </div>
+                  <div class="bg-white rounded-lg p-4 text-center border border-red-100">
+                    <div class="text-2xl font-bold text-gray-700">{{ salaryData.discount_summary.days_with_discounts }}</div>
+                    <div class="text-xs text-gray-600 mt-1">أيام فيها خصم</div>
+                  </div>
+                </div>
+
+                <div class="overflow-x-auto bg-white rounded-lg border border-red-100">
+                  <table class="w-full text-sm">
+                    <thead class="bg-red-100/60">
+                      <tr>
+                        <th class="p-3 text-right">التاريخ</th>
+                        <th class="p-3 text-right">اليوم</th>
+                        <th class="p-3 text-right">المبلغ</th>
+                        <th class="p-3 text-right">النوع</th>
+                        <th class="p-3 text-right">السبب</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="item in salaryData.discount_summary.items" :key="item.id" class="border-t border-red-50">
+                        <td class="p-3">{{ item.date_arabic }}</td>
+                        <td class="p-3 text-gray-600">{{ item.day_name }}</td>
+                        <td class="p-3 font-bold text-red-600">-{{ formatPrice(item.amount) }}</td>
+                        <td class="p-3">
+                          <span
+                            class="px-2 py-0.5 rounded text-xs font-medium"
+                            :class="item.is_automatic ? 'bg-amber-100 text-amber-800' : 'bg-orange-100 text-orange-800'"
+                          >
+                            {{ item.is_automatic ? 'تلقائي' : 'يدوي' }}
+                          </span>
+                        </td>
+                        <td class="p-3 text-gray-700">{{ item.reason || '—' }}</td>
+                      </tr>
+                    </tbody>
+                    <tfoot class="bg-red-50 font-bold">
+                      <tr>
+                        <td colspan="2" class="p-3 text-right">الإجمالي</td>
+                        <td class="p-3 text-red-700">-{{ formatPrice(salaryData.discount_summary.total) }}</td>
+                        <td colspan="2"></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </template>
+            </div>
+
             <!-- تفاصيل كل يوم -->
             <div class="bg-white border border-gray-200 rounded-lg">
               <div class="p-6 border-b border-gray-200 flex justify-between items-center">
@@ -177,7 +248,10 @@
                               </summary>
                               <div class="mt-1 space-y-1 pr-2">
                                 <div v-for="discount in day.discounts" :key="discount.id" class="border-r-2 border-orange-300 pr-2">
-                                  <div class="font-medium">-{{ formatPrice(discount.amount) }}</div>
+                                  <div class="font-medium">
+                                    -{{ formatPrice(discount.amount) }}
+                                    <span v-if="discount.is_automatic" class="text-[10px] bg-amber-100 text-amber-800 px-1 rounded mr-1">تلقائي</span>
+                                  </div>
                                   <div v-if="discount.reason" class="text-gray-600 text-xs">{{ discount.reason }}</div>
                                   <div class="text-gray-400 text-xs">{{ discount.created_at }}</div>
                                 </div>
@@ -262,16 +336,20 @@
             <!-- ملخص نهائي -->
             <div class="bg-purple-50 p-6 rounded-lg">
               <h4 class="text-lg font-semibold text-purple-900 mb-4">الملخص النهائي</h4>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div class="text-center">
                   <div class="text-3xl font-bold text-purple-600">{{ salaryData.summary.total_hours }}</div>
                   <div class="text-sm text-purple-700">إجمالي الساعات</div>
                 </div>
+                <div v-if="salaryData.summary.total_discounts > 0" class="text-center">
+                  <div class="text-3xl font-bold text-red-600">-{{ formatPrice(salaryData.summary.total_discounts) }}</div>
+                  <div class="text-sm text-red-700">إجمالي الخصومات</div>
+                </div>
                 <div class="text-center">
                   <div class="text-3xl font-bold text-purple-600">{{ formatPrice(salaryData.summary.total_amount) }}</div>
-                  <div class="text-sm text-purple-700">إجمالي المبلغ المستحق</div>
-                  <div v-if="salaryData.summary.total_discounts > 0" class="text-xs text-red-600 mt-1">
-                    (بعد خصم {{ formatPrice(salaryData.summary.total_discounts) }})
+                  <div class="text-sm text-purple-700">صافي المبلغ المستحق</div>
+                  <div v-if="salaryData.summary.total_base_amount && salaryData.summary.total_discounts > 0" class="text-xs text-gray-500 mt-1">
+                    قبل الخصم: {{ formatPrice(salaryData.summary.total_base_amount) }}
                   </div>
                 </div>
               </div>

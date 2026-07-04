@@ -21,6 +21,10 @@ class Employee extends Model
         'phone',
         'position',
         'notes',
+        'expected_checkin_time',
+        'expected_checkout_time',
+        'grace_minutes',
+        'late_deductions_enabled',
         'attendance_dependency_employee_id',
         'attendance_group_id',
         'attendance_group_code',
@@ -32,6 +36,8 @@ class Employee extends Model
     protected $casts = [
         'hourly_rate' => 'decimal:2',
         'is_active' => 'boolean',
+        'grace_minutes' => 'integer',
+        'late_deductions_enabled' => 'boolean',
     ];
 
     protected static function booted()
@@ -83,6 +89,33 @@ class Employee extends Model
     public function attendanceGroup()
     {
         return $this->belongsTo(AttendanceGroup::class, 'attendance_group_id');
+    }
+
+    public function attendanceDeductionRules()
+    {
+        return $this->belongsToMany(AttendanceDeductionRule::class, 'deduction_rule_employee');
+    }
+
+    public function formattedExpectedCheckinTime(): ?string
+    {
+        if (! $this->expected_checkin_time) {
+            return null;
+        }
+
+        $parts = explode(':', (string) $this->expected_checkin_time);
+
+        return sprintf('%02d:%02d', (int) ($parts[0] ?? 0), (int) ($parts[1] ?? 0));
+    }
+
+    public function formattedExpectedCheckoutTime(): ?string
+    {
+        if (! $this->expected_checkout_time) {
+            return null;
+        }
+
+        $parts = explode(':', (string) $this->expected_checkout_time);
+
+        return sprintf('%02d:%02d', (int) ($parts[0] ?? 0), (int) ($parts[1] ?? 0));
     }
 
     /**

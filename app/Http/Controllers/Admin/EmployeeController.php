@@ -8,12 +8,16 @@ use App\Models\EmployeeAttendance;
 use App\Models\SalaryDelivery;
 use App\Models\EmployeeDiscount;
 use App\Models\AttendanceGroup;
+use App\Services\AttendanceLateDeductionService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Carbon\Carbon;
 
 class EmployeeController extends Controller
 {
+    public function __construct(
+        private AttendanceLateDeductionService $lateDeductionService
+    ) {}
     /**
      * عرض صفحة إدارة الموظفين
      */
@@ -55,6 +59,8 @@ class EmployeeController extends Controller
             $employee->attendance_dependency_employee_name = optional($employee->attendanceDependencyEmployee)->name;
             $employee->attendance_group_name = optional($employee->attendanceGroup)->name;
             $employee->attendance_group_max_present = optional($employee->attendanceGroup)->max_present;
+            $employee->expected_checkin_display = $employee->formattedExpectedCheckinTime();
+            $employee->expected_checkout_display = $employee->formattedExpectedCheckoutTime();
         });
 
         $totalTodayAmount = $employees->sum('today_amount');
@@ -81,6 +87,7 @@ class EmployeeController extends Controller
             'employees' => Employee::where('is_active', true)->select('id', 'name')->orderBy('name')->get(),
             'attendanceGroups' => AttendanceGroup::select('id', 'name', 'max_present')->orderBy('name')->get(),
             'canManageAttendanceDependency' => auth()->user()?->hasRole('super admin') ?? false,
+            'canManageSchedule' => auth()->user()?->hasAnyRole(['admin', 'super admin']) ?? false,
         ]);
     }
 
@@ -99,7 +106,15 @@ class EmployeeController extends Controller
             'attendance_group_id' => 'nullable|exists:attendance_groups,id',
             'attendance_group_code' => 'nullable|string|max:100',
             'attendance_group_max_present' => 'nullable|integer|min:1|max:20',
+            'expected_checkin_time' => 'nullable|date_format:H:i',
+            'expected_checkout_time' => 'nullable|date_format:H:i',
+            'grace_minutes' => 'nullable|integer|min:0|max:120',
+            'late_deductions_enabled' => 'boolean',
         ]);
+
+        if (! (auth()->user()?->hasAnyRole(['admin', 'super admin']) ?? false)) {
+            unset($validated['expected_checkin_time'], $validated['expected_checkout_time'], $validated['grace_minutes'], $validated['late_deductions_enabled']);
+        }
 
         if (! (auth()->user()?->hasRole('super admin') ?? false)) {
             $validated['attendance_dependency_employee_id'] = null;
@@ -125,7 +140,10 @@ class EmployeeController extends Controller
     public function edit(Employee $employee)
     {
         return Inertia::render('Admin/Employees/Edit', [
-            'employee' => $employee,
+            'employee' => array_merge($employee->toArray(), [
+                'expected_checkin_time' => $employee->formattedExpectedCheckinTime(),
+                'expected_checkout_time' => $employee->formattedExpectedCheckoutTime(),
+            ]),
             'employees' => Employee::where('is_active', true)
                 ->where('id', '!=', $employee->id)
                 ->select('id', 'name')
@@ -133,6 +151,7 @@ class EmployeeController extends Controller
                 ->get(),
             'attendanceGroups' => AttendanceGroup::select('id', 'name', 'max_present')->orderBy('name')->get(),
             'canManageAttendanceDependency' => auth()->user()?->hasRole('super admin') ?? false,
+            'canManageSchedule' => auth()->user()?->hasAnyRole(['admin', 'super admin']) ?? false,
         ]);
     }
 
@@ -152,7 +171,15 @@ class EmployeeController extends Controller
             'attendance_group_id' => 'nullable|exists:attendance_groups,id',
             'attendance_group_code' => 'nullable|string|max:100',
             'attendance_group_max_present' => 'nullable|integer|min:1|max:20',
+            'expected_checkin_time' => 'nullable|date_format:H:i',
+            'expected_checkout_time' => 'nullable|date_format:H:i',
+            'grace_minutes' => 'nullable|integer|min:0|max:120',
+            'late_deductions_enabled' => 'boolean',
         ]);
+
+        if (! (auth()->user()?->hasAnyRole(['admin', 'super admin']) ?? false)) {
+            unset($validated['expected_checkin_time'], $validated['expected_checkout_time'], $validated['grace_minutes'], $validated['late_deductions_enabled']);
+        }
 
         if (! (auth()->user()?->hasRole('super admin') ?? false)) {
             unset($validated['attendance_dependency_employee_id']);
@@ -227,21 +254,40 @@ class EmployeeController extends Controller
             'checkin_time' => Carbon::now(),
         ]);
 
+        $lateResult = $this->lateDeductionService->applyOnCheckin($employee, $attendance);
+
         // إعادة تحميل الموظف مع السجلات الجديدة
         $employee->refresh();
 
         // حساب الساعات والمبلغ المحدث
         $totalHours = $employee->getTodayHours();
         $totalAmount = $employee->getTodayAmount();
+        $discountTotal = $employee->getTodayDiscountTotal();
 
-        return response()->json([
+        $response = [
             'success' => true,
             'message' => 'تم تسجيل الحضور بنجاح',
-            'attendance' => $attendance,
+            'attendance' => $attendance->fresh(),
             'checkin_time' => $attendance->getFormattedCheckinTime(),
             'total_hours' => $totalHours,
             'total_amount' => $totalAmount,
-        ]);
+            'today_discount_total' => $discountTotal,
+            'late_minutes' => $lateResult['late_minutes'],
+        ];
+
+        if (($lateResult['late_minutes'] ?? 0) > 0) {
+            $response['message'] = "تم تسجيل الحضور — تأخير {$lateResult['late_minutes']} دقيقة";
+        }
+
+        if ($lateResult['discount']) {
+            $response['auto_discount'] = [
+                'amount' => (float) $lateResult['discount']->amount,
+                'reason' => $lateResult['discount']->reason,
+            ];
+            $response['message'] .= " — تم خصم {$lateResult['discount']->amount} جنيه تلقائياً";
+        }
+
+        return response()->json($response);
     }
 
     /**
@@ -455,6 +501,8 @@ class EmployeeController extends Controller
                         'id' => $discount->id,
                         'amount' => $discount->amount,
                         'reason' => $discount->reason,
+                        'source' => $discount->source ?? 'manual',
+                        'is_automatic' => ($discount->source ?? 'manual') === 'late_rule',
                         'created_at' => $discount->created_at->format('Y-m-d H:i:s'),
                     ];
                 })->toArray(),
@@ -472,6 +520,40 @@ class EmployeeController extends Controller
 
             $currentDate->addDay();
         }
+
+        $periodDiscounts = $employee->discounts()
+            ->whereBetween('discount_date', [$dateFrom, $dateTo])
+            ->orderBy('discount_date')
+            ->orderBy('created_at')
+            ->get();
+
+        $automaticDiscounts = $periodDiscounts->where('source', 'late_rule');
+        $manualDiscounts = $periodDiscounts->where('source', '!=', 'late_rule');
+
+        $discountSummary = [
+            'total' => round((float) $periodDiscounts->sum('amount'), 2),
+            'count' => $periodDiscounts->count(),
+            'automatic_total' => round((float) $automaticDiscounts->sum('amount'), 2),
+            'automatic_count' => $automaticDiscounts->count(),
+            'manual_total' => round((float) $manualDiscounts->sum('amount'), 2),
+            'manual_count' => $manualDiscounts->count(),
+            'days_with_discounts' => $periodDiscounts->pluck('discount_date')->unique()->count(),
+            'items' => $periodDiscounts->map(function ($discount) {
+                $date = Carbon::parse($discount->discount_date);
+
+                return [
+                    'id' => $discount->id,
+                    'date' => $date->format('Y-m-d'),
+                    'date_arabic' => $date->format('d/m/Y'),
+                    'day_name' => $date->locale('ar')->dayName,
+                    'amount' => round((float) $discount->amount, 2),
+                    'reason' => $discount->reason,
+                    'source' => $discount->source ?? 'manual',
+                    'is_automatic' => ($discount->source ?? 'manual') === 'late_rule',
+                    'created_at' => $discount->created_at->format('Y-m-d H:i'),
+                ];
+            })->values()->all(),
+        ];
 
         return response()->json([
             'success' => true,
@@ -495,6 +577,7 @@ class EmployeeController extends Controller
                 'days_count' => count($dailyDetails),
                 'days_with_records' => count(array_filter($dailyDetails, fn($day) => $day['has_records'])),
             ],
+            'discount_summary' => $discountSummary,
             'daily_details' => $dailyDetails,
             'debug_info' => [
                 'total_attendances_found' => $attendances->count(),
