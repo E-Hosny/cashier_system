@@ -448,30 +448,93 @@ class CashierController extends Controller
             'q' => 'required|string|max:64',
         ]);
 
-        $q = trim($request->input('q'));
-        $branchId = BranchContext::requireId();
-
-        $query = Order::with('items')->where('branch_id', $branchId);
-
-        $order = (clone $query)
-            ->where('invoice_number', $q)
-            ->first();
-
-        if (! $order && ctype_digit($q)) {
-            $order = (clone $query)->whereKey((int) $q)->first();
-        }
-
-        if (! $order) {
+        $q = $this->normalizeRefundSearchQuery($request->input('q'));
+        if ($q === '') {
             return response()->json([
                 'success' => false,
-                'message' => 'لم يتم العثور على فاتورة بهذا الرقم.',
+                'message' => 'أدخل رقم فاتورة للبحث.',
+            ], 422);
+        }
+
+        $branchId = BranchContext::requireId();
+        $orders = $this->findOrdersForRefundLookup($q, $branchId);
+
+        if ($orders->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'لم يتم العثور على فاتورة بهذا الرقم في فواتير اليوم.',
             ], 404);
+        }
+
+        $formatted = $orders->map(fn (Order $order) => $this->formatOrderForRefund($order))->values();
+
+        if ($formatted->count() === 1) {
+            return response()->json([
+                'success' => true,
+                'order' => $formatted->first(),
+                'orders' => $formatted,
+                'match_count' => 1,
+            ]);
         }
 
         return response()->json([
             'success' => true,
-            'order' => $this->formatOrderForRefund($order),
+            'orders' => $formatted,
+            'match_count' => $formatted->count(),
+            'message' => "تم العثور على {$formatted->count()} فاتورة — اختر الفاتورة الصحيحة.",
         ]);
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, Order>
+     */
+    protected function findOrdersForRefundLookup(string $q, int $branchId): \Illuminate\Support\Collection
+    {
+        [$start, $end] = $this->businessDayRange(null);
+
+        $base = Order::with('items')
+            ->where('branch_id', $branchId)
+            ->whereBetween('created_at', [$start, $end]);
+
+        $exact = (clone $base)->where('invoice_number', $q)->orderByDesc('created_at')->get();
+        if ($exact->isNotEmpty()) {
+            return $exact;
+        }
+
+        if (ctype_digit($q)) {
+            $byId = (clone $base)->whereKey((int) $q)->get();
+            if ($byId->isNotEmpty()) {
+                return $byId;
+            }
+        }
+
+        $partial = (clone $base)->where(function ($query) use ($q) {
+            $query->where('invoice_number', 'LIKE', '%'.$q.'%');
+
+            if (ctype_digit($q)) {
+                $padded3 = str_pad($q, 3, '0', STR_PAD_LEFT);
+                $query->orWhere('invoice_number', 'LIKE', '%-'.$padded3)
+                    ->orWhere('invoice_number', 'LIKE', '%-'.$q);
+
+                if (strlen($q) <= 6) {
+                    $query->orWhere('invoice_number', 'LIKE', $q.'-%');
+                }
+            }
+        })
+            ->orderByDesc('created_at')
+            ->limit(30)
+            ->get();
+
+        return $partial;
+    }
+
+    protected function normalizeRefundSearchQuery(?string $q): string
+    {
+        $q = trim((string) $q);
+        $q = ltrim($q, '#');
+        $q = preg_replace('/\s+/', '', $q) ?? $q;
+
+        return $q;
     }
 
     public function refundOrder(Order $order)
@@ -541,7 +604,4 @@ class CashierController extends Controller
             ])->values()->all(),
         ];
     }
-
-
-            
 }

@@ -408,21 +408,46 @@
         <div class="p-5 overflow-y-auto flex-1 space-y-5">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">ابحث برقم الفاتورة</label>
-            <div class="flex gap-2">
-              <input
-                v-model="refundSearchQuery"
-                type="text"
-                class="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                placeholder="مثال: 1042"
-                @keyup.enter="searchRefundInvoice"
-              />
+            <div class="flex flex-col sm:flex-row gap-2">
+              <div class="relative flex-1">
+                <input
+                  v-model="refundSearchQuery"
+                  type="text"
+                  class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                  placeholder="رقم كامل أو جزء (مثل 260104-042 أو 042)"
+                />
+                <span
+                  v-if="refundLoading"
+                  class="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-amber-600 pointer-events-none"
+                >
+                  جاري البحث...
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="refundSearchResults.length > 0">
+            <h4 class="text-sm font-semibold text-gray-700 mb-2">
+              نتائج البحث ({{ refundSearchResults.length }})
+            </h4>
+            <div class="space-y-2 max-h-52 overflow-y-auto">
               <button
+                v-for="order in refundSearchResults"
+                :key="'search-' + order.id"
                 type="button"
-                class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg font-semibold disabled:opacity-50"
-                :disabled="refundLoading || !refundSearchQuery.trim()"
-                @click="searchRefundInvoice"
+                class="w-full text-right p-3 rounded-lg border transition flex justify-between items-center gap-3"
+                :class="selectedRefundOrder?.id === order.id ? 'border-amber-500 bg-amber-50' : 'border-gray-200 hover:bg-gray-50'"
+                @click="selectRefundOrder(order)"
               >
-                بحث
+                <div>
+                  <div class="font-semibold text-gray-800">#{{ order.invoice_number || order.id }}</div>
+                  <div class="text-xs text-gray-500">{{ formatRefundDate(order.created_at) }}</div>
+                </div>
+                <div class="text-left">
+                  <div class="font-bold text-green-700">{{ order.total }} جنيه</div>
+                  <span v-if="order.is_refunded" class="text-xs text-red-600">مرتجع</span>
+                  <span v-else-if="!order.can_refund" class="text-xs text-gray-500">غير قابل للإرجاع</span>
+                </div>
               </button>
             </div>
           </div>
@@ -563,12 +588,12 @@ export default {
       showRefundModal: false,
       refundSearchQuery: '',
       refundRecentOrders: [],
+      refundSearchResults: [],
       selectedRefundOrder: null,
       refundLoading: false,
       refundRecentLoading: false,
       refundError: '',
-      
-
+      refundSearchDebounceTimer: null,
     };
   },
   computed: {
@@ -889,13 +914,16 @@ export default {
       this.refundError = '';
       this.selectedRefundOrder = null;
       this.refundSearchQuery = '';
+      this.refundSearchResults = [];
       await this.loadRefundRecentOrders();
     },
     closeRefundModal() {
+      this.clearRefundSearchDebounce();
       this.showRefundModal = false;
       this.refundError = '';
       this.selectedRefundOrder = null;
       this.refundSearchQuery = '';
+      this.refundSearchResults = [];
     },
     formatRefundDate(dateString) {
       if (!dateString) return '';
@@ -923,18 +951,53 @@ export default {
       this.selectedRefundOrder = order;
       this.refundError = '';
     },
+    clearRefundSearchDebounce() {
+      if (this.refundSearchDebounceTimer) {
+        clearTimeout(this.refundSearchDebounceTimer);
+        this.refundSearchDebounceTimer = null;
+      }
+    },
+    scheduleRefundSearch() {
+      this.clearRefundSearchDebounce();
+
+      const q = this.refundSearchQuery.trim();
+      if (!q) {
+        this.refundSearchResults = [];
+        this.refundError = '';
+        return;
+      }
+
+      if (q.length < 2) {
+        this.refundSearchResults = [];
+        this.refundError = '';
+        return;
+      }
+
+      this.refundSearchDebounceTimer = setTimeout(() => {
+        this.searchRefundInvoice();
+      }, 400);
+    },
     async searchRefundInvoice() {
       const q = this.refundSearchQuery.trim();
       if (!q) return;
 
       this.refundLoading = true;
       this.refundError = '';
+      this.refundSearchResults = [];
       try {
         const { data } = await axios.get('/cashier/refunds/lookup', { params: { q } });
-        this.selectedRefundOrder = data.order;
+        const orders = data.orders || (data.order ? [data.order] : []);
+        this.refundSearchResults = orders;
+
+        if (orders.length === 1) {
+          this.selectedRefundOrder = orders[0];
+        } else if (orders.length > 1) {
+          this.selectedRefundOrder = null;
+        }
       } catch (error) {
         this.selectedRefundOrder = null;
-        this.refundError = error.response?.data?.message || 'لم يتم العثور على الفاتورة.';
+        this.refundSearchResults = [];
+        this.refundError = error.response?.data?.message || 'لم يتم العثور على الفاتورة في فواتير اليوم.';
       } finally {
         this.refundLoading = false;
       }
@@ -952,6 +1015,7 @@ export default {
       try {
         const { data } = await axios.post(`/cashier/orders/${this.selectedRefundOrder.id}/refund`);
         this.selectedRefundOrder = data.order;
+        this.refundSearchResults = [];
         await this.loadRefundRecentOrders();
         alert(data.message || 'تم الإرجاع بنجاح');
       } catch (error) {
@@ -1122,12 +1186,17 @@ export default {
   beforeDestroy() {
     document.removeEventListener('keydown', this.handleEscape);
     window.removeEventListener('message', this.handleIframeMessage);
-
+    this.clearRefundSearchDebounce();
   },
   watch: {
       products() {
           this.initializeProducts();
-      }
+      },
+      refundSearchQuery() {
+          if (this.showRefundModal) {
+              this.scheduleRefundSearch();
+          }
+      },
   }
 };
 </script>
