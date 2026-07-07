@@ -876,19 +876,38 @@ export default {
 
 
     printInvoice() {
+      const settings = this.$page.props.branchContext?.printerSettings;
+
+      if (settings?.method === 'qz' && settings?.customer_printer) {
+        this.printInvoiceViaQzTray(settings);
+        return;
+      }
+
+      this.printInvoiceViaBrowser();
+    },
+    printInvoiceViaBrowser() {
       this.iframeVisible = true;
 
       this.$nextTick(() => {
         const iframe = document.getElementById('invoice-frame');
         if (iframe) {
           iframe.onload = () => {
-            // الطباعة التلقائية ستتم من داخل الفاتورة HTML
             console.log('تم تحميل الفاتورة - الطباعة ستتم تلقائياً');
           };
 
-          iframe.src = `/invoice-html/${this.orderId}`;
+          iframe.src = `/invoice-html/${this.orderId}?copy=customer`;
         }
       });
+    },
+    async printInvoiceViaQzTray(settings) {
+      try {
+        const { printInvoiceViaQz } = await import('@/utils/qzPrint');
+        await printInvoiceViaQz(this.orderId, settings);
+      } catch (error) {
+        console.error('QZ print failed, falling back to browser:', error);
+        alert('فشلت الطباعة عبر QZ Tray. تأكد أن البرنامج يعمل. سيتم استخدام طباعة المتصفح.');
+        this.printInvoiceViaBrowser();
+      }
     },
     closeIframe() {
       this.iframeVisible = false;

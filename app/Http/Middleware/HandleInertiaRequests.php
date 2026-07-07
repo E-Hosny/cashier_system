@@ -45,6 +45,12 @@ class HandleInertiaRequests extends Middleware
             'activeBranchName' => null,
             'isSuperAdminHub' => false,
             'branches' => [],
+            'printerSettings' => [
+                'mode' => 'single',
+                'method' => 'browser',
+                'customer_printer' => null,
+                'staff_printer' => null,
+            ],
         ];
 
         $tenantBranding = [
@@ -55,7 +61,14 @@ class HandleInertiaRequests extends Middleware
         if ($user && $user->tenant_id) {
             $bid = BranchContext::id();
             if ($bid) {
-                $branchContext['activeBranchName'] = Branch::where('id', $bid)->value('name');
+                $branch = Branch::find($bid);
+                $branchContext['activeBranchName'] = $branch?->name;
+                $branchContext['printerSettings'] = $branch?->normalizedPrinterSettings() ?? [
+                    'mode' => 'single',
+                    'method' => 'browser',
+                    'customer_printer' => null,
+                    'staff_printer' => null,
+                ];
             }
 
             $tenant = Tenant::find($user->tenant_id);

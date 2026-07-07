@@ -27,6 +27,7 @@ use App\Http\Controllers\Admin\EmployeeAttendanceSettingsController;
 use App\Http\Controllers\Admin\BranchController;
 use App\Http\Controllers\Admin\TenantSettingsController;
 use App\Http\Controllers\BranchContextController;
+use App\Http\Controllers\QzTrayController;
 
 Route::get('/', function () {
     return Inertia::render('Welcome', [
@@ -49,6 +50,9 @@ Route::middleware([
             'canManageFeedback' => Auth::user()->hasRole('admin') || Auth::user()->hasRole('super admin'),
         ]);
     })->name('dashboard');
+
+    Route::get('/qz/certificate', [QzTrayController::class, 'certificate'])->name('qz.certificate');
+    Route::post('/qz/sign', [QzTrayController::class, 'sign'])->name('qz.sign');
 
     // Barista (الريسبي)
     Route::get('/barista', [BaristaController::class, 'index'])->name('barista.index');
@@ -139,6 +143,9 @@ Route::middleware([
         Route::get('/', [TenantSettingsController::class, 'index'])->name('index');
         Route::post('/logo', [TenantSettingsController::class, 'updateLogo'])->name('logo.update');
         Route::delete('/logo', [TenantSettingsController::class, 'destroyLogo'])->name('logo.destroy');
+        Route::put('/branches/{branch}/printers', [TenantSettingsController::class, 'updateBranchPrinters'])->name('branches.printers.update');
+        Route::post('/qz-keys', [TenantSettingsController::class, 'uploadQzKeys'])->name('qz-keys.upload');
+        Route::get('/qz-trust-package', [QzTrayController::class, 'downloadTrustPackage'])->name('qz-trust-package.download');
     });
 
     Route::middleware(['branch.context'])->group(function () {

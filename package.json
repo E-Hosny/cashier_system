@@ -21,6 +21,7 @@
         "vue": "^3.3.13"
     },
     "dependencies": {
-        "jsbarcode": "^3.12.3"
+        "jsbarcode": "^3.12.3",
+        "qz-tray": "^2.2.6"
     }
 }

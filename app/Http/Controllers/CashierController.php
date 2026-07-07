@@ -378,8 +378,13 @@ class CashierController extends Controller
             ->findOrFail($orderId);
 
         $logoUrl = $this->invoiceLogoUrl($order->tenant_id);
+        $copy = request('copy', 'customer');
+        if (! in_array($copy, ['customer', 'staff'], true)) {
+            $copy = 'customer';
+        }
+        $qzMode = request()->boolean('qz');
 
-        return view('invoice-html', compact('order', 'logoUrl'));
+        return view('invoice-html', compact('order', 'logoUrl', 'copy', 'qzMode'));
     }
 
     protected function invoiceLogoUrl(?int $tenantId): ?string
