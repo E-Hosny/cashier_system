@@ -7,6 +7,7 @@ const props = defineProps({
     tenantName: String,
     logoUrl: { type: String, default: null },
     qzKeysConfigured: { type: Boolean, default: false },
+    categories: { type: Array, default: () => [] },
     branches: { type: Array, default: () => [] },
 });
 
@@ -35,6 +36,7 @@ function initBranchForms() {
             method: s.method || 'browser',
             customer_printer: s.customer_printer || '',
             staff_printer: s.staff_printer || '',
+            staff_category_ids: Array.isArray(s.staff_category_ids) ? s.staff_category_ids : [],
             processing: false,
             error: '',
         };
@@ -140,6 +142,7 @@ function saveBranchPrinters(branch) {
         method: row.method,
         customer_printer: row.customer_printer || null,
         staff_printer: row.staff_printer || null,
+        staff_category_ids: row.staff_category_ids || [],
     }, {
         preserveScroll: true,
         onError: (errors) => {
@@ -365,6 +368,32 @@ function saveBranchPrinters(branch) {
                                         <option value="">— اختر طابعة —</option>
                                         <option v-for="p in qzPrinters[branch.id]" :key="'s-' + p" :value="p">{{ p }}</option>
                                     </select>
+                                </div>
+                            </div>
+
+                            <div v-if="branchForms[branch.id].mode === 'dual'" class="space-y-2">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">
+                                    فئات منتجات نسخة العامل (بدون أسعار)
+                                </label>
+                                <p class="text-xs text-gray-500">
+                                    اتركها فارغة = طباعة كل الفئات في نسخة العامل.
+                                </p>
+
+                                <div class="border border-gray-200 rounded-lg p-3 bg-gray-50 max-h-40 overflow-auto">
+                                    <label
+                                        v-for="cat in categories"
+                                        :key="cat.id"
+                                        class="flex items-center gap-2 text-sm text-gray-800 mb-2"
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            class="rounded"
+                                            :value="Number(cat.id)"
+                                            v-model="branchForms[branch.id].staff_category_ids"
+                                            :disabled="branchForms[branch.id].method !== 'qz'"
+                                        />
+                                        <span>{{ cat.name }}</span>
+                                    </label>
                                 </div>
                             </div>
 

@@ -27,17 +27,21 @@ class Branch extends Model
     }
 
     /**
-     * @return array{mode: string, method: string, customer_printer: ?string, staff_printer: ?string}
+     * @return array{mode: string, method: string, customer_printer: ?string, staff_printer: ?string, staff_category_ids: array<int>}
      */
     public function normalizedPrinterSettings(): array
     {
         $settings = $this->printer_settings ?? [];
+        $staffCategoryIds = $settings['staff_category_ids'] ?? [];
+        $staffCategoryIds = is_array($staffCategoryIds) ? array_values(array_filter($staffCategoryIds, fn ($id) => is_numeric($id))) : [];
 
         return [
             'mode' => in_array($settings['mode'] ?? '', ['single', 'dual'], true) ? $settings['mode'] : 'single',
             'method' => in_array($settings['method'] ?? '', ['qz', 'browser'], true) ? $settings['method'] : 'browser',
             'customer_printer' => filled($settings['customer_printer'] ?? null) ? (string) $settings['customer_printer'] : null,
             'staff_printer' => filled($settings['staff_printer'] ?? null) ? (string) $settings['staff_printer'] : null,
+            // If empty => print all categories for the staff copy (safest default).
+            'staff_category_ids' => array_map(fn ($id) => (int) $id, $staffCategoryIds),
         ];
     }
 

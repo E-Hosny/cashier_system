@@ -9,6 +9,7 @@ use App\Models\FridgeProductConfig;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Models\Branch;
 use App\Models\Tenant;
 use App\Support\BranchContext;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -128,6 +129,7 @@ class CashierController extends Controller
         $data = $request->validate([
             'total_price' => 'required|numeric',
             'payment_method' => 'required|string',
+            'staff_notes' => 'nullable|string|max:1000',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
@@ -160,6 +162,7 @@ class CashierController extends Controller
                 $orderData = [
                     'total' => $data['total_price'],
                     'payment_method' => $data['payment_method'],
+                    'staff_notes' => filled($data['staff_notes'] ?? null) ? trim($data['staff_notes']) : null,
                     'status' => 'completed',
                     'invoice_number' => InvoiceNumberService::generateInvoiceNumber(),
                 ];
@@ -371,10 +374,14 @@ class CashierController extends Controller
 
     public function invoiceHtml($orderId)
     {
-        $order = Order::select('id', 'total', 'created_at', 'invoice_number', 'tenant_id')
-            ->with(['items' => function($query) {
-                $query->select('order_id', 'product_name', 'quantity', 'price', 'size');
-            }])
+        $order = Order::select('id', 'total', 'created_at', 'invoice_number', 'tenant_id', 'staff_notes')
+            ->with([
+                'items' => function ($query) {
+                    // لازم product_id عشان نعرف category_id من المنتج أثناء طباعة نسخة العامل
+                    $query->select('order_id', 'product_id', 'product_name', 'quantity', 'price', 'size');
+                },
+                'items.product.category',
+            ])
             ->findOrFail($orderId);
 
         $logoUrl = $this->invoiceLogoUrl($order->tenant_id);
@@ -383,6 +390,23 @@ class CashierController extends Controller
             $copy = 'customer';
         }
         $qzMode = request()->boolean('qz');
+
+        // نسخة العامل: طباعة فئات محددة بدون أسعار
+        if ($copy === 'staff') {
+            $branchId = BranchContext::id();
+            if ($branchId) {
+                $branch = Branch::find($branchId);
+                $settings = $branch?->normalizedPrinterSettings() ?? [];
+                $staffCategoryIds = $settings['staff_category_ids'] ?? [];
+
+                if (is_array($staffCategoryIds) && ! empty($staffCategoryIds)) {
+                    $order->setRelation('items', $order->items->filter(function ($item) use ($staffCategoryIds) {
+                        $categoryId = $item->product?->category_id;
+                        return $categoryId !== null && in_array((int) $categoryId, $staffCategoryIds, true);
+                    })->values());
+                }
+            }
+        }
 
         return view('invoice-html', compact('order', 'logoUrl', 'copy', 'qzMode'));
     }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
+use App\Models\Category;
 use App\Models\Tenant;
 use App\Support\QzTrustInstaller;
 use Illuminate\Http\RedirectResponse;
@@ -21,11 +22,15 @@ class TenantSettingsController extends Controller
         abort_unless(Auth::user()?->hasRole('super admin'), 403);
 
         $tenant = $this->currentTenant();
+        $categories = Category::forProducts()
+            ->orderBy('name')
+            ->get(['id', 'name']);
 
         return Inertia::render('Admin/TenantSettings/Index', [
             'tenantName' => $tenant->name,
             'logoUrl' => $tenant->logo_url,
             'qzKeysConfigured' => QzTrustInstaller::keysExist(),
+            'categories' => $categories,
             'branches' => Branch::query()
                 ->where('tenant_id', $tenant->id)
                 ->where('is_active', true)
@@ -51,6 +56,8 @@ class TenantSettingsController extends Controller
             'method' => 'required|in:qz,browser',
             'customer_printer' => 'nullable|string|max:255',
             'staff_printer' => 'nullable|string|max:255',
+            'staff_category_ids' => 'nullable|array',
+            'staff_category_ids.*' => 'integer',
         ]);
 
         if ($data['method'] === 'qz' && empty($data['customer_printer'])) {
@@ -71,6 +78,7 @@ class TenantSettingsController extends Controller
                 'method' => $data['method'],
                 'customer_printer' => $data['customer_printer'] ?: null,
                 'staff_printer' => $data['staff_printer'] ?: null,
+                'staff_category_ids' => array_map('intval', $data['staff_category_ids'] ?? []),
             ],
         ]);
 
