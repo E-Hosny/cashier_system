@@ -377,8 +377,7 @@ class CashierController extends Controller
         $order = Order::select('id', 'total', 'created_at', 'invoice_number', 'tenant_id', 'staff_notes')
             ->with([
                 'items' => function ($query) {
-                    // لازم product_id عشان نعرف category_id من المنتج أثناء طباعة نسخة العامل
-                    $query->select('order_id', 'product_id', 'product_name', 'quantity', 'price', 'size');
+                    $query->select('order_id', 'product_id', 'product_name', 'quantity', 'price', 'size', 'from_fridge');
                 },
                 'items.product.category',
             ])
@@ -392,21 +391,30 @@ class CashierController extends Controller
         $qzMode = request()->boolean('qz');
         $staffHasItems = true;
 
-        // نسخة العامل: طباعة فئات محددة بدون أسعار
+        // نسخة العامل: فئات محددة بدون أسعار، واستبعاد منتجات التلاجة دائماً
         if ($copy === 'staff') {
             $branchId = BranchContext::id();
+            $staffCategoryIds = [];
+
             if ($branchId) {
                 $branch = Branch::find($branchId);
                 $settings = $branch?->normalizedPrinterSettings() ?? [];
                 $staffCategoryIds = $settings['staff_category_ids'] ?? [];
+            }
+
+            $order->setRelation('items', $order->items->filter(function ($item) use ($staffCategoryIds) {
+                if (! empty($item->from_fridge)) {
+                    return false;
+                }
 
                 if (is_array($staffCategoryIds) && ! empty($staffCategoryIds)) {
-                    $order->setRelation('items', $order->items->filter(function ($item) use ($staffCategoryIds) {
-                        $categoryId = $item->product?->category_id;
-                        return $categoryId !== null && in_array((int) $categoryId, $staffCategoryIds, true);
-                    })->values());
+                    $categoryId = $item->product?->category_id;
+
+                    return $categoryId !== null && in_array((int) $categoryId, $staffCategoryIds, true);
                 }
-            }
+
+                return true;
+            })->values());
 
             $staffHasItems = $order->items->isNotEmpty();
         }

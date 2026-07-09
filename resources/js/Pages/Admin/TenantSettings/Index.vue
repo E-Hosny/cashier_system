@@ -377,6 +377,7 @@ function saveBranchPrinters(branch) {
                                 </label>
                                 <p class="text-xs text-gray-500">
                                     اتركها فارغة = طباعة كل الفئات في نسخة العامل.
+                                    منتجات التلاجة لا تُطبع للعامل تلقائياً.
                                 </p>
 
                                 <div class="border border-gray-200 rounded-lg p-3 bg-gray-50 max-h-40 overflow-auto">
