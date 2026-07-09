@@ -2,6 +2,9 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
+    @if(($copy ?? 'customer') === 'staff' && empty($staffHasItems ?? true))
+        <meta name="qz-empty" content="1">
+    @endif
     <title>فاتورة</title>
     <style>
         body { 

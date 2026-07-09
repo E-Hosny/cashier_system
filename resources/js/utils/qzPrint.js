@@ -131,6 +131,10 @@ export async function fetchInvoiceHtml(orderId, copy = 'customer') {
     return response.text();
 }
 
+function isEmptyStaffCopy(html) {
+    return /<meta\s+name=["']qz-empty["']\s+content=["']1["']/i.test(html);
+}
+
 export async function printHtmlToPrinter(printerName, html) {
     if (!printerName) {
         throw new Error('اسم الطابعة غير محدد.');
@@ -161,7 +165,10 @@ export async function printInvoiceViaQz(orderId, settings) {
         await printHtmlToPrinter(settings.customer_printer, customerHtml);
 
         const staffHtml = await fetchInvoiceHtml(orderId, 'staff');
-        await printHtmlToPrinter(settings.staff_printer, staffHtml);
+        // لا تُرسل أمر طباعة لطابعة العامل إذا لم تكن هناك عناصر ضمن فئاتها
+        if (!isEmptyStaffCopy(staffHtml)) {
+            await printHtmlToPrinter(settings.staff_printer, staffHtml);
+        }
     } else {
         const html = await fetchInvoiceHtml(orderId, 'customer');
         await printHtmlToPrinter(settings.customer_printer, html);

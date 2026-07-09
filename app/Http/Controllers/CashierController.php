@@ -390,6 +390,7 @@ class CashierController extends Controller
             $copy = 'customer';
         }
         $qzMode = request()->boolean('qz');
+        $staffHasItems = true;
 
         // نسخة العامل: طباعة فئات محددة بدون أسعار
         if ($copy === 'staff') {
@@ -406,9 +407,11 @@ class CashierController extends Controller
                     })->values());
                 }
             }
+
+            $staffHasItems = $order->items->isNotEmpty();
         }
 
-        return view('invoice-html', compact('order', 'logoUrl', 'copy', 'qzMode'));
+        return view('invoice-html', compact('order', 'logoUrl', 'copy', 'qzMode', 'staffHasItems'));
     }
 
     protected function invoiceLogoUrl(?int $tenantId): ?string
