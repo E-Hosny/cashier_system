@@ -39,7 +39,7 @@ class EmployeeController extends Controller
         $isViewingTodayBusinessDay = $selectedAnchor === $maxAnchor;
 
         $employees = Employee::where('is_active', true)
-            ->with(['attendanceDependencyEmployee:id,name', 'attendanceGroup:id,name,max_present'])
+            ->with(['attendanceDependencyEmployee:id,name', 'attendanceGroup:id,name,max_present', 'workSchedules'])
             ->get();
 
         // إضافة معلومات الحضور والرواتب ليوم العمل المحدد (7 ص → 7 ص)
@@ -59,7 +59,7 @@ class EmployeeController extends Controller
             $employee->attendance_dependency_employee_name = optional($employee->attendanceDependencyEmployee)->name;
             $employee->attendance_group_name = optional($employee->attendanceGroup)->name;
             $employee->attendance_group_max_present = optional($employee->attendanceGroup)->max_present;
-            $employee->expected_checkin_display = $employee->formattedExpectedCheckinTime();
+            $employee->expected_checkin_display = $employee->scheduleSummaryForDisplay();
             $employee->expected_checkout_display = $employee->formattedExpectedCheckoutTime();
         });
 
@@ -110,10 +110,17 @@ class EmployeeController extends Controller
             'expected_checkout_time' => 'nullable|date_format:H:i',
             'grace_minutes' => 'nullable|integer|min:0|max:120',
             'late_deductions_enabled' => 'boolean',
+            'use_weekly_schedule' => 'boolean',
+            'work_schedules' => 'nullable|array',
+            'work_schedules.*.day_of_week' => 'required|integer|min:0|max:6',
+            'work_schedules.*.is_working' => 'boolean',
+            'work_schedules.*.expected_checkin_time' => 'nullable|date_format:H:i',
+            'work_schedules.*.expected_checkout_time' => 'nullable|date_format:H:i',
+            'work_schedules.*.grace_minutes' => 'nullable|integer|min:0|max:120',
         ]);
 
         if (! (auth()->user()?->hasAnyRole(['admin', 'super admin']) ?? false)) {
-            unset($validated['expected_checkin_time'], $validated['expected_checkout_time'], $validated['grace_minutes'], $validated['late_deductions_enabled']);
+            unset($validated['expected_checkin_time'], $validated['expected_checkout_time'], $validated['grace_minutes'], $validated['late_deductions_enabled'], $validated['use_weekly_schedule'], $validated['work_schedules']);
         }
 
         if (! (auth()->user()?->hasRole('super admin') ?? false)) {
@@ -128,7 +135,12 @@ class EmployeeController extends Controller
             $validated['attendance_group_max_present'] = null;
         }
 
-        Employee::create($validated);
+        $useWeeklySchedule = $request->boolean('use_weekly_schedule');
+        $workSchedules = $request->input('work_schedules', []);
+        unset($validated['use_weekly_schedule'], $validated['work_schedules']);
+
+        $employee = Employee::create($validated);
+        $this->syncWorkSchedules($employee, $useWeeklySchedule, $workSchedules);
 
         return redirect()->route('admin.employees.index')
             ->with('success', 'تم إضافة الموظف بنجاح');
@@ -139,10 +151,14 @@ class EmployeeController extends Controller
      */
     public function edit(Employee $employee)
     {
+        $employee->load('workSchedules');
+
         return Inertia::render('Admin/Employees/Edit', [
             'employee' => array_merge($employee->toArray(), [
                 'expected_checkin_time' => $employee->formattedExpectedCheckinTime(),
                 'expected_checkout_time' => $employee->formattedExpectedCheckoutTime(),
+                'use_weekly_schedule' => $employee->usesWeeklySchedule(),
+                'work_schedules' => $employee->getWorkSchedulesForForm(),
             ]),
             'employees' => Employee::where('is_active', true)
                 ->where('id', '!=', $employee->id)
@@ -175,10 +191,17 @@ class EmployeeController extends Controller
             'expected_checkout_time' => 'nullable|date_format:H:i',
             'grace_minutes' => 'nullable|integer|min:0|max:120',
             'late_deductions_enabled' => 'boolean',
+            'use_weekly_schedule' => 'boolean',
+            'work_schedules' => 'nullable|array',
+            'work_schedules.*.day_of_week' => 'required|integer|min:0|max:6',
+            'work_schedules.*.is_working' => 'boolean',
+            'work_schedules.*.expected_checkin_time' => 'nullable|date_format:H:i',
+            'work_schedules.*.expected_checkout_time' => 'nullable|date_format:H:i',
+            'work_schedules.*.grace_minutes' => 'nullable|integer|min:0|max:120',
         ]);
 
         if (! (auth()->user()?->hasAnyRole(['admin', 'super admin']) ?? false)) {
-            unset($validated['expected_checkin_time'], $validated['expected_checkout_time'], $validated['grace_minutes'], $validated['late_deductions_enabled']);
+            unset($validated['expected_checkin_time'], $validated['expected_checkout_time'], $validated['grace_minutes'], $validated['late_deductions_enabled'], $validated['use_weekly_schedule'], $validated['work_schedules']);
         }
 
         if (! (auth()->user()?->hasRole('super admin') ?? false)) {
@@ -193,7 +216,12 @@ class EmployeeController extends Controller
             $validated['attendance_group_max_present'] = null;
         }
 
+        $useWeeklySchedule = $request->boolean('use_weekly_schedule');
+        $workSchedules = $request->input('work_schedules', []);
+        unset($validated['use_weekly_schedule'], $validated['work_schedules']);
+
         $employee->update($validated);
+        $this->syncWorkSchedules($employee, $useWeeklySchedule, $workSchedules);
 
         return redirect()->route('admin.employees.index')
             ->with('success', 'تم تحديث بيانات الموظف بنجاح');
@@ -254,6 +282,7 @@ class EmployeeController extends Controller
             'checkin_time' => Carbon::now(),
         ]);
 
+        $employee->load('workSchedules');
         $lateResult = $this->lateDeductionService->applyOnCheckin($employee, $attendance);
 
         // إعادة تحميل الموظف مع السجلات الجديدة
@@ -275,11 +304,11 @@ class EmployeeController extends Controller
             'late_minutes' => $lateResult['late_minutes'],
         ];
 
-        if (($lateResult['late_minutes'] ?? 0) > 0) {
+        if (($lateResult['late_minutes'] ?? 0) > 0 && ! empty($lateResult['is_first_checkin'])) {
             $response['message'] = "تم تسجيل الحضور — تأخير {$lateResult['late_minutes']} دقيقة";
         }
 
-        if ($lateResult['discount']) {
+        if (! empty($lateResult['discount_created']) && $lateResult['discount']) {
             $response['auto_discount'] = [
                 'amount' => (float) $lateResult['discount']->amount,
                 'reason' => $lateResult['discount']->reason,
@@ -991,5 +1020,37 @@ class EmployeeController extends Controller
                 'message' => 'حدث خطأ أثناء إضافة الخصم: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $workSchedules
+     */
+    private function syncWorkSchedules(Employee $employee, bool $useWeeklySchedule, array $workSchedules): void
+    {
+        if (! $useWeeklySchedule) {
+            $employee->workSchedules()->delete();
+
+            return;
+        }
+
+        $submittedDays = collect($workSchedules)->pluck('day_of_week')->all();
+
+        foreach ($workSchedules as $row) {
+            $employee->workSchedules()->updateOrCreate(
+                ['day_of_week' => (int) $row['day_of_week']],
+                [
+                    'is_working' => (bool) ($row['is_working'] ?? false),
+                    'expected_checkin_time' => ! empty($row['expected_checkin_time']) ? $row['expected_checkin_time'] : null,
+                    'expected_checkout_time' => ! empty($row['expected_checkout_time']) ? $row['expected_checkout_time'] : null,
+                    'grace_minutes' => isset($row['grace_minutes']) && $row['grace_minutes'] !== '' && $row['grace_minutes'] !== null
+                        ? (int) $row['grace_minutes']
+                        : null,
+                ]
+            );
+        }
+
+        $employee->workSchedules()
+            ->whereNotIn('day_of_week', $submittedDays)
+            ->delete();
     }
 } 

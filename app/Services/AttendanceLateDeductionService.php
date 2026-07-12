@@ -11,45 +11,40 @@ use Carbon\Carbon;
 class AttendanceLateDeductionService
 {
     /**
-     * @return array{late_minutes: int|null, discount: EmployeeDiscount|null, rule: AttendanceDeductionRule|null}
+     * @return array{late_minutes: int|null, discount: EmployeeDiscount|null, rule: AttendanceDeductionRule|null, discount_created: bool, is_first_checkin: bool}
      */
     public function applyOnCheckin(Employee $employee, EmployeeAttendance $attendance): array
     {
         $checkinTime = Carbon::parse($attendance->checkin_time);
         $anchorDate = $this->businessDayAnchorForCheckin($checkinTime);
         $lateMinutes = $this->calculateLateMinutes($employee, $checkinTime);
+        $isFirstCheckin = $this->isFirstCheckinOfBusinessDay($employee, $attendance, $anchorDate);
 
-        if ($lateMinutes !== null) {
-            $attendance->late_minutes = $lateMinutes;
-            $attendance->save();
-        }
+        // التأخير لا يُحتسب إلا لأول حضور في يوم العمل؛ التحضير المتكرر لا يُسجَّل كتأخير.
+        $effectiveLateMinutes = $isFirstCheckin ? $lateMinutes : 0;
+
+        $attendance->late_minutes = $effectiveLateMinutes ?? 0;
+        $attendance->save();
 
         if ($lateMinutes === null || $lateMinutes <= 0) {
-            return ['late_minutes' => $lateMinutes, 'discount' => null, 'rule' => null];
+            return ['late_minutes' => $lateMinutes, 'discount' => null, 'rule' => null, 'discount_created' => false, 'is_first_checkin' => $isFirstCheckin];
         }
 
         if (! $employee->late_deductions_enabled) {
-            return ['late_minutes' => $lateMinutes, 'discount' => null, 'rule' => null];
+            return ['late_minutes' => $lateMinutes, 'discount' => null, 'rule' => null, 'discount_created' => false, 'is_first_checkin' => $isFirstCheckin];
         }
 
-        if (! $this->isFirstCheckinOfBusinessDay($employee, $checkinTime, $anchorDate)) {
-            return ['late_minutes' => $lateMinutes, 'discount' => null, 'rule' => null];
+        if (! $isFirstCheckin) {
+            return ['late_minutes' => $lateMinutes, 'discount' => null, 'rule' => null, 'discount_created' => false, 'is_first_checkin' => false];
+        }
+
+        if ($this->hasLateRuleDiscountForBusinessDay($employee, $anchorDate)) {
+            return ['late_minutes' => $lateMinutes, 'discount' => null, 'rule' => null, 'discount_created' => false, 'is_first_checkin' => true];
         }
 
         $rule = $this->findMatchingRule($employee, $lateMinutes);
         if (! $rule) {
-            return ['late_minutes' => $lateMinutes, 'discount' => null, 'rule' => null];
-        }
-
-        $existing = EmployeeDiscount::query()
-            ->where('employee_id', $employee->id)
-            ->where('discount_date', $anchorDate)
-            ->where('source', 'late_rule')
-            ->where('attendance_deduction_rule_id', $rule->id)
-            ->first();
-
-        if ($existing) {
-            return ['late_minutes' => $lateMinutes, 'discount' => $existing, 'rule' => $rule];
+            return ['late_minutes' => $lateMinutes, 'discount' => null, 'rule' => null, 'discount_created' => false, 'is_first_checkin' => true];
         }
 
         $reason = $this->buildReason($rule, $lateMinutes);
@@ -65,23 +60,25 @@ class AttendanceLateDeductionService
             'created_by' => auth()->id(),
         ]);
 
-        return ['late_minutes' => $lateMinutes, 'discount' => $discount, 'rule' => $rule];
+        return ['late_minutes' => $lateMinutes, 'discount' => $discount, 'rule' => $rule, 'discount_created' => true, 'is_first_checkin' => true];
     }
 
     public function calculateLateMinutes(Employee $employee, Carbon $checkinTime): ?int
     {
-        if (! $employee->expected_checkin_time) {
+        $schedule = $employee->getEffectiveWorkScheduleForCheckin($checkinTime);
+
+        if (! $schedule['is_working'] || ! $schedule['expected_checkin_time']) {
             return null;
         }
 
-        $timeParts = explode(':', (string) $employee->expected_checkin_time);
+        $timeParts = explode(':', (string) $schedule['expected_checkin_time']);
         $expected = $checkinTime->copy()->setTime(
             (int) ($timeParts[0] ?? 0),
             (int) ($timeParts[1] ?? 0),
             0
         );
 
-        $grace = (int) ($employee->grace_minutes ?? 0);
+        $grace = (int) ($schedule['grace_minutes'] ?? 0);
         $expected->addMinutes($grace);
 
         if ($checkinTime->lte($expected)) {
@@ -101,13 +98,23 @@ class AttendanceLateDeductionService
             ->first(fn (AttendanceDeductionRule $rule) => $rule->matchesLateMinutes($lateMinutes));
     }
 
-    private function isFirstCheckinOfBusinessDay(Employee $employee, Carbon $checkinTime, string $anchorDate): bool
+    private function isFirstCheckinOfBusinessDay(Employee $employee, EmployeeAttendance $attendance, string $anchorDate): bool
     {
         [$start, $end] = Employee::businessDayBoundsForAnchor($anchorDate);
 
         return ! $employee->attendanceRecords()
-            ->whereBetween('checkin_time', [$start, $end])
-            ->where('checkin_time', '<', $checkinTime)
+            ->where('id', '!=', $attendance->id)
+            ->where('checkin_time', '>=', $start)
+            ->where('checkin_time', '<', $end)
+            ->exists();
+    }
+
+    private function hasLateRuleDiscountForBusinessDay(Employee $employee, string $anchorDate): bool
+    {
+        return EmployeeDiscount::query()
+            ->where('employee_id', $employee->id)
+            ->where('discount_date', $anchorDate)
+            ->where('source', 'late_rule')
             ->exists();
     }
 

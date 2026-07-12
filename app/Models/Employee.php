@@ -96,6 +96,104 @@ class Employee extends Model
         return $this->belongsToMany(AttendanceDeductionRule::class, 'deduction_rule_employee');
     }
 
+    public function workSchedules()
+    {
+        return $this->hasMany(EmployeeWorkSchedule::class)->orderBy('day_of_week');
+    }
+
+    public function usesWeeklySchedule(): bool
+    {
+        return $this->relationLoaded('workSchedules')
+            ? $this->workSchedules->isNotEmpty()
+            : $this->workSchedules()->exists();
+    }
+
+    /**
+     * @return array{is_working: bool, expected_checkin_time: string|null, expected_checkout_time: string|null, grace_minutes: int}
+     */
+    public function getEffectiveWorkScheduleForCheckin(Carbon $checkinTime): array
+    {
+        $dayOfWeek = $checkinTime->dayOfWeek;
+        $weekly = $this->workSchedules->firstWhere('day_of_week', $dayOfWeek);
+
+        if ($this->usesWeeklySchedule()) {
+            if (! $weekly || ! $weekly->is_working) {
+                return [
+                    'is_working' => false,
+                    'expected_checkin_time' => null,
+                    'expected_checkout_time' => null,
+                    'grace_minutes' => 0,
+                ];
+            }
+
+            return [
+                'is_working' => true,
+                'expected_checkin_time' => $weekly->formattedExpectedCheckinTime()
+                    ?? $this->formattedExpectedCheckinTime(),
+                'expected_checkout_time' => $weekly->formattedExpectedCheckoutTime()
+                    ?? $this->formattedExpectedCheckoutTime(),
+                'grace_minutes' => $weekly->grace_minutes ?? (int) ($this->grace_minutes ?? 0),
+            ];
+        }
+
+        return [
+            'is_working' => (bool) $this->expected_checkin_time,
+            'expected_checkin_time' => $this->formattedExpectedCheckinTime(),
+            'expected_checkout_time' => $this->formattedExpectedCheckoutTime(),
+            'grace_minutes' => (int) ($this->grace_minutes ?? 0),
+        ];
+    }
+
+    /**
+     * @return array<int, array{day_of_week: int, label: string, is_working: bool, expected_checkin_time: string, expected_checkout_time: string, grace_minutes: int|null}>
+     */
+    public function getWorkSchedulesForForm(): array
+    {
+        $existing = $this->workSchedules->keyBy('day_of_week');
+
+        return collect(EmployeeWorkSchedule::DAY_LABELS)
+            ->map(function (string $label, int $dayOfWeek) use ($existing) {
+                $row = $existing->get($dayOfWeek);
+
+                return [
+                    'day_of_week' => $dayOfWeek,
+                    'label' => $label,
+                    'is_working' => $row ? (bool) $row->is_working : true,
+                    'expected_checkin_time' => $row?->formattedExpectedCheckinTime() ?? '',
+                    'expected_checkout_time' => $row?->formattedExpectedCheckoutTime() ?? '',
+                    'grace_minutes' => $row?->grace_minutes,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    public function scheduleSummaryForDisplay(): ?string
+    {
+        if ($this->usesWeeklySchedule()) {
+            $workingDays = $this->workSchedules->where('is_working', true);
+
+            if ($workingDays->isEmpty()) {
+                return 'بدون مواعيد';
+            }
+
+            $times = $workingDays
+                ->map(fn (EmployeeWorkSchedule $row) => $row->formattedExpectedCheckinTime()
+                    ?? $this->formattedExpectedCheckinTime())
+                ->filter()
+                ->unique()
+                ->values();
+
+            if ($times->count() === 1) {
+                return $times->first();
+            }
+
+            return 'مواعيد مخصصة';
+        }
+
+        return $this->formattedExpectedCheckinTime();
+    }
+
     public function formattedExpectedCheckinTime(): ?string
     {
         if (! $this->expected_checkin_time) {
