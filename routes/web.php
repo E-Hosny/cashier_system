@@ -94,6 +94,8 @@ Route::middleware([
     Route::post('/raw-materials/pending-receive', [RawMaterialController::class, 'receiveByBarcode'])->name('admin.raw-materials.pending-receive.store');
     Route::get('/raw-materials/labels/{label}/print', [RawMaterialController::class, 'printLabel'])->name('admin.raw-materials.labels.print');
     Route::post('/raw-materials/{raw_material}/labels', [RawMaterialController::class, 'storeLabel'])->name('admin.raw-materials.labels.store');
+    Route::post('/raw-materials/combined-labels', [RawMaterialController::class, 'storeCombinedLabel'])->name('admin.raw-materials.combined-labels.store');
+    Route::get('/raw-materials/branch-pulls-report', [RawMaterialController::class, 'allBranchesPullsReport'])->name('admin.raw-materials.branch-pulls-report');
     Route::resource('raw-materials', RawMaterialController::class, ['as' => 'admin'])->except(['show']);
     Route::get('raw-materials/{raw_material}/add-quantity', [RawMaterialController::class, 'addQuantityForm'])->name('admin.raw-materials.add-quantity');
     Route::post('raw-materials/{raw_material}/add-quantity', [RawMaterialController::class, 'addQuantity'])->name('admin.raw-materials.add-quantity.store');

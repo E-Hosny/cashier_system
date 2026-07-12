@@ -3,6 +3,7 @@
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4 no-print">
       <h1 class="text-3xl font-bold text-gray-800">🛢️ إدارة المواد الخام</h1>
       <div v-if="isCentralView" class="flex flex-wrap gap-2">
+        <a :href="route('admin.raw-materials.branch-pulls-report')" class="btn-green">📋 مسحوبات الفروع</a>
         <a v-if="canManageRawCategories" :href="route('admin.raw-material-categories.index')" class="btn-gray">📁 فئات المواد الخام</a>
         <a v-if="canAddRaw" :href="route('admin.raw-materials.create')" class="btn-primary">➕ إضافة مادة خام</a>
       </div>
@@ -69,6 +70,15 @@
         <option value="">الكل</option>
         <option v-for="c in rawMaterialCategories" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
       </select>
+      <button
+        v-if="canPrint"
+        type="button"
+        class="btn-indigo mr-auto"
+        :disabled="pendingLabelsLocal.length < 2"
+        @click="openCombineModal"
+      >
+        🔗 تجميع أكواد ({{ pendingLabelsLocal.length }} معلّق)
+      </button>
     </div>
 
     <!-- Mobile cards (best UX on phones) -->
@@ -517,6 +527,99 @@
       </div>
     </div>
 
+    <!-- تجميع أكواد معلّقة -->
+    <div
+      v-if="pageTab === 'materials' && isCentralView && combineModal.open"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 no-print"
+      @click.self="closeCombineModal"
+    >
+      <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col p-6" dir="rtl">
+        <h3 class="text-lg font-bold text-gray-800 mb-2">🔗 تجميع أكواد في كود واحد</h3>
+        <p class="text-sm text-gray-600 mb-4">
+          اختر الأكواد المكوّدة والمعلّقة (لم تُسحَب بعد). عند مسح الكود المجمّع في الفرع تُضاف كل المواد كأن كل كود مُسح على حدة.
+        </p>
+
+        <template v-if="!combineModal.created">
+          <div v-if="pendingLabelsLocal.length === 0" class="text-center text-gray-500 py-8">
+            لا توجد أكواد معلّقة للتجميع.
+          </div>
+          <div v-else class="overflow-y-auto border rounded-lg mb-4 flex-1 min-h-0">
+            <table class="w-full text-sm">
+              <thead class="bg-gray-100 sticky top-0">
+                <tr>
+                  <th class="p-2 w-10"></th>
+                  <th class="p-2 text-right">الكود</th>
+                  <th class="p-2 text-right">المادة</th>
+                  <th class="p-2 text-right">القطع</th>
+                  <th class="p-2 text-right">التاريخ</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="row in pendingLabelsLocal"
+                  :key="row.id"
+                  class="border-t hover:bg-gray-50 cursor-pointer"
+                  @click="toggleCombineSelection(row.id)"
+                >
+                  <td class="p-2 text-center">
+                    <input
+                      type="checkbox"
+                      :checked="combineModal.selectedIds.includes(row.id)"
+                      class="rounded"
+                      @click.stop
+                      @change="toggleCombineSelection(row.id)"
+                    />
+                  </td>
+                  <td class="p-2 font-mono text-xs">{{ row.label_code }}</td>
+                  <td class="p-2">{{ row.product_name }}</td>
+                  <td class="p-2">{{ row.piece_count }} {{ row.unit }}</td>
+                  <td class="p-2 text-gray-500">{{ row.created_at }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="text-sm text-indigo-800 mb-4">
+            المحدد: {{ combineModal.selectedIds.length }} كود
+            <span v-if="combineModal.selectedIds.length > 0 && combineModal.selectedIds.length < 2" class="text-red-600"> (اختر كودين على الأقل)</span>
+          </p>
+          <div class="flex gap-2 justify-end">
+            <button type="button" class="btn-gray" @click="closeCombineModal">إلغاء</button>
+            <button
+              type="button"
+              class="btn-indigo"
+              :disabled="combineModal.selectedIds.length < 2 || combineModal.processing"
+              @click="submitCombinedLabel"
+            >
+              {{ combineModal.processing ? 'جاري الإنشاء...' : 'إنشاء الكود المجمّع' }}
+            </button>
+          </div>
+        </template>
+
+        <template v-else>
+          <ul class="text-sm mb-4 space-y-2 border rounded-lg p-3 bg-gray-50 max-h-48 overflow-y-auto">
+            <li v-for="(item, i) in combineModal.resultItems" :key="i" class="flex justify-between gap-2">
+              <span>{{ item.product_name }} — {{ item.piece_count }} {{ item.unit }}</span>
+              <span class="font-mono text-xs text-gray-500">{{ item.source_label_code }}</span>
+            </li>
+          </ul>
+          <div class="flex justify-center mb-2">
+            <svg ref="combinedBarcodeSvgPreview" class="max-w-full h-auto"></svg>
+          </div>
+          <p class="font-mono text-center text-sm break-all mb-4">{{ combineModal.label_code }}</p>
+          <div class="flex gap-2 justify-end flex-wrap">
+            <a
+              v-if="combineModal.labelId"
+              :href="route('admin.raw-materials.labels.print', combineModal.labelId)"
+              target="_blank"
+              class="btn-indigo"
+            >🖨️ صفحة طباعة</a>
+            <button type="button" class="btn-blue-outline" @click="doPrintCombined">طباعة</button>
+            <button type="button" class="btn-gray" @click="closeCombineModal">إغلاق</button>
+          </div>
+        </template>
+      </div>
+    </div>
+
     <!-- ورقة طباعة منفصلة (خارج المودال) لتجنب مشاكل المعاينة -->
     <div
       v-if="pageTab === 'materials' && printModal.open && printModal.created && printModal.label_code"
@@ -529,6 +632,18 @@
         <svg ref="barcodeSvgPrint" class="sticker-barcode"></svg>
       </div>
       <p class="sticker-code">{{ printModal.label_code }}</p>
+    </div>
+
+    <div
+      v-if="pageTab === 'materials' && combineModal.open && combineModal.created && combineModal.label_code"
+      class="sticker-print-sheet print-only sticker-label"
+      dir="rtl"
+    >
+      <p class="sticker-title">كود مجمّع ({{ combineModal.resultItems.length }} مواد)</p>
+      <div class="sticker-barcode-wrap">
+        <svg ref="combinedBarcodeSvgPrint" class="sticker-barcode"></svg>
+      </div>
+      <p class="sticker-code">{{ combineModal.label_code }}</p>
     </div>
   </div>
 </template>
@@ -544,6 +659,10 @@ export default {
   components: { FridgePanel },
   props: {
     rawMaterials: Array,
+    pendingLabelsForBundle: {
+      type: Array,
+      default: () => [],
+    },
     rawMaterialCategories: {
       type: Array,
       default: () => [],
@@ -612,6 +731,7 @@ export default {
       viewScopeSelect: this.filters?.view_scope != null ? String(this.filters.view_scope) : 'central',
       filterCategoryId: this.filters?.category_id != null && this.filters.category_id !== '' ? String(this.filters.category_id) : '',
       rawMaterialsLocal: this.rawMaterials,
+      pendingLabelsLocal: this.pendingLabelsForBundle || [],
       printModal: {
         open: false,
         materialId: null,
@@ -626,6 +746,15 @@ export default {
         consume: 0,
       },
       branchStockSaving: false,
+      combineModal: {
+        open: false,
+        selectedIds: [],
+        processing: false,
+        created: false,
+        labelId: null,
+        label_code: '',
+        resultItems: [],
+      },
     };
   },
   watch: {
@@ -633,6 +762,12 @@ export default {
       deep: true,
       handler(val) {
         this.rawMaterialsLocal = val;
+      },
+    },
+    pendingLabelsForBundle: {
+      deep: true,
+      handler(val) {
+        this.pendingLabelsLocal = val || [];
       },
     },
     filters: {
@@ -696,6 +831,71 @@ export default {
     closePrintModal() {
       this.printModal.open = false;
     },
+    openCombineModal() {
+      this.combineModal = {
+        open: true,
+        selectedIds: [],
+        processing: false,
+        created: false,
+        labelId: null,
+        label_code: '',
+        resultItems: [],
+      };
+    },
+    closeCombineModal() {
+      this.combineModal.open = false;
+    },
+    toggleCombineSelection(id) {
+      const idx = this.combineModal.selectedIds.indexOf(id);
+      if (idx >= 0) {
+        this.combineModal.selectedIds.splice(idx, 1);
+      } else {
+        this.combineModal.selectedIds.push(id);
+      }
+    },
+    submitCombinedLabel() {
+      if (this.combineModal.selectedIds.length < 2) {
+        alert('اختر كودين على الأقل.');
+        return;
+      }
+
+      this.combineModal.processing = true;
+
+      window.axios
+        .post(route('admin.raw-materials.combined-labels.store'), {
+          label_ids: this.combineModal.selectedIds,
+        })
+        .then((res) => {
+          const d = res.data || {};
+          const bundledIds = [...this.combineModal.selectedIds];
+
+          this.pendingLabelsLocal = this.pendingLabelsLocal.filter(
+            (row) => !bundledIds.includes(row.id)
+          );
+
+          this.combineModal.created = true;
+          this.combineModal.labelId = d.id;
+          this.combineModal.label_code = d.label_code || '';
+          this.combineModal.resultItems = d.items || [];
+          this.combineModal.selectedIds = [];
+
+          this.$nextTick(() => {
+            if (!this.combineModal.label_code) return;
+            renderPreviewBarcode(this.$refs.combinedBarcodeSvgPreview, this.combineModal.label_code);
+            renderPrintBarcode(this.$refs.combinedBarcodeSvgPrint, this.combineModal.label_code);
+          });
+        })
+        .catch((err) => {
+          const msg = err?.response?.data?.message || 'حدث خطأ أثناء تجميع الأكواد.';
+          alert(msg);
+        })
+        .finally(() => {
+          this.combineModal.processing = false;
+        });
+    },
+    doPrintCombined() {
+      window.print();
+    },
     doPrint() {
       window.print();
     },
@@ -716,12 +916,25 @@ export default {
           this.printModal.created = true;
           this.printModal.label_code = d.label_code || '';
           this.printModal.consume_amount = d.consume_amount || null;
+          this.printModal.unit = d.unit || '';
 
           // Update pending pieces immediately on the list.
           const m = this.rawMaterialsLocal.find((x) => x.id === this.printModal.materialId);
           if (m) {
             m.pending_pieces = (parseFloat(m.pending_pieces) || 0) + n;
           }
+
+          this.pendingLabelsLocal.unshift({
+            id: d.id,
+            label_code: d.label_code,
+            product_id: this.printModal.materialId,
+            product_name: d.product_name || this.printModal.materialName,
+            piece_count: parseFloat(d.piece_count) || n,
+            consume_amount: parseFloat(d.consume_amount) || 0,
+            unit: d.unit || '',
+            consume_unit: d.consume_unit || '',
+            created_at: new Date().toLocaleString('ar-EG'),
+          });
 
           this.$nextTick(() => {
             if (!this.printModal.label_code) return;
@@ -863,6 +1076,9 @@ export default {
 }
 .btn-blue-outline {
   @apply border-2 border-sky-600 text-sky-700 hover:bg-sky-50 font-bold py-2 px-4 rounded-lg transition;
+}
+.btn-indigo {
+  @apply bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition shadow-md disabled:opacity-50 disabled:cursor-not-allowed;
 }
 .btn-yellow {
   @apply bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg transition;

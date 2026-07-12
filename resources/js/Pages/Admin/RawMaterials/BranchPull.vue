@@ -140,9 +140,17 @@ function submit() {
                                 </tr>
                                 <tr v-for="row in todayPulls" :key="row.id">
                                     <td class="border border-gray-200 p-2 text-center">{{ row.received_at }}</td>
-                                    <td class="border border-gray-200 p-2 text-center">{{ row.product_name }}</td>
                                     <td class="border border-gray-200 p-2 text-center">
-                                        {{ row.piece_count }} {{ row.unit }}
+                                        <div>{{ row.product_name }}</div>
+                                        <ul v-if="row.lines?.length" class="text-xs text-gray-600 mt-1 space-y-0.5">
+                                            <li v-for="(line, i) in row.lines" :key="i">
+                                                {{ line.product_name }} — {{ line.piece_count }} {{ line.unit }}
+                                            </li>
+                                        </ul>
+                                    </td>
+                                    <td class="border border-gray-200 p-2 text-center">
+                                        <template v-if="row.piece_count != null">{{ row.piece_count }} {{ row.unit }}</template>
+                                        <span v-else class="text-gray-500">—</span>
                                     </td>
                                     <td class="border border-gray-200 p-2 text-center font-mono text-xs">{{ row.label_code }}</td>
                                 </tr>
