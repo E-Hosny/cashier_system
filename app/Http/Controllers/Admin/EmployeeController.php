@@ -65,12 +65,18 @@ class EmployeeController extends Controller
 
         $totalTodayAmount = $employees->sum('today_amount');
         $totalTodayHours = $employees->sum('today_hours');
+        $totalDeliveredToday = $employees->sum(function ($employee) {
+            $delivery = $employee->today_delivery_status;
+
+            return ($delivery && $delivery->isDelivered()) ? (float) $delivery->total_amount : 0;
+        });
         $currentPeriodText = Employee::periodTextForAnchorDate($selectedAnchor);
 
         return Inertia::render('Admin/Employees/Index', [
             'employees' => $employees,
             'totalTodayAmount' => $totalTodayAmount,
             'totalTodayHours' => $totalTodayHours,
+            'totalDeliveredToday' => round($totalDeliveredToday, 2),
             'currentPeriodText' => $currentPeriodText,
             'selectedDate' => $selectedAnchor,
             'maxSelectableDate' => $maxAnchor,

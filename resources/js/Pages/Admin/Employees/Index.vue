@@ -52,7 +52,7 @@
 
 
           <!-- إحصائيات سريعة -->
-          <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
             <div class="bg-blue-50 p-4 rounded-lg">
               <div class="text-blue-600 text-2xl font-bold">{{ employees.length }}</div>
               <div class="text-blue-800 text-sm">إجمالي الموظفين</div>
@@ -80,6 +80,13 @@
             <div class="bg-orange-50 p-4 rounded-lg">
               <div class="text-orange-600 text-2xl font-bold">{{ updatedTotalTodayHours.toFixed(2) }}</div>
               <div class="text-orange-800 text-sm">{{ isViewingTodayBusinessDay ? 'إجمالي الساعات اليوم' : 'إجمالي الساعات للفترة المحددة' }}</div>
+            </div>
+            <div class="bg-teal-50 p-4 rounded-lg">
+              <div class="text-teal-600 text-2xl font-bold">{{ formatPrice(updatedTotalDeliveredToday) }}</div>
+              <div class="text-teal-800 text-sm">{{ isViewingTodayBusinessDay ? 'إجمالي المسلم اليوم' : 'إجمالي المسلم (الفترة المحددة)' }}</div>
+              <div v-if="updatedDeliveredEmployeesCount > 0" class="text-xs text-gray-600 mt-1">
+                {{ updatedDeliveredEmployeesCount }} موظف
+              </div>
             </div>
           </div>
 
@@ -350,6 +357,7 @@ export default {
     employees: Array,
     totalTodayAmount: Number,
     totalTodayHours: Number,
+    totalDeliveredToday: { type: Number, default: 0 },
     currentPeriodText: String,
     selectedDate: String,
     maxSelectableDate: String,
@@ -394,6 +402,18 @@ export default {
     },
     updatedTotalTodayDiscounts() {
       return this.employees.reduce((total, emp) => total + (emp.today_discount_total || 0), 0);
+    },
+    updatedTotalDeliveredToday() {
+      return this.employees.reduce((total, emp) => {
+        if (emp.is_salary_delivered && emp.today_delivery_status?.total_amount) {
+          return total + Number(emp.today_delivery_status.total_amount);
+        }
+
+        return total;
+      }, 0);
+    },
+    updatedDeliveredEmployeesCount() {
+      return this.employees.filter(emp => emp.is_salary_delivered).length;
     },
   },
   methods: {

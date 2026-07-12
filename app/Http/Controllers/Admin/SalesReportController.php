@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\Category;
-use App\Models\Employee;
 use App\Models\Expense;
 use App\Models\OrderItem;
 use App\Models\Product;
@@ -210,30 +209,22 @@ class SalesReportController extends Controller
 
     protected function sumDeliveredSalariesForReport(string $dateFrom, ?string $dateTo, ?int $hubReportBranchId): float
     {
-        $q = Employee::query()->where('is_active', true);
-        if ($hubReportBranchId !== null) {
-            $q->where('branch_id', $hubReportBranchId);
+        $query = SalaryDelivery::query()
+            ->where('status', 'delivered')
+            ->whereHas('employee', function ($q) use ($hubReportBranchId) {
+                $q->where('is_active', true);
+                if ($hubReportBranchId !== null) {
+                    $q->where('branch_id', $hubReportBranchId);
+                }
+            });
+
+        if ($dateTo) {
+            $query->whereBetween('salary_date', [$dateFrom, $dateTo]);
+        } else {
+            $query->where('salary_date', $dateFrom);
         }
 
-        return (float) $q->get()->sum(function (Employee $employee) use ($dateFrom, $dateTo) {
-            if ($dateTo) {
-                $amount = $employee->getAmountForPeriod($dateFrom, $dateTo);
-                $hasDelivered = SalaryDelivery::where('employee_id', $employee->id)
-                    ->where('status', 'delivered')
-                    ->whereBetween('salary_date', [$dateFrom, $dateTo])
-                    ->exists();
-
-                return $hasDelivered ? $amount : 0;
-            }
-
-            $amount = $employee->getAmountForPeriod($dateFrom, $dateFrom);
-            $delivered = SalaryDelivery::where('employee_id', $employee->id)
-                ->where('status', 'delivered')
-                ->where('salary_date', $dateFrom)
-                ->exists();
-
-            return $delivered ? $amount : 0;
-        });
+        return (float) $query->sum('total_amount');
     }
 
     /**
@@ -325,47 +316,34 @@ class SalesReportController extends Controller
      */
     protected function branchSalaryTotals(string $dateFrom, ?string $dateTo): array
     {
-        $amountsByBranchKey = [];
+        $query = SalaryDelivery::query()
+            ->where('salary_deliveries.status', 'delivered')
+            ->join('employees', 'salary_deliveries.employee_id', '=', 'employees.id')
+            ->where('employees.is_active', true);
 
-        Employee::query()->where('is_active', true)->get()->each(function (Employee $employee) use ($dateFrom, $dateTo, &$amountsByBranchKey) {
-            if ($dateTo) {
-                $amount = $employee->getAmountForPeriod($dateFrom, $dateTo);
-                $hasDelivered = SalaryDelivery::where('employee_id', $employee->id)
-                    ->where('status', 'delivered')
-                    ->whereBetween('salary_date', [$dateFrom, $dateTo])
-                    ->exists();
-            } else {
-                $amount = $employee->getAmountForPeriod($dateFrom, $dateFrom);
-                $hasDelivered = SalaryDelivery::where('employee_id', $employee->id)
-                    ->where('status', 'delivered')
-                    ->where('salary_date', $dateFrom)
-                    ->exists();
-            }
+        if ($dateTo) {
+            $query->whereBetween('salary_deliveries.salary_date', [$dateFrom, $dateTo]);
+        } else {
+            $query->where('salary_deliveries.salary_date', $dateFrom);
+        }
 
-            if (! $hasDelivered) {
-                return;
-            }
+        $rows = $query
+            ->selectRaw('employees.branch_id, SUM(salary_deliveries.total_amount) as total_salaries')
+            ->groupBy('employees.branch_id')
+            ->get();
 
-            $bid = $employee->branch_id;
-            $key = $bid === null ? '__null__' : (string) $bid;
-            if (! isset($amountsByBranchKey[$key])) {
-                $amountsByBranchKey[$key] = ['branch_id' => $bid, 'total_salaries' => 0.0];
-            }
-            $amountsByBranchKey[$key]['total_salaries'] += (float) $amount;
-        });
-
-        $branchIds = collect($amountsByBranchKey)->pluck('branch_id')->filter();
+        $branchIds = $rows->pluck('branch_id')->filter();
         $names = Branch::whereIn('id', $branchIds)->pluck('name', 'id');
 
-        $mapped = collect($amountsByBranchKey)->map(function (array $row) use ($names) {
-            $bid = $row['branch_id'];
+        $mapped = $rows->map(function ($row) use ($names) {
+            $bid = $row->branch_id;
 
             return [
                 'branch_id' => $bid,
                 'branch_name' => $bid === null
                     ? 'بدون فرع'
                     : ($names[$bid] ?? ('فرع #'.$bid)),
-                'total_salaries' => (float) $row['total_salaries'],
+                'total_salaries' => (float) $row->total_salaries,
             ];
         });
 

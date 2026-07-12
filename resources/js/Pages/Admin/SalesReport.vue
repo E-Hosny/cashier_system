@@ -100,10 +100,43 @@
             </table>
           </div>
 
-          <!-- إجمالي المبيعات -->
-          <div v-if="sales.length > 0" class="mt-6 text-xl font-bold text-center bg-gray-200 p-4 rounded-lg">
-            💵 إجمالي المبيعات: {{ formatPrice(totalSales) }}
+          <!-- ملخص الإجماليات -->
+          <div v-if="sales.length > 0" class="mt-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div class="text-lg font-bold text-center bg-gray-200 p-4 rounded-lg">
+              <div class="text-gray-800 text-sm mb-1">💵 إجمالي المبيعات</div>
+              <div class="text-xl">{{ formatPrice(totalSales) }}</div>
+            </div>
+
+            <div
+              class="text-lg font-bold text-center bg-gray-100 p-4 rounded-lg cursor-pointer hover:bg-gray-200 transition-colors"
+              @click="goToExpenses"
+            >
+              <div class="text-gray-800 text-sm mb-1">💸 إجمالي المصروفات</div>
+              <div class="text-xl text-red-700">{{ formatPrice(totalExpenses) }}</div>
+              <span class="text-xs text-blue-600 block mt-2">عرض التفاصيل</span>
+            </div>
+
+            <div
+              class="text-lg font-bold text-center bg-orange-100 p-4 rounded-lg cursor-pointer hover:bg-orange-200 transition-colors"
+              @click="goToEmployees"
+            >
+              <div class="text-gray-800 text-sm mb-1">👥 إجمالي الرواتب المسلمة</div>
+              <div class="text-xl text-orange-700">{{ formatPrice(totalSalaries) }}</div>
+              <span class="text-xs text-blue-600 block mt-2">عرض التفاصيل</span>
+            </div>
+
+            <div class="text-lg font-bold text-center bg-indigo-100 p-4 rounded-lg">
+              <div class="text-gray-800 text-sm mb-1">📊 الصافي</div>
+              <div class="text-xl" :class="netTotal >= 0 ? 'text-indigo-700' : 'text-red-700'">
+                {{ formatPrice(netTotal) }}
+              </div>
+              <span class="text-xs text-gray-600 block mt-2">المبيعات − المصروفات − الرواتب</span>
+            </div>
           </div>
+
+          <p v-if="sales.length > 0 && getSelectedDateText()" class="mt-2 text-sm text-gray-500 text-center">
+            الفترة: {{ getSelectedDateText() }}
+          </p>
 
           <div v-if="aggregateAllBranches && branchSalesSummary && branchSalesSummary.length" class="mt-6">
             <h3 class="text-lg font-bold text-gray-800 mb-3 text-end">توزيع المبيعات حسب الفرع</h3>
@@ -125,22 +158,6 @@
             </div>
           </div>
           
-          <!-- خانة المشتريات معلقة مؤقتاً -->
-          <!-- <div v-if="sales.length > 0" class="mt-2 text-lg font-bold text-center bg-gray-100 p-3 rounded-lg">
-            🛒 إجمالي المشتريات: {{ formatPrice(totalPurchases) }}
-          </div> -->
-          
-          <!-- إجمالي المصروفات مع رابط -->
-          <div v-if="sales.length > 0" class="mt-2 text-lg font-bold text-center bg-gray-100 p-3 rounded-lg cursor-pointer hover:bg-gray-200 transition-colors" @click="goToExpenses">
-            💸 إجمالي المصروفات: {{ formatPrice(totalExpenses) }}
-            <span class="text-sm text-blue-600 block mt-1">
-              اضغط هنا لعرض تفاصيل المصروفات 
-              <span v-if="getSelectedDateText()" class="text-gray-600">
-                ({{ getSelectedDateText() }})
-              </span>
-            </span>
-          </div>
-
           <div v-if="aggregateAllBranches && branchExpenseSummary && branchExpenseSummary.length" class="mt-6">
             <h3 class="text-lg font-bold text-gray-800 mb-3 text-end">توزيع المصروفات حسب الفرع</h3>
             <div class="overflow-x-auto rounded-lg border">
@@ -161,26 +178,15 @@
             </div>
           </div>
 
-          <!-- إجمالي الرواتب مع رابط -->
-          <div v-if="sales.length > 0" class="mt-2 text-lg font-bold text-center bg-orange-100 p-3 rounded-lg cursor-pointer hover:bg-orange-200 transition-colors" @click="goToEmployees">
-            👥 إجمالي الرواتب: {{ formatPrice(totalSalaries) }}
-            <span class="text-sm text-blue-600 block mt-1">
-              اضغط هنا لعرض تفاصيل الموظفين 
-              <span v-if="getSelectedDateText()" class="text-gray-600">
-                ({{ getSelectedDateText() }})
-              </span>
-            </span>
-          </div>
-
           <div v-if="aggregateAllBranches && branchSalarySummary && branchSalarySummary.length" class="mt-6">
-            <h3 class="text-lg font-bold text-gray-800 mb-3 text-end">توزيع الرواتب حسب الفرع</h3>
-            <p class="text-sm text-gray-600 mb-2 text-end">يُحسب كل صف من الرواتب المسلَّمة فقط خلال الفترة المحددة (نفس منطق الإجمالي أعلاه).</p>
+            <h3 class="text-lg font-bold text-gray-800 mb-3 text-end">توزيع الرواتب المسلمة حسب الفرع</h3>
+            <p class="text-sm text-gray-600 mb-2 text-end">يُحسب كل صف من المبالغ المسلَّمة فعلاً فقط خلال الفترة المحددة.</p>
             <div class="overflow-x-auto rounded-lg border">
               <table class="w-full bg-white text-end">
                 <thead class="bg-gray-100">
                   <tr>
                     <th class="p-3">الفرع</th>
-                    <th class="p-3">إجمالي الرواتب</th>
+                    <th class="p-3">إجمالي المسلم</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -270,7 +276,10 @@ export default {
         return this.products;
       }
       return this.products.filter(product => product.category_id == this.selectedCategoryId);
-    }
+    },
+    netTotal() {
+      return Number(this.totalSales || 0) - Number(this.totalExpenses || 0) - Number(this.totalSalaries || 0);
+    },
   },
   mounted() {
     console.log('تم تحميل الصفحة');
