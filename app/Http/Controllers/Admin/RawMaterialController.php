@@ -11,6 +11,7 @@ use App\Models\Employee;
 use App\Models\Product;
 use App\Models\RawMaterialPendingLabel;
 use App\Models\RawMaterialPendingLabelItem;
+use App\Models\FridgePendingLabel;
 use App\Models\StockMovement;
 use App\Support\BranchContext;
 use Carbon\Carbon;
@@ -283,30 +284,57 @@ class RawMaterialController extends Controller
 
         [$dayStart, $dayEnd] = Employee::businessDayBoundsForAnchor($selectedDate);
 
-        $query = RawMaterialPendingLabel::query()
+        $rawQuery = RawMaterialPendingLabel::query()
             ->with(['product:id,name,unit', 'items.product:id,name,unit', 'branch:id,name'])
             ->where('status', RawMaterialPendingLabel::STATUS_RECEIVED)
             ->whereNotNull('branch_id')
-            ->whereBetween('received_at', [$dayStart, $dayEnd])
-            ->orderByDesc('received_at');
+            ->whereBetween('received_at', [$dayStart, $dayEnd]);
+
+        $fridgeQuery = FridgePendingLabel::query()
+            ->with(['product:id,name', 'items.product:id,name', 'branch:id,name'])
+            ->where('status', FridgePendingLabel::STATUS_RECEIVED)
+            ->whereNotNull('branch_id')
+            ->whereBetween('received_at', [$dayStart, $dayEnd]);
 
         if ($branchFilter) {
-            $query->where('branch_id', $branchFilter);
+            $rawQuery->where('branch_id', $branchFilter);
+            $fridgeQuery->where('branch_id', $branchFilter);
         }
 
-        $pulls = $query->get()->map(function (RawMaterialPendingLabel $label) {
+        $rawPulls = $rawQuery->get()->map(function (RawMaterialPendingLabel $label) {
             $row = $this->formatPullRow($label);
+            $row['row_key'] = 'raw-'.$label->id;
+            $row['type'] = 'raw';
+            $row['type_label'] = 'مواد خام';
             $row['branch_id'] = $label->branch_id;
             $row['branch_name'] = $label->branch?->name ?? '—';
 
             return $row;
-        })->values();
+        });
+
+        $fridgePulls = $fridgeQuery->get()->map(function (FridgePendingLabel $label) {
+            $row = $this->formatFridgePullRow($label);
+            $row['row_key'] = 'fridge-'.$label->id;
+            $row['type'] = 'fridge';
+            $row['type_label'] = 'تلاجة';
+            $row['branch_id'] = $label->branch_id;
+            $row['branch_name'] = $label->branch?->name ?? '—';
+
+            return $row;
+        });
+
+        $pulls = $rawPulls
+            ->concat($fridgePulls)
+            ->sortByDesc(fn (array $row) => $row['received_at'] ?? '')
+            ->values();
 
         $summaryByBranch = $pulls
             ->groupBy('branch_name')
             ->map(fn ($items, $branchName) => [
                 'branch_name' => $branchName,
                 'pull_count' => $items->count(),
+                'raw_count' => $items->where('type', 'raw')->count(),
+                'fridge_count' => $items->where('type', 'fridge')->count(),
             ])
             ->values()
             ->sortBy('branch_name')
@@ -322,6 +350,8 @@ class RawMaterialController extends Controller
             'businessDayLabel' => Employee::periodTextForAnchorDate($selectedDate),
             'summaryByBranch' => $summaryByBranch,
             'totalPulls' => $pulls->count(),
+            'totalRawPulls' => $rawPulls->count(),
+            'totalFridgePulls' => $fridgePulls->count(),
             'hubBranches' => $hubBranches,
             'filters' => [
                 'branch_id' => $branchFilter ? (string) $branchFilter : '',
@@ -587,6 +617,30 @@ class RawMaterialController extends Controller
                 'product_name' => $line->product?->name,
                 'piece_count' => (float) $line->piece_count,
                 'unit' => $line->product?->unit ?? '',
+            ])->values()->all() : [],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function formatFridgePullRow(FridgePendingLabel $label): array
+    {
+        $lines = $label->resolveLines();
+        $combined = $lines->count() > 1;
+
+        return [
+            'id' => $label->id,
+            'received_at' => $label->received_at?->format('Y-m-d H:i'),
+            'product_name' => $combined
+                ? 'كود مجمّع ('.$lines->count().' منتجات)'
+                : ($lines->first()?->product?->name ?? '—'),
+            'piece_count' => $combined ? null : (float) ($lines->first()?->unit_count ?? 0),
+            'unit' => $combined ? '' : 'وحدة',
+            'label_code' => $label->label_code,
+            'lines' => $combined ? $lines->map(fn ($item) => [
+                'product_name' => $item->product?->name,
+                'piece_count' => (float) $item->unit_count,
+                'unit' => 'وحدة',
+                'size' => $item->size ?? '',
             ])->values()->all() : [],
         ];
     }

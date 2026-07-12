@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import { translateSize } from '@/utils/productSizes';
 
 const props = defineProps({
     pulls: { type: Array, default: () => [] },
@@ -10,6 +11,8 @@ const props = defineProps({
     businessDayLabel: { type: String, default: '' },
     summaryByBranch: { type: Array, default: () => [] },
     totalPulls: { type: Number, default: 0 },
+    totalRawPulls: { type: Number, default: 0 },
+    totalFridgePulls: { type: Number, default: 0 },
     hubBranches: { type: Array, default: () => [] },
     filters: { type: Object, default: () => ({ branch_id: '' }) },
 });
@@ -42,13 +45,22 @@ function applyFilters() {
         replace: true,
     });
 }
+
+function lineLabel(line, rowType) {
+    const qty = line.piece_count;
+    if (rowType === 'fridge') {
+        const size = line.size ? ` (${translateSize(line.size)})` : '';
+        return `${line.product_name}${size} — ${qty} ${line.unit || 'وحدة'}`;
+    }
+    return `${line.product_name} — ${qty} ${line.unit}`;
+}
 </script>
 
 <template>
     <AppLayout title="مسحوبات الفروع">
         <template #header>
             <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                📋 مسحوبات الفروع — المواد الخام
+                📋 مسحوبات الفروع
             </h2>
         </template>
 
@@ -94,18 +106,22 @@ function applyFilters() {
                         {{ businessDayLabel }}
                     </p>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
                         <div class="bg-green-50 rounded-lg p-4 text-center">
                             <div class="text-2xl font-bold text-green-700">{{ totalPulls }}</div>
                             <div class="text-sm text-green-900">إجمالي المسحوبات</div>
                         </div>
+                        <div class="bg-slate-50 rounded-lg p-4 text-center">
+                            <div class="text-2xl font-bold text-slate-700">{{ totalRawPulls }}</div>
+                            <div class="text-sm text-slate-900">🛢️ مواد خام</div>
+                        </div>
+                        <div class="bg-cyan-50 rounded-lg p-4 text-center">
+                            <div class="text-2xl font-bold text-cyan-700">{{ totalFridgePulls }}</div>
+                            <div class="text-sm text-cyan-900">🧊 تلاجة</div>
+                        </div>
                         <div class="bg-blue-50 rounded-lg p-4 text-center">
                             <div class="text-2xl font-bold text-blue-700">{{ summaryByBranch.length }}</div>
                             <div class="text-sm text-blue-900">فروع نشطة</div>
-                        </div>
-                        <div class="bg-slate-50 rounded-lg p-4 text-center">
-                            <div class="text-sm font-medium text-slate-800">يوم العمل (7 ص → 7 ص)</div>
-                            <div class="text-lg font-bold text-slate-700 mt-1">{{ selectedDate }}</div>
                         </div>
                     </div>
 
@@ -119,6 +135,8 @@ function applyFilters() {
                             >
                                 <span class="font-medium">{{ row.branch_name }}</span>
                                 <span class="bg-green-600 text-white rounded-full px-2 py-0.5 text-xs font-bold">{{ row.pull_count }}</span>
+                                <span v-if="row.raw_count" class="text-xs text-slate-600">🛢️ {{ row.raw_count }}</span>
+                                <span v-if="row.fridge_count" class="text-xs text-cyan-700">🧊 {{ row.fridge_count }}</span>
                             </span>
                         </div>
                     </div>
@@ -130,25 +148,34 @@ function applyFilters() {
                                 <tr>
                                     <th class="border border-gray-200 p-3 text-right">الوقت</th>
                                     <th class="border border-gray-200 p-3 text-right">الفرع</th>
-                                    <th class="border border-gray-200 p-3 text-right">المادة</th>
-                                    <th class="border border-gray-200 p-3 text-right">القطع</th>
+                                    <th class="border border-gray-200 p-3 text-right">النوع</th>
+                                    <th class="border border-gray-200 p-3 text-right">المادة / المنتج</th>
+                                    <th class="border border-gray-200 p-3 text-right">الكمية</th>
                                     <th class="border border-gray-200 p-3 text-right">الكود</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr v-if="pulls.length === 0">
-                                    <td colspan="5" class="text-center p-8 text-gray-500">
+                                    <td colspan="6" class="text-center p-8 text-gray-500">
                                         لا توجد مسحوبات في يوم العمل المحدد.
                                     </td>
                                 </tr>
-                                <tr v-for="row in pulls" :key="row.id" class="hover:bg-gray-50">
+                                <tr v-for="row in pulls" :key="row.row_key" class="hover:bg-gray-50">
                                     <td class="border border-gray-200 p-3 whitespace-nowrap">{{ row.received_at }}</td>
                                     <td class="border border-gray-200 p-3 font-medium">{{ row.branch_name }}</td>
+                                    <td class="border border-gray-200 p-3">
+                                        <span
+                                            class="inline-block px-2 py-0.5 rounded text-xs font-semibold"
+                                            :class="row.type === 'fridge' ? 'bg-cyan-100 text-cyan-800' : 'bg-slate-200 text-slate-800'"
+                                        >
+                                            {{ row.type_label }}
+                                        </span>
+                                    </td>
                                     <td class="border border-gray-200 p-3">
                                         <div>{{ row.product_name }}</div>
                                         <ul v-if="row.lines?.length" class="text-xs text-gray-600 mt-1 space-y-0.5">
                                             <li v-for="(line, i) in row.lines" :key="i">
-                                                {{ line.product_name }} — {{ line.piece_count }} {{ line.unit }}
+                                                {{ lineLabel(line, row.type) }}
                                             </li>
                                         </ul>
                                     </td>
