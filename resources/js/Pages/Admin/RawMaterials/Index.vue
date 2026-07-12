@@ -543,7 +543,23 @@
           <div v-if="pendingLabelsLocal.length === 0" class="text-center text-gray-500 py-8">
             لا توجد أكواد معلّقة للتجميع.
           </div>
-          <div v-else class="overflow-y-auto border rounded-lg mb-4 flex-1 min-h-0">
+          <template v-else>
+            <div class="mb-3">
+              <input
+                v-model="combineModal.searchQuery"
+                type="text"
+                placeholder="بحث بالكود أو اسم المادة..."
+                class="w-full border border-gray-300 rounded-lg p-2.5 text-sm font-mono"
+                autocomplete="off"
+              />
+              <p v-if="combineModal.searchQuery.trim()" class="text-xs text-gray-500 mt-1">
+                عرض {{ filteredPendingLabelsForCombine.length }} من {{ pendingLabelsLocal.length }} كود
+              </p>
+            </div>
+            <div v-if="filteredPendingLabelsForCombine.length === 0" class="text-center text-gray-500 py-8 border rounded-lg mb-4">
+              لا توجد نتائج مطابقة للبحث.
+            </div>
+            <div v-else class="overflow-y-auto border rounded-lg mb-4 flex-1 min-h-0 max-h-[50vh]">
             <table class="w-full text-sm">
               <thead class="bg-gray-100 sticky top-0">
                 <tr>
@@ -556,7 +572,7 @@
               </thead>
               <tbody>
                 <tr
-                  v-for="row in pendingLabelsLocal"
+                  v-for="row in filteredPendingLabelsForCombine"
                   :key="row.id"
                   class="border-t hover:bg-gray-50 cursor-pointer"
                   @click="toggleCombineSelection(row.id)"
@@ -577,7 +593,9 @@
                 </tr>
               </tbody>
             </table>
-          </div>
+            </div>
+          </template>
+          <template v-if="pendingLabelsLocal.length > 0">
           <p class="text-sm text-indigo-800 mb-4">
             المحدد: {{ combineModal.selectedIds.length }} كود
             <span v-if="combineModal.selectedIds.length > 0 && combineModal.selectedIds.length < 2" class="text-red-600"> (اختر كودين على الأقل)</span>
@@ -593,6 +611,7 @@
               {{ combineModal.processing ? 'جاري الإنشاء...' : 'إنشاء الكود المجمّع' }}
             </button>
           </div>
+          </template>
         </template>
 
         <template v-else>
@@ -724,6 +743,17 @@ export default {
     showTableTools() {
       return !this.isCashier && (this.isAdmin || this.isSuperAdmin);
     },
+    filteredPendingLabelsForCombine() {
+      const q = (this.combineModal.searchQuery || '').trim().toLowerCase();
+      if (!q) {
+        return this.pendingLabelsLocal;
+      }
+      return this.pendingLabelsLocal.filter((row) => {
+        const code = (row.label_code || '').toLowerCase();
+        const name = (row.product_name || '').toLowerCase();
+        return code.includes(q) || name.includes(q);
+      });
+    },
   },
   data() {
     return {
@@ -749,6 +779,7 @@ export default {
       combineModal: {
         open: false,
         selectedIds: [],
+        searchQuery: '',
         processing: false,
         created: false,
         labelId: null,
@@ -835,6 +866,7 @@ export default {
       this.combineModal = {
         open: true,
         selectedIds: [],
+        searchQuery: '',
         processing: false,
         created: false,
         labelId: null,
