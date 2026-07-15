@@ -70,6 +70,7 @@
             <div class="bg-purple-50 p-4 rounded-lg">
               <div class="text-purple-600 text-2xl font-bold">{{ formatPrice(updatedTotalTodayAmount) }}</div>
               <div class="text-purple-800 text-sm">{{ isViewingTodayBusinessDay ? 'إجمالي الرواتب اليوم' : 'إجمالي الرواتب للفترة المحددة' }}</div>
+              <div v-if="isViewingTodayBusinessDay" class="text-xs text-gray-500 mt-1">بعد الانصراف وبعد التسليم فقط</div>
               <div v-if="updatedTotalTodayDiscounts > 0" class="text-xs text-red-600 mt-1">
                 خصومات: -{{ formatPrice(updatedTotalTodayDiscounts) }}
               </div>
@@ -101,7 +102,12 @@
                   <th class="p-4 text-right">الحالة</th>
                   <th class="p-4 text-right">سجلات الحضور</th>
                   <th class="p-4 text-right">{{ isViewingTodayBusinessDay ? 'الساعات اليوم' : 'الساعات (الفترة)' }}</th>
-                  <th class="p-4 text-right">{{ isViewingTodayBusinessDay ? 'المبلغ اليوم' : 'المبلغ (الفترة)' }}</th>
+                  <th class="p-4 text-right">
+                    <div>{{ isViewingTodayBusinessDay ? 'المبلغ اليوم' : 'المبلغ (الفترة)' }}</div>
+                    <div v-if="isViewingTodayBusinessDay" class="text-[11px] font-normal text-gray-500 mt-0.5">
+                      يظهر بعد الانصراف وبعد التسليم
+                    </div>
+                  </th>
                   <th class="p-4 text-right">حالة الراتب</th>
                   <th class="p-4 text-right">الإجراءات</th>
                 </tr>
@@ -162,15 +168,22 @@
                     {{ employee.today_hours.toFixed(2) }} ساعة
                   </td>
                   <td class="p-4">
-                    <div class="font-bold text-green-600">
-                      {{ formatPrice(employee.today_amount) }}
+                    <template v-if="shouldShowTodayAmount(employee)">
+                      <div class="font-bold text-green-600">
+                        {{ formatPrice(displayedTodayAmount(employee)) }}
+                      </div>
+                      <div v-if="employee.is_salary_delivered" class="text-[11px] text-green-700 mt-0.5">
+                        تم التسليم
+                      </div>
+                    </template>
+                    <div v-else class="text-xs text-gray-500 leading-relaxed" title="يظهر المبلغ بعد الانصراف وبعد التسليم">
+                      <span class="block text-gray-400">—</span>
+                      <span class="block mt-0.5">يظهر بعد الانصراف وبعد التسليم</span>
                     </div>
                     <div v-if="employee.today_discount_total > 0" class="text-xs text-red-600 mt-1 space-y-1">
-                      <!-- إذا كان هناك أكثر من خصم، نعرض الإجمالي -->
                       <div v-if="employee.today_discounts && employee.today_discounts.length > 1">
                         خصومات: -{{ formatPrice(employee.today_discount_total) }}
                       </div>
-                      <!-- عرض تفاصيل الخصومات -->
                       <div v-if="employee.today_discounts && employee.today_discounts.length > 0" class="mt-1 space-y-1">
                         <div v-for="discount in employee.today_discounts" :key="discount.id" class="border-r-2 border-red-300 pr-2">
                           <div class="font-medium">
@@ -191,10 +204,18 @@
                           'px-3 py-1 rounded-full text-xs font-medium inline-block',
                           employee.is_salary_delivered
                             ? 'bg-green-100 text-green-800'
-                            : (employee.today_amount > 0 ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-600')
+                            : (!hasCompletedCheckout(employee) || employee.is_present
+                              ? 'bg-gray-100 text-gray-600'
+                              : (employee.today_amount > 0 ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-600'))
                         ]"
                       >
-                        {{ employee.is_salary_delivered ? '✅ تم التسليم' : (employee.today_amount > 0 ? '⏳ في الانتظار' : '❌ لا يوجد مبلغ') }}
+                        {{
+                          employee.is_salary_delivered
+                            ? '✅ تم التسليم'
+                            : (!hasCompletedCheckout(employee) || employee.is_present
+                              ? '⏳ بانتظار الانصراف'
+                              : (employee.today_amount > 0 ? '⏳ في الانتظار' : '❌ لا يوجد مبلغ'))
+                        }}
                       </span>
                       <div v-if="employee.is_salary_delivered && employee.today_delivery_status" class="text-xs text-gray-500">
                         تاريخ التسليم: {{ formatDeliveryDate(employee.today_delivery_status.delivered_at) }}
@@ -267,7 +288,6 @@
 
                       <!-- زر الخصم -->
                       <button
-                        v-if="canManageEmployees"
                         @click="openDiscountModal(employee)"
                         :disabled="loading"
                         class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-sm font-medium disabled:opacity-50"
@@ -393,15 +413,22 @@ export default {
     absentEmployees() {
       return this.employees.filter(emp => !emp.is_present);
     },
-    // حساب الإحصائيات المحدثة
+    // حساب الإحصائيات المحدثة (للمبالغ: فقط بعد الانصراف في يوم العمل الحالي)
     updatedTotalTodayAmount() {
-      return this.employees.reduce((total, emp) => total + (emp.today_amount || 0), 0);
+      return this.employees.reduce((total, emp) => {
+        if (!this.shouldShowTodayAmount(emp)) {
+          return total;
+        }
+        return total + (Number(this.displayedTodayAmount(emp)) || 0);
+      }, 0);
     },
     updatedTotalTodayHours() {
       return this.employees.reduce((total, emp) => total + (emp.today_hours || 0), 0);
     },
     updatedTotalTodayDiscounts() {
-      return this.employees.reduce((total, emp) => total + (emp.today_discount_total || 0), 0);
+      return this.employees.reduce((total, emp) => {
+        return total + (emp.today_discount_total || 0);
+      }, 0);
     },
     updatedTotalDeliveredToday() {
       return this.employees.reduce((total, emp) => {
@@ -442,6 +469,25 @@ export default {
         hour: '2-digit',
         minute: '2-digit',
       });
+    },
+
+    /** المبلغ يظهر فقط بعد الانصراف وبعد التسليم (أو عند عرض يوم سابق) */
+    hasCompletedCheckout(employee) {
+      return Array.isArray(employee.today_attendance_records)
+        && employee.today_attendance_records.some((record) => !!record.checkout_time);
+    },
+    shouldShowTodayAmount(employee) {
+      if (!this.isViewingTodayBusinessDay) {
+        return true;
+      }
+      // يظهر فقط بعد تسليم الراتب (ويتطلب انصرافاً مسبقاً)
+      return !!employee.is_salary_delivered;
+    },
+    displayedTodayAmount(employee) {
+      if (employee.is_salary_delivered && employee.today_delivery_status?.total_amount != null) {
+        return employee.today_delivery_status.total_amount;
+      }
+      return employee.today_amount;
     },
     
     // دالة مساعدة للتحقق من حالة الحضور
@@ -522,11 +568,11 @@ export default {
             lastRecord.checkout_time = data.attendance.checkout_time;
           }
           
-          // تحديث الساعات والمبلغ
+          // تحديث الساعات والمبلغ داخلياً (المبلغ لا يُعرض إلا بعد التسليم)
           employee.today_hours = data.total_hours;
           employee.today_amount = data.total_amount;
           
-          alert(`تم تسجيل الانصراف بنجاح!\n\nالساعات: ${data.total_hours} ساعة\nالمبلغ: ${this.formatPrice(data.total_amount)}`);
+          alert(`تم تسجيل الانصراف بنجاح!\n\nالساعات: ${data.total_hours} ساعة`);
         } else {
           alert(data.message);
         }
