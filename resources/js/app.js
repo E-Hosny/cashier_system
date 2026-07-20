@@ -7,6 +7,7 @@ import { createInertiaApp, router } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 import PwaInstallPrompt from './Components/PwaInstallPrompt.vue';
+import PwaRefreshButton from './Components/PwaRefreshButton.vue';
 import { initPwa } from './Composables/usePwaInstall';
 
 const appName = import.meta.env.VITE_APP_NAME || 'نظام الكاشير';
@@ -37,6 +38,7 @@ createInertiaApp({
             render: () => h(Fragment, null, [
                 h(App, props),
                 h(PwaInstallPrompt),
+                h(PwaRefreshButton),
             ]),
         })
             .use(plugin)
