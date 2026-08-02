@@ -1029,6 +1029,44 @@ class EmployeeController extends Controller
     }
 
     /**
+     * إزالة خصم من موظف (سوبر أدمن فقط)
+     */
+    public function removeDiscount(Employee $employee, EmployeeDiscount $discount)
+    {
+        abort_unless(auth()->user()?->hasRole('super admin'), 403);
+
+        if ((int) $discount->employee_id !== (int) $employee->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'الخصم غير مرتبط بهذا الموظف.',
+            ], 404);
+        }
+
+        try {
+            $discountDate = Carbon::parse($discount->discount_date)->toDateString();
+            $discount->delete();
+
+            $employee->refresh();
+            $todayAmount = $employee->getAmountForBusinessDayAnchor($discountDate);
+            $discountTotal = $employee->getDiscountTotalForBusinessDayAnchor($discountDate);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'تم إزالة الخصم بنجاح',
+                'employee' => [
+                    'today_amount' => $todayAmount,
+                    'today_discount_total' => $discountTotal,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'حدث خطأ أثناء إزالة الخصم: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * @param  array<int, array<string, mixed>>  $workSchedules
      */
     private function syncWorkSchedules(Employee $employee, bool $useWeeklySchedule, array $workSchedules): void

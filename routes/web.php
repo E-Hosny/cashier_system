@@ -170,6 +170,7 @@ Route::middleware([
             Route::post('/employees/{employee}/deliver-salary-for-period', [EmployeeController::class, 'deliverSalaryForPeriod'])->name('admin.employees.deliver-salary-for-period');
             Route::post('/employees/{employee}/undo-salary-delivery-for-date', [EmployeeController::class, 'undoSalaryDeliveryForDate'])->name('admin.employees.undo-salary-delivery-for-date');
             Route::post('/employees/{employee}/add-discount', [EmployeeController::class, 'addDiscount'])->name('admin.employees.add-discount');
+            Route::delete('/employees/{employee}/discounts/{discount}', [EmployeeController::class, 'removeDiscount'])->name('admin.employees.remove-discount');
         });
 
         Route::middleware(['super_admin'])->prefix('employees/attendance-groups')->name('admin.employees.attendance-groups.')->group(function () {

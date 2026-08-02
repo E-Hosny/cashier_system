@@ -186,9 +186,21 @@
                       </div>
                       <div v-if="employee.today_discounts && employee.today_discounts.length > 0" class="mt-1 space-y-1">
                         <div v-for="discount in employee.today_discounts" :key="discount.id" class="border-r-2 border-red-300 pr-2">
-                          <div class="font-medium">
-                            -{{ formatPrice(discount.amount) }}
-                            <span v-if="discount.source === 'late_rule'" class="text-[10px] bg-amber-100 text-amber-800 px-1 rounded mr-1">تلقائي</span>
+                          <div class="font-medium flex items-center gap-2 flex-wrap">
+                            <span>
+                              -{{ formatPrice(discount.amount) }}
+                              <span v-if="discount.source === 'late_rule'" class="text-[10px] bg-amber-100 text-amber-800 px-1 rounded mr-1">تلقائي</span>
+                            </span>
+                            <button
+                              v-if="isSuperAdmin"
+                              type="button"
+                              @click="removeDiscount(employee, discount)"
+                              :disabled="loading"
+                              class="text-[10px] bg-red-100 hover:bg-red-200 text-red-700 px-1.5 py-0.5 rounded font-semibold disabled:opacity-50"
+                              title="إزالة هذا الخصم (سوبر أدمن فقط)"
+                            >
+                              إزالة
+                            </button>
                           </div>
                           <div v-if="discount.reason" class="text-gray-600 text-xs mt-0.5">
                             {{ discount.reason }}
@@ -396,16 +408,22 @@ export default {
   },
     computed: {
     isAdmin() {
-      return this.$page.props.auth.user?.roles?.includes('admin');
+      const roles = this.$page.props.auth.user?.roles;
+      return Array.isArray(roles) && roles.includes('admin');
     },
     isSuperAdmin() {
-      return this.$page.props.auth.user?.roles?.includes('super admin');
+      const roles = this.$page.props.auth.user?.roles;
+      return Array.isArray(roles) && roles.includes('super admin');
     },
     canManageEmployees() {
-      return this.$page.props.auth.user?.permissions?.includes('manage employee attendance') ||
-             this.$page.props.auth.user?.roles?.includes('admin') ||
-             this.$page.props.auth.user?.roles?.includes('cashier') ||
-             this.$page.props.auth.user?.roles?.includes('super admin');
+      const roles = this.$page.props.auth.user?.roles;
+      const permissions = this.$page.props.auth.user?.permissions;
+      return (Array.isArray(permissions) && permissions.includes('manage employee attendance')) ||
+             (Array.isArray(roles) && (
+               roles.includes('admin') ||
+               roles.includes('cashier') ||
+               roles.includes('super admin')
+             ));
     },
     presentEmployees() {
       return this.employees.filter(emp => emp.is_present);
@@ -730,6 +748,45 @@ export default {
           window.location.reload();
         } else {
           alert(data.message || 'حدث خطأ أثناء إضافة الخصم');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        alert('حدث خطأ في الاتصال بالخادم');
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async removeDiscount(employee, discount) {
+      if (!this.isSuperAdmin || !employee || !discount) return;
+
+      const amountLabel = this.formatPrice(discount.amount);
+      if (!confirm(`هل تريد إزالة الخصم بقيمة ${amountLabel} من الموظف ${employee.name}؟`)) {
+        return;
+      }
+
+      this.loading = true;
+      try {
+        const response = await fetch(route('admin.employees.remove-discount', [employee.id, discount.id]), {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'Accept': 'application/json',
+          },
+        });
+
+        const data = await response.json();
+
+        if (response.status === 403) {
+          alert('هذه العملية متاحة لدور سوبر أدمن فقط');
+          return;
+        }
+
+        if (data.success) {
+          window.location.reload();
+        } else {
+          alert(data.message || 'حدث خطأ أثناء إزالة الخصم');
         }
       } catch (error) {
         console.error('Error:', error);
