@@ -11,6 +11,8 @@ use App\Services\InventoryCountService;
 use App\Support\BranchContext;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Mpdf\Mpdf;
+use Symfony\Component\HttpFoundation\Response;
 
 class InventoryCountController extends Controller
 {
@@ -165,6 +167,73 @@ class InventoryCountController extends Controller
                 'tab' => 'materials',
             ])
             ->with('success', 'تم إلغاء الجرد دون تعديل المخزون.');
+    }
+
+    public function pdf(InventoryCount $inventoryCount): Response
+    {
+        $this->requireSuperAdminHub();
+
+        $inventoryCount->load([
+            'branch:id,name',
+            'starter:id,name',
+            'completer:id,name',
+            'items.product:id,category_id',
+            'items.product.category:id,name',
+        ]);
+
+        $rows = $inventoryCount->items
+            ->sortBy('product_name', SORT_NATURAL | SORT_FLAG_CASE)
+            ->values()
+            ->map(function (InventoryCountItem $item) {
+                $qpu = $item->quantityPerUnit();
+                $diffQty = $item->diff_qty !== null ? (float) $item->diff_qty : null;
+
+                return [
+                    'product_name' => $item->product_name,
+                    'category_name' => $item->product?->category?->name,
+                    'system_pieces' => $item->systemPieces(),
+                    'counted_pieces' => $item->countedPieces(),
+                    'diff_pieces' => $diffQty !== null ? round($diffQty / $qpu, 4) : null,
+                    'system_value' => round((float) $item->system_qty * (float) $item->unit_cost, 2),
+                    'diff_value' => $item->diff_value !== null ? (float) $item->diff_value : null,
+                    'is_counted' => (bool) $item->is_counted,
+                ];
+            })
+            ->all();
+
+        $tempDir = storage_path('app/mpdf-temp');
+        if (! is_dir($tempDir)) {
+            mkdir($tempDir, 0755, true);
+        }
+
+        $mpdf = new Mpdf([
+            'mode' => 'utf-8',
+            'format' => 'A4-L',
+            'default_font' => 'dejavusans',
+            'directionality' => 'rtl',
+            'margin_left' => 8,
+            'margin_right' => 8,
+            'margin_top' => 10,
+            'margin_bottom' => 10,
+            'tempDir' => $tempDir,
+        ]);
+
+        $html = view('inventory-count-pdf', [
+            'inventoryCount' => $inventoryCount,
+            'statusLabel' => $this->statusLabel($inventoryCount->status),
+            'rows' => $rows,
+        ])->render();
+
+        $mpdf->WriteHTML($html);
+
+        $branchSlug = preg_replace('/\s+/', '_', (string) ($inventoryCount->branch?->name ?: 'branch'));
+        $filename = "inventory_count_{$inventoryCount->id}_{$branchSlug}.pdf";
+
+        return response($mpdf->Output($filename, 'S'), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+            'Cache-Control' => 'private, max-age=0, must-revalidate',
+        ]);
     }
 
     /**

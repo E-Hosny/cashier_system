@@ -276,6 +276,12 @@ function printReport() {
                         </Link>
                     </div>
                     <div class="hidden sm:flex flex-wrap gap-2">
+                        <a
+                            :href="route('admin.raw-materials.inventory-counts.pdf', inventoryCount.id)"
+                            class="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-semibold"
+                        >
+                            📥 تحميل PDF
+                        </a>
                         <button
                             v-if="inventoryCount.is_completed"
                             type="button"
@@ -302,14 +308,22 @@ function printReport() {
                             ✅ إنهاء وموازنة
                         </button>
                     </div>
-                    <button
-                        v-if="inventoryCount.is_completed"
-                        type="button"
-                        class="sm:hidden px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold"
-                        @click="printReport"
-                    >
-                        🖨️ طباعة
-                    </button>
+                    <div class="sm:hidden flex flex-wrap gap-2">
+                        <a
+                            :href="route('admin.raw-materials.inventory-counts.pdf', inventoryCount.id)"
+                            class="px-3 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold"
+                        >
+                            📥 PDF
+                        </a>
+                        <button
+                            v-if="inventoryCount.is_completed"
+                            type="button"
+                            class="px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold"
+                            @click="printReport"
+                        >
+                            🖨️ طباعة
+                        </button>
+                    </div>
                 </div>
 
                 <div

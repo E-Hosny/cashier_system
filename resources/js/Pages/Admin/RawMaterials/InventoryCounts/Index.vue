@@ -128,11 +128,12 @@ function progressPercent(row) {
                                     <th class="p-3 text-right">التقدم</th>
                                     <th class="p-3 text-right">صافي فرق القيمة</th>
                                     <th class="p-3 text-center">عرض</th>
+                                    <th class="p-3 text-center">PDF</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr v-if="!counts.data?.length">
-                                    <td colspan="8" class="p-8 text-center text-gray-500">لا توجد عمليات جرد بعد.</td>
+                                    <td colspan="9" class="p-8 text-center text-gray-500">لا توجد عمليات جرد بعد.</td>
                                 </tr>
                                 <tr
                                     v-for="row in counts.data"
@@ -165,6 +166,14 @@ function progressPercent(row) {
                                         >
                                             فتح
                                         </Link>
+                                    </td>
+                                    <td class="p-3 text-center">
+                                        <a
+                                            :href="route('admin.raw-materials.inventory-counts.pdf', row.id)"
+                                            class="inline-block px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold"
+                                        >
+                                            📥 PDF
+                                        </a>
                                     </td>
                                 </tr>
                             </tbody>
@@ -246,12 +255,20 @@ function progressPercent(row) {
                                     </div>
                                 </div>
 
-                                <Link
-                                    :href="route('admin.raw-materials.inventory-counts.show', row.id)"
-                                    class="block w-full text-center px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-sm active:scale-[0.99]"
-                                >
-                                    {{ row.status === 'in_progress' ? '▶️ متابعة الجرد' : '📄 فتح التقرير' }}
-                                </Link>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <Link
+                                        :href="route('admin.raw-materials.inventory-counts.show', row.id)"
+                                        class="block w-full text-center px-3 py-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-sm active:scale-[0.99]"
+                                    >
+                                        {{ row.status === 'in_progress' ? '▶️ متابعة' : '📄 فتح' }}
+                                    </Link>
+                                    <a
+                                        :href="route('admin.raw-materials.inventory-counts.pdf', row.id)"
+                                        class="block w-full text-center px-3 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm active:scale-[0.99]"
+                                    >
+                                        📥 PDF
+                                    </a>
+                                </div>
                             </div>
                         </article>
                     </div>

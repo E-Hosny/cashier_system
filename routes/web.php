@@ -120,6 +120,8 @@ Route::middleware([
             ->name('admin.raw-materials.inventory-counts.index');
         Route::post('/raw-materials/inventory-counts/branches/{branch}/start', [InventoryCountController::class, 'start'])
             ->name('admin.raw-materials.inventory-counts.start');
+        Route::get('/raw-materials/inventory-counts/{inventoryCount}/pdf', [InventoryCountController::class, 'pdf'])
+            ->name('admin.raw-materials.inventory-counts.pdf');
         Route::get('/raw-materials/inventory-counts/{inventoryCount}', [InventoryCountController::class, 'show'])
             ->name('admin.raw-materials.inventory-counts.show');
         Route::put('/raw-materials/inventory-counts/{inventoryCount}/items/{item}', [InventoryCountController::class, 'updateItem'])
