@@ -11,6 +11,7 @@ use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\FridgeController;
 use App\Http\Controllers\Admin\RawMaterialController;
+use App\Http\Controllers\Admin\InventoryCountController;
 use App\Http\Controllers\Admin\RawMaterialCategoryController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\EmployeeController;
@@ -114,6 +115,22 @@ Route::middleware([
             ->name('admin.raw-materials.branch-stock.update');
         Route::put('/raw-materials/fridge/branch/{branch}/stocks/{config}', [FridgeController::class, 'updateBranchStock'])
             ->name('admin.fridge.branch-stock.update');
+
+        Route::get('/raw-materials/inventory-counts', [InventoryCountController::class, 'index'])
+            ->name('admin.raw-materials.inventory-counts.index');
+        Route::post('/raw-materials/inventory-counts/branches/{branch}/start', [InventoryCountController::class, 'start'])
+            ->name('admin.raw-materials.inventory-counts.start');
+        Route::get('/raw-materials/inventory-counts/{inventoryCount}', [InventoryCountController::class, 'show'])
+            ->name('admin.raw-materials.inventory-counts.show');
+        Route::put('/raw-materials/inventory-counts/{inventoryCount}/items/{item}', [InventoryCountController::class, 'updateItem'])
+            ->name('admin.raw-materials.inventory-counts.items.update');
+        Route::delete('/raw-materials/inventory-counts/{inventoryCount}/items/{item}', [InventoryCountController::class, 'clearItem'])
+            ->name('admin.raw-materials.inventory-counts.items.clear');
+        Route::post('/raw-materials/inventory-counts/{inventoryCount}/complete', [InventoryCountController::class, 'complete'])
+            ->name('admin.raw-materials.inventory-counts.complete');
+        Route::post('/raw-materials/inventory-counts/{inventoryCount}/cancel', [InventoryCountController::class, 'cancel'])
+            ->name('admin.raw-materials.inventory-counts.cancel');
+
         Route::get('/raw-material-categories', [RawMaterialCategoryController::class, 'index'])->name('admin.raw-material-categories.index');
         Route::post('/raw-material-categories', [RawMaterialCategoryController::class, 'store'])->name('admin.raw-material-categories.store');
         Route::put('/raw-material-categories/{category}', [RawMaterialCategoryController::class, 'update'])->name('admin.raw-material-categories.update');

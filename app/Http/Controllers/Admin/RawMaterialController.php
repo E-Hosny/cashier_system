@@ -13,6 +13,7 @@ use App\Models\RawMaterialPendingLabel;
 use App\Models\RawMaterialPendingLabelItem;
 use App\Models\FridgePendingLabel;
 use App\Models\StockMovement;
+use App\Services\InventoryCountService;
 use App\Support\BranchContext;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -187,6 +188,30 @@ class RawMaterialController extends Controller
             'todayPulls' => $todayPulls->values()->all(),
             'businessDayLabel' => Employee::periodTextForAnchorDate(Employee::businessDayAnchorFromNow()),
             'can_edit_stock' => auth()->user()?->hasRole('super admin') ?? false,
+            'active_inventory_count' => $this->activeInventoryCountSummary($branchId),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function activeInventoryCountSummary(int $branchId): ?array
+    {
+        if (! auth()->user()?->hasRole('super admin')) {
+            return null;
+        }
+
+        $open = app(InventoryCountService::class)->findOpenForBranch($branchId);
+        if (! $open) {
+            return null;
+        }
+
+        return [
+            'id' => $open->id,
+            'status' => $open->status,
+            'items_count' => $open->items_count,
+            'counted_items_count' => $open->counted_items_count,
+            'started_at' => optional($open->started_at)?->format('Y-m-d H:i'),
         ];
     }
 

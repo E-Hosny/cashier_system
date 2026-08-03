@@ -3,6 +3,7 @@
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4 no-print">
       <h1 class="text-3xl font-bold text-gray-800">🛢️ إدارة المواد الخام</h1>
       <div v-if="isCentralView" class="flex flex-wrap gap-2">
+        <a v-if="isSuperAdmin" :href="route('admin.raw-materials.inventory-counts.index')" class="btn-indigo">📊 تقارير الجرد</a>
         <a :href="route('admin.raw-materials.branch-pulls-report')" class="btn-green">📋 مسحوبات الفروع</a>
         <a v-if="canManageRawCategories" :href="route('admin.raw-material-categories.index')" class="btn-gray">📁 فئات المواد الخام</a>
         <a v-if="canAddRaw" :href="route('admin.raw-materials.create')" class="btn-primary">➕ إضافة مادة خام</a>
@@ -240,17 +241,51 @@
           <p v-if="branchDetail.can_edit_stock" class="text-sm text-amber-800 mt-1 font-medium">
             كسوبر أدمن: عدّل مخزون الفرع بالقطع أو بالوحدة الاستهلاكية — يُحدَّث الحقل الآخر تلقائياً.
           </p>
-        </div>
-        <div v-if="showTableTools" class="flex flex-wrap items-center gap-2">
-          <label class="text-gray-700 font-medium whitespace-nowrap">الفئة:</label>
-          <select
-            v-model="filterCategoryId"
-            class="border border-gray-300 rounded-lg p-2 min-w-[180px]"
-            @change="applyFilters"
+          <p
+            v-if="branchDetail.active_inventory_count"
+            class="text-sm text-indigo-800 mt-1 font-medium bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-1.5 inline-block"
           >
-            <option value="">الكل</option>
-            <option v-for="c in rawMaterialCategories" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
-          </select>
+            يوجد جرد قيد التنفيذ:
+            {{ branchDetail.active_inventory_count.counted_items_count }}/{{ branchDetail.active_inventory_count.items_count }}
+            — بدأ {{ branchDetail.active_inventory_count.started_at }}
+          </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <template v-if="isSuperAdmin">
+            <a
+              v-if="branchDetail.active_inventory_count"
+              :href="route('admin.raw-materials.inventory-counts.show', branchDetail.active_inventory_count.id)"
+              class="px-4 py-2 rounded-lg bg-indigo-700 hover:bg-indigo-800 text-white font-bold shadow-sm"
+            >
+              ▶️ متابعة الجرد
+            </a>
+            <button
+              v-else
+              type="button"
+              class="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold shadow-sm disabled:opacity-50"
+              :disabled="startingInventory"
+              @click="startInventoryCount"
+            >
+              📦 بدأ الجرد
+            </button>
+            <a
+              :href="route('admin.raw-materials.inventory-counts.index', { branch_id: branchDetail.branch_id })"
+              class="px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-800 font-semibold hover:bg-gray-50"
+            >
+              📊 تقارير الجرد
+            </a>
+          </template>
+          <div v-if="showTableTools" class="flex flex-wrap items-center gap-2">
+            <label class="text-gray-700 font-medium whitespace-nowrap">الفئة:</label>
+            <select
+              v-model="filterCategoryId"
+              class="border border-gray-300 rounded-lg p-2 min-w-[180px]"
+              @change="applyFilters"
+            >
+              <option value="">الكل</option>
+              <option v-for="c in rawMaterialCategories" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -776,6 +811,7 @@ export default {
         consume: 0,
       },
       branchStockSaving: false,
+      startingInventory: false,
       combineModal: {
         open: false,
         selectedIds: [],
@@ -1054,6 +1090,26 @@ export default {
           onFinish: () => {
             this.branchStockSaving = false;
             this.cancelBranchStockEdit();
+          },
+        }
+      );
+    },
+    startInventoryCount() {
+      if (!this.isSuperAdmin || !this.branchDetail?.branch_id || this.startingInventory) return;
+      if (
+        !confirm(
+          `بدء جرد لمخزون فرع «${this.branchDetail.branch_name}»؟\n\nسيتم تصوير أرصدة النظام الحالية ثم تدخل الكميات الفعلية.`
+        )
+      ) {
+        return;
+      }
+      this.startingInventory = true;
+      router.post(
+        route('admin.raw-materials.inventory-counts.start', this.branchDetail.branch_id),
+        {},
+        {
+          onFinish: () => {
+            this.startingInventory = false;
           },
         }
       );
