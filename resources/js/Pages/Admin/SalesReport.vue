@@ -122,6 +122,7 @@
             >
               <div class="text-gray-800 text-sm mb-1">👥 إجمالي الرواتب المسلمة</div>
               <div class="text-xl text-orange-700">{{ formatPrice(totalSalaries) }}</div>
+              <span class="text-xs text-gray-600 block mt-1">حسب وقت التسليم (يشمل أيام سابقة سُلّمت في الفترة)</span>
               <span class="text-xs text-blue-600 block mt-2">عرض التفاصيل</span>
             </div>
 

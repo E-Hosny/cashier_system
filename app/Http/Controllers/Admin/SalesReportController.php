@@ -218,10 +218,11 @@ class SalesReportController extends Controller
                 }
             });
 
+        // حسب وقت التسليم الفعلي (delivered_at) وليس تاريخ يوم العمل المستحق
         if ($dateTo) {
-            $query->whereBetween('salary_date', [$dateFrom, $dateTo]);
+            $query->deliveredDuringBusinessDayRange($dateFrom, $dateTo);
         } else {
-            $query->where('salary_date', $dateFrom);
+            $query->deliveredDuringBusinessDay($dateFrom);
         }
 
         return (float) $query->sum('total_amount');
@@ -321,10 +322,17 @@ class SalesReportController extends Controller
             ->join('employees', 'salary_deliveries.employee_id', '=', 'employees.id')
             ->where('employees.is_active', true);
 
+        // حسب وقت التسليم الفعلي (delivered_at)
         if ($dateTo) {
-            $query->whereBetween('salary_deliveries.salary_date', [$dateFrom, $dateTo]);
+            $start = Carbon::parse($dateFrom)->setTime(7, 0, 0);
+            $end = Carbon::parse($dateTo)->addDay()->setTime(7, 0, 0);
+            $query->where('salary_deliveries.delivered_at', '>=', $start)
+                ->where('salary_deliveries.delivered_at', '<', $end);
         } else {
-            $query->where('salary_deliveries.salary_date', $dateFrom);
+            $start = Carbon::parse($dateFrom)->setTime(7, 0, 0);
+            $end = $start->copy()->addDay();
+            $query->where('salary_deliveries.delivered_at', '>=', $start)
+                ->where('salary_deliveries.delivered_at', '<', $end);
         }
 
         $rows = $query

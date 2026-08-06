@@ -177,6 +177,7 @@ Route::middleware([
 
         // Employees Management (admin and cashier with attendance permission)
         Route::middleware(['employee.attendance'])->group(function () {
+            Route::get('/employees/salary-withdrawals', [EmployeeController::class, 'salaryWithdrawals'])->name('admin.employees.salary-withdrawals');
             Route::resource('employees', EmployeeController::class, ['as' => 'admin'])->except(['show']);
             Route::post('/employees/{employee}/checkin', [EmployeeController::class, 'checkin'])->name('admin.employees.checkin');
             Route::post('/employees/{employee}/checkout', [EmployeeController::class, 'checkout'])->name('admin.employees.checkout');
@@ -190,6 +191,8 @@ Route::middleware([
             Route::post('/employees/{employee}/undo-salary-delivery-for-date', [EmployeeController::class, 'undoSalaryDeliveryForDate'])->name('admin.employees.undo-salary-delivery-for-date');
             Route::post('/employees/{employee}/add-discount', [EmployeeController::class, 'addDiscount'])->name('admin.employees.add-discount');
             Route::delete('/employees/{employee}/discounts/{discount}', [EmployeeController::class, 'removeDiscount'])->name('admin.employees.remove-discount');
+            Route::post('/employees/{employee}/withdraw-salary', [EmployeeController::class, 'withdrawSalary'])->name('admin.employees.withdraw-salary');
+            Route::delete('/employees/{employee}/salary-withdrawals/{withdrawal}', [EmployeeController::class, 'cancelSalaryWithdrawal'])->name('admin.employees.salary-withdrawals.cancel');
         });
 
         Route::middleware(['super_admin'])->prefix('employees/attendance-groups')->name('admin.employees.attendance-groups.')->group(function () {

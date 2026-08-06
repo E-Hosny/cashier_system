@@ -14,9 +14,14 @@ class Employee extends Model
     use BelongsToTenant;
     use HasFactory;
 
+    public const SALARY_TYPE_HOURLY = 'hourly';
+    public const SALARY_TYPE_FIXED = 'fixed';
+
     protected $fillable = [
         'name',
         'hourly_rate',
+        'salary_type',
+        'fixed_salary',
         'is_active',
         'phone',
         'position',
@@ -35,6 +40,7 @@ class Employee extends Model
 
     protected $casts = [
         'hourly_rate' => 'decimal:2',
+        'fixed_salary' => 'decimal:2',
         'is_active' => 'boolean',
         'grace_minutes' => 'integer',
         'late_deductions_enabled' => 'boolean',
@@ -68,6 +74,69 @@ class Employee extends Model
     public function discounts()
     {
         return $this->hasMany(EmployeeDiscount::class);
+    }
+
+    /**
+     * مسحوبات الراتب الثابت
+     */
+    public function salaryWithdrawals()
+    {
+        return $this->hasMany(EmployeeSalaryWithdrawal::class);
+    }
+
+    public function isFixedSalary(): bool
+    {
+        return ($this->salary_type ?? self::SALARY_TYPE_HOURLY) === self::SALARY_TYPE_FIXED;
+    }
+
+    public function isHourlySalary(): bool
+    {
+        return ! $this->isFixedSalary();
+    }
+
+    /**
+     * ملخص راتب الشهر للموظفين ذوي الراتب الثابت.
+     *
+     * @return array{
+     *   year_month: string,
+     *   fixed_salary: float,
+     *   withdrawals_total: float,
+     *   discounts_total: float,
+     *   remaining: float,
+     *   withdrawals_count: int
+     * }
+     */
+    public function getFixedSalaryMonthSummary(?string $yearMonth = null): array
+    {
+        $yearMonth = $yearMonth ?: Carbon::now()->format('Y-m');
+        [$year, $month] = array_map('intval', explode('-', $yearMonth));
+        $start = Carbon::create($year, $month, 1)->startOfDay();
+        $end = $start->copy()->endOfMonth();
+
+        $withdrawalsTotal = (float) $this->salaryWithdrawals()
+            ->where('year_month', $yearMonth)
+            ->sum('amount');
+
+        $withdrawalsCount = (int) $this->salaryWithdrawals()
+            ->where('year_month', $yearMonth)
+            ->count();
+
+        $discountsTotal = (float) $this->discounts()
+            ->whereDate('discount_date', '>=', $start->toDateString())
+            ->whereDate('discount_date', '<=', $end->toDateString())
+            ->sum('amount');
+
+        $fixedSalary = (float) ($this->fixed_salary ?? 0);
+        $remaining = max(0, $fixedSalary - $discountsTotal - $withdrawalsTotal);
+
+        return [
+            'year_month' => $yearMonth,
+            'fixed_salary' => round($fixedSalary, 2),
+            'withdrawals_total' => round($withdrawalsTotal, 2),
+            'discounts_total' => round($discountsTotal, 2),
+            'remaining' => round($remaining, 2),
+            'withdrawals_count' => $withdrawalsCount,
+        ];
     }
 
     /**
@@ -405,6 +474,11 @@ class Employee extends Model
      */
     public function getAmountForBusinessDayAnchor(string $anchorDate): float
     {
+        // الراتب الثابت لا يُحسب يومياً من الساعات
+        if ($this->isFixedSalary()) {
+            return 0;
+        }
+
         $hours = $this->getHoursForBusinessDayAnchor($anchorDate);
         $baseAmount = $hours * (float) $this->hourly_rate;
         $discountTotal = $this->getDiscountTotalForBusinessDayAnchor($anchorDate);
@@ -623,6 +697,36 @@ class Employee extends Model
             ->where('status', 'delivered')
             ->whereBetween('salary_date', [$startDate, $endDate])
             ->sum('total_amount');
+    }
+
+    /**
+     * إجمالي المبالغ التي سُلّمت فعلياً خلال يوم عمل (حسب delivered_at)، حتى لو كانت لأيام سابقة.
+     */
+    public function getAmountHandedOutDuringBusinessDay(string $anchorDate): float
+    {
+        return (float) $this->salaryDeliveries()
+            ->deliveredDuringBusinessDay($anchorDate)
+            ->sum('total_amount');
+    }
+
+    /**
+     * إجمالي المبالغ التي سُلّمت فعلياً خلال فترة أيام عمل (حسب delivered_at).
+     */
+    public static function sumAmountHandedOutDuringBusinessDayRange(string $dateFrom, ?string $dateTo = null, ?callable $employeeConstraint = null): float
+    {
+        $query = SalaryDelivery::query()->where('status', 'delivered');
+
+        if ($dateTo) {
+            $query->deliveredDuringBusinessDayRange($dateFrom, $dateTo);
+        } else {
+            $query->deliveredDuringBusinessDay($dateFrom);
+        }
+
+        if ($employeeConstraint) {
+            $query->whereHas('employee', $employeeConstraint);
+        }
+
+        return (float) $query->sum('total_amount');
     }
 
     /**

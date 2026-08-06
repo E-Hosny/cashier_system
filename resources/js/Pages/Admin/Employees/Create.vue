@@ -32,8 +32,26 @@
               <div v-if="errors.name" class="text-red-500 text-sm mt-1">{{ errors.name }}</div>
             </div>
 
+            <!-- نوع الراتب -->
+            <div v-if="canManageSchedule" class="mb-4">
+              <label class="block text-gray-700 text-sm font-bold mb-2">
+                نوع الراتب *
+              </label>
+              <div class="flex flex-wrap gap-4">
+                <label class="inline-flex items-center gap-2 cursor-pointer">
+                  <input v-model="form.salary_type" type="radio" value="hourly" class="text-blue-600" />
+                  <span>بالساعة (افتراضي)</span>
+                </label>
+                <label class="inline-flex items-center gap-2 cursor-pointer">
+                  <input v-model="form.salary_type" type="radio" value="fixed" class="text-blue-600" />
+                  <span>راتب شهري ثابت</span>
+                </label>
+              </div>
+              <div v-if="errors.salary_type" class="text-red-500 text-sm mt-1">{{ errors.salary_type }}</div>
+            </div>
+
             <!-- سعر الساعة -->
-            <div class="mb-4">
+            <div v-if="form.salary_type === 'hourly'" class="mb-4">
               <label class="block text-gray-700 text-sm font-bold mb-2">
                 سعر الساعة (جنيه) *
               </label>
@@ -47,6 +65,24 @@
                 placeholder="أدخل سعر الساعة"
               />
               <div v-if="errors.hourly_rate" class="text-red-500 text-sm mt-1">{{ errors.hourly_rate }}</div>
+            </div>
+
+            <!-- الراتب الثابت -->
+            <div v-if="form.salary_type === 'fixed'" class="mb-4">
+              <label class="block text-gray-700 text-sm font-bold mb-2">
+                الراتب الشهري الثابت (جنيه) *
+              </label>
+              <input
+                v-model="form.fixed_salary"
+                type="number"
+                step="0.01"
+                min="0.01"
+                required
+                class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="أدخل الراتب الشهري"
+              />
+              <p class="text-xs text-gray-500 mt-1">لا يعتمد على ساعات العمل. يمكن سحب جزء منه خلال الشهر.</p>
+              <div v-if="errors.fixed_salary" class="text-red-500 text-sm mt-1">{{ errors.fixed_salary }}</div>
             </div>
 
             <!-- رقم الهاتف -->
@@ -157,8 +193,9 @@
           <div class="mt-6 p-4 bg-blue-50 rounded-lg">
             <h4 class="font-semibold text-blue-800 mb-2">📋 ملاحظات:</h4>
             <ul class="text-sm text-blue-700 space-y-1">
-              <li>• الحقول المطلوبة: اسم الموظف وسعر الساعة</li>
-              <li>• سعر الساعة يجب أن يكون رقم موجب</li>
+              <li>• الحقول المطلوبة: اسم الموظف ونوع الراتب (ساعة أو ثابت)</li>
+              <li>• الافتراضي: راتب بالساعة</li>
+              <li>• الراتب الثابت يمكن سحبه على دفعات خلال الشهر</li>
               <li>• يمكنك إضافة معلومات إضافية مثل رقم الهاتف والوظيفة</li>
               <li>• بعد الإضافة يمكنك تسجيل الحضور والانصراف للموظف</li>
             </ul>
@@ -183,7 +220,9 @@ export default {
   setup() {
     const form = useForm({
       name: '',
+      salary_type: 'hourly',
       hourly_rate: '',
+      fixed_salary: '',
       phone: '',
       position: '',
       notes: '',

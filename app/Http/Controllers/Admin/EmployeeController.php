@@ -7,16 +7,21 @@ use App\Models\Employee;
 use App\Models\EmployeeAttendance;
 use App\Models\SalaryDelivery;
 use App\Models\EmployeeDiscount;
+use App\Models\EmployeeSalaryWithdrawal;
 use App\Models\AttendanceGroup;
 use App\Services\AttendanceLateDeductionService;
+use App\Services\EmployeeSalaryWithdrawalService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Carbon\Carbon;
 
 class EmployeeController extends Controller
 {
     public function __construct(
-        private AttendanceLateDeductionService $lateDeductionService
+        private AttendanceLateDeductionService $lateDeductionService,
+        private EmployeeSalaryWithdrawalService $withdrawalService
     ) {}
     /**
      * عرض صفحة إدارة الموظفين
@@ -61,15 +66,43 @@ class EmployeeController extends Controller
             $employee->attendance_group_max_present = optional($employee->attendanceGroup)->max_present;
             $employee->expected_checkin_display = $employee->scheduleSummaryForDisplay();
             $employee->expected_checkout_display = $employee->formattedExpectedCheckoutTime();
+
+            if ($employee->isFixedSalary()) {
+                $monthKey = Carbon::parse($selectedAnchor)->format('Y-m');
+                $summary = $employee->getFixedSalaryMonthSummary($monthKey);
+                $canViewSalaryAmounts = $this->viewerCanSeeSalaryAmountsOnIndex();
+
+                if ($canViewSalaryAmounts) {
+                    $employee->fixed_salary_month = $summary;
+                } else {
+                    // لا نُظهر أرقام الراتب للكاشير/السوبر أدمن في القائمة؛ التفاصيل من صفحة المسحوبات
+                    $employee->fixed_salary = null;
+                    $employee->hourly_rate = null;
+                    $employee->fixed_salary_month = [
+                        'can_withdraw' => $summary['remaining'] > 0,
+                    ];
+                }
+            } else {
+                $employee->fixed_salary_month = null;
+                if (! $this->viewerCanSeeSalaryAmountsOnIndex()) {
+                    $employee->hourly_rate = null;
+                    $employee->fixed_salary = null;
+                }
+            }
         });
 
         $totalTodayAmount = $employees->sum('today_amount');
         $totalTodayHours = $employees->sum('today_hours');
-        $totalDeliveredToday = $employees->sum(function ($employee) {
-            $delivery = $employee->today_delivery_status;
+        // إجمالي ما خرج فعلياً من الصندوق خلال يوم العمل (حتى لو لأيام سابقة)
+        $totalDeliveredToday = (float) SalaryDelivery::query()
+            ->deliveredDuringBusinessDay($selectedAnchor)
+            ->whereHas('employee', fn ($q) => $q->where('is_active', true))
+            ->sum('total_amount');
 
-            return ($delivery && $delivery->isDelivered()) ? (float) $delivery->total_amount : 0;
+        $employees->each(function ($employee) use ($selectedAnchor) {
+            $employee->handed_out_today_amount = $employee->getAmountHandedOutDuringBusinessDay($selectedAnchor);
         });
+
         $currentPeriodText = Employee::periodTextForAnchorDate($selectedAnchor);
 
         return Inertia::render('Admin/Employees/Index', [
@@ -104,7 +137,9 @@ class EmployeeController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'hourly_rate' => 'required|numeric|min:0',
+            'salary_type' => ['nullable', Rule::in([Employee::SALARY_TYPE_HOURLY, Employee::SALARY_TYPE_FIXED])],
+            'hourly_rate' => 'nullable|numeric|min:0',
+            'fixed_salary' => 'nullable|numeric|min:0',
             'phone' => 'nullable|string|max:20',
             'position' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
@@ -125,8 +160,13 @@ class EmployeeController extends Controller
             'work_schedules.*.grace_minutes' => 'nullable|integer|min:0|max:120',
         ]);
 
+        $validated = $this->normalizeSalaryFields($validated, $request);
+
         if (! (auth()->user()?->hasAnyRole(['admin', 'super admin']) ?? false)) {
             unset($validated['expected_checkin_time'], $validated['expected_checkout_time'], $validated['grace_minutes'], $validated['late_deductions_enabled'], $validated['use_weekly_schedule'], $validated['work_schedules']);
+            unset($validated['salary_type'], $validated['fixed_salary']);
+            $validated['salary_type'] = Employee::SALARY_TYPE_HOURLY;
+            $validated['fixed_salary'] = null;
         }
 
         if (! (auth()->user()?->hasRole('super admin') ?? false)) {
@@ -184,7 +224,9 @@ class EmployeeController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'hourly_rate' => 'required|numeric|min:0',
+            'salary_type' => ['nullable', Rule::in([Employee::SALARY_TYPE_HOURLY, Employee::SALARY_TYPE_FIXED])],
+            'hourly_rate' => 'nullable|numeric|min:0',
+            'fixed_salary' => 'nullable|numeric|min:0',
             'phone' => 'nullable|string|max:20',
             'position' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
@@ -206,7 +248,14 @@ class EmployeeController extends Controller
             'work_schedules.*.grace_minutes' => 'nullable|integer|min:0|max:120',
         ]);
 
-        if (! (auth()->user()?->hasAnyRole(['admin', 'super admin']) ?? false)) {
+        $canManageSalaryType = auth()->user()?->hasAnyRole(['admin', 'super admin']) ?? false;
+        if ($canManageSalaryType) {
+            $validated = $this->normalizeSalaryFields($validated, $request);
+        } else {
+            unset($validated['salary_type'], $validated['fixed_salary'], $validated['hourly_rate']);
+        }
+
+        if (! $canManageSalaryType) {
             unset($validated['expected_checkin_time'], $validated['expected_checkout_time'], $validated['grace_minutes'], $validated['late_deductions_enabled'], $validated['use_weekly_schedule'], $validated['work_schedules']);
         }
 
@@ -590,6 +639,11 @@ class EmployeeController extends Controller
             })->values()->all(),
         ];
 
+        $todayAnchor = Employee::businessDayAnchorFromNow();
+        $todayDueAmount = $employee->getAmountForBusinessDayAnchor($todayAnchor);
+        $handedOutToday = $employee->getAmountHandedOutDuringBusinessDay($todayAnchor);
+        $todayDelivery = $employee->getSalaryDeliveryForDate($todayAnchor);
+
         return response()->json([
             'success' => true,
             'employee' => [
@@ -611,6 +665,13 @@ class EmployeeController extends Controller
                 'total_discounts' => round($totalDiscounts, 2), // إجمالي الخصومات
                 'days_count' => count($dailyDetails),
                 'days_with_records' => count(array_filter($dailyDetails, fn($day) => $day['has_records'])),
+            ],
+            'today_cash' => [
+                'anchor_date' => $todayAnchor,
+                'period_text' => Employee::periodTextForAnchorDate($todayAnchor),
+                'due_today' => round($todayDueAmount, 2),
+                'handed_out_today' => round($handedOutToday, 2),
+                'today_salary_delivered' => $todayDelivery && $todayDelivery->isDelivered(),
             ],
             'discount_summary' => $discountSummary,
             'daily_details' => $dailyDetails,
@@ -988,6 +1049,20 @@ class EmployeeController extends Controller
                 ], 422);
             }
 
+            if ($employee->isFixedSalary()) {
+                $monthKey = Carbon::parse($targetDate)->format('Y-m');
+                $summary = $employee->getFixedSalaryMonthSummary($monthKey);
+                if ((float) $request->amount > $summary['remaining'] + 0.0001) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => sprintf(
+                            'مبلغ الخصم أكبر من المتبقي من الراتب الثابت هذا الشهر (%.2f).',
+                            $summary['remaining']
+                        ),
+                    ], 422);
+                }
+            }
+
             // إنشاء سجل الخصم
             $discount = EmployeeDiscount::create([
                 'employee_id' => $employee->id,
@@ -1003,6 +1078,9 @@ class EmployeeController extends Controller
             // حساب المبلغ المحدث بعد الخصم لنفس يوم العمل
             $todayAmount = $employee->getAmountForBusinessDayAnchor($targetDate);
             $discountTotal = $employee->getDiscountTotalForBusinessDayAnchor($targetDate);
+            $fixedSalaryMonth = $employee->isFixedSalary()
+                ? $employee->getFixedSalaryMonthSummary(Carbon::parse($targetDate)->format('Y-m'))
+                : null;
 
             return response()->json([
                 'success' => true,
@@ -1017,6 +1095,7 @@ class EmployeeController extends Controller
                 'employee' => [
                     'today_amount' => $todayAmount,
                     'today_discount_total' => $discountTotal,
+                    'fixed_salary_month' => $fixedSalaryMonth,
                 ]
             ]);
 
@@ -1024,6 +1103,170 @@ class EmployeeController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'حدث خطأ أثناء إضافة الخصم: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * سحب جزء من الراتب الثابت (متاح للكاشير والمدير والسوبر أدمن)
+     */
+    public function withdrawSalary(Employee $employee, Request $request)
+    {
+        $validated = $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        try {
+            $withdrawal = $this->withdrawalService->withdraw(
+                $employee,
+                (float) $validated['amount'],
+                $validated['notes'] ?? null
+            );
+
+            $employee->refresh();
+            $summary = $employee->getFixedSalaryMonthSummary($withdrawal->year_month);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'تم تسجيل المسحوب بنجاح وإضافته للمصروفات',
+                'withdrawal' => [
+                    'id' => $withdrawal->id,
+                    'amount' => (float) $withdrawal->amount,
+                    'withdrawal_date' => $withdrawal->withdrawal_date->toDateString(),
+                    'notes' => $withdrawal->notes,
+                    'expense_id' => $withdrawal->expense_id,
+                ],
+                'fixed_salary_month' => $summary,
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => collect($e->errors())->flatten()->first() ?: 'تعذر تسجيل المسحوب',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'حدث خطأ أثناء تسجيل المسحوب: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * تقرير مسحوبات الرواتب الثابتة (مدير / سوبر أدمن)
+     */
+    public function salaryWithdrawals(Request $request)
+    {
+        abort_unless(auth()->user()?->hasAnyRole(['admin', 'super admin']), 403);
+
+        $request->validate([
+            'month' => 'nullable|date_format:Y-m',
+            'employee_id' => 'nullable|integer|exists:employees,id',
+        ]);
+
+        $yearMonth = $request->input('month') ?: Carbon::now()->format('Y-m');
+        [$year, $month] = array_map('intval', explode('-', $yearMonth));
+        $start = Carbon::create($year, $month, 1)->startOfDay();
+        $end = $start->copy()->endOfMonth();
+
+        $fixedEmployees = Employee::query()
+            ->where('salary_type', Employee::SALARY_TYPE_FIXED)
+            ->where('is_active', true)
+            ->when($request->filled('employee_id'), fn ($q) => $q->where('id', $request->integer('employee_id')))
+            ->orderBy('name')
+            ->get();
+
+        $rows = $fixedEmployees->map(function (Employee $employee) use ($yearMonth, $start, $end) {
+            $summary = $employee->getFixedSalaryMonthSummary($yearMonth);
+            $withdrawals = $employee->salaryWithdrawals()
+                ->where('year_month', $yearMonth)
+                ->with(['createdBy:id,name', 'expense:id,description,expense_date'])
+                ->orderByDesc('withdrawal_date')
+                ->orderByDesc('id')
+                ->get()
+                ->map(fn (EmployeeSalaryWithdrawal $w) => [
+                    'id' => $w->id,
+                    'amount' => (float) $w->amount,
+                    'withdrawal_date' => $w->withdrawal_date->toDateString(),
+                    'notes' => $w->notes,
+                    'created_by_name' => optional($w->createdBy)->name,
+                    'created_at' => optional($w->created_at)?->toDateTimeString(),
+                    'expense_id' => $w->expense_id,
+                ]);
+
+            $discounts = $employee->discounts()
+                ->whereDate('discount_date', '>=', $start->toDateString())
+                ->whereDate('discount_date', '<=', $end->toDateString())
+                ->orderByDesc('discount_date')
+                ->get()
+                ->map(fn (EmployeeDiscount $d) => [
+                    'id' => $d->id,
+                    'amount' => (float) $d->amount,
+                    'discount_date' => Carbon::parse($d->discount_date)->toDateString(),
+                    'reason' => $d->reason,
+                    'source' => $d->source,
+                ]);
+
+            return [
+                'id' => $employee->id,
+                'name' => $employee->name,
+                'position' => $employee->position,
+                'fixed_salary' => $summary['fixed_salary'],
+                'withdrawals_total' => $summary['withdrawals_total'],
+                'discounts_total' => $summary['discounts_total'],
+                'remaining' => $summary['remaining'],
+                'withdrawals_count' => $summary['withdrawals_count'],
+                'withdrawals' => $withdrawals,
+                'discounts' => $discounts,
+            ];
+        })->values();
+
+        return Inertia::render('Admin/Employees/SalaryWithdrawals', [
+            'month' => $yearMonth,
+            'employees' => $rows,
+            'totals' => [
+                'fixed_salary' => round($rows->sum('fixed_salary'), 2),
+                'withdrawals_total' => round($rows->sum('withdrawals_total'), 2),
+                'discounts_total' => round($rows->sum('discounts_total'), 2),
+                'remaining' => round($rows->sum('remaining'), 2),
+            ],
+            'employeeFilterOptions' => Employee::where('salary_type', Employee::SALARY_TYPE_FIXED)
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name']),
+            'selectedEmployeeId' => $request->integer('employee_id') ?: null,
+        ]);
+    }
+
+    /**
+     * إلغاء مسحوب (مدير / سوبر أدمن) مع حذف المصروف المرتبط
+     */
+    public function cancelSalaryWithdrawal(Employee $employee, EmployeeSalaryWithdrawal $withdrawal)
+    {
+        abort_unless(auth()->user()?->hasAnyRole(['admin', 'super admin']), 403);
+
+        if ((int) $withdrawal->employee_id !== (int) $employee->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'المسحوب غير مرتبط بهذا الموظف.',
+            ], 404);
+        }
+
+        try {
+            $this->withdrawalService->cancel($withdrawal);
+            $employee->refresh();
+            $summary = $employee->getFixedSalaryMonthSummary(Carbon::now()->format('Y-m'));
+
+            return response()->json([
+                'success' => true,
+                'message' => 'تم إلغاء المسحوب وحذف المصروف المرتبط به',
+                'fixed_salary_month' => $summary,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'حدث خطأ أثناء إلغاء المسحوب: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1064,6 +1307,49 @@ class EmployeeController extends Controller
                 'message' => 'حدث خطأ أثناء إزالة الخصم: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * أرقام الراتب لا تُعرض في قائمة الموظفين لأي دور.
+     * المدير والسوبر أدمن يطّلعان عليها من صفحة مسحوبات الرواتب فقط.
+     */
+    private function viewerCanSeeSalaryAmountsOnIndex(): bool
+    {
+        return false;
+    }
+
+    /**
+     * توحيد حقول نوع الراتب قبل الحفظ.
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array<string, mixed>
+     */
+    private function normalizeSalaryFields(array $validated, Request $request): array
+    {
+        $salaryType = $validated['salary_type'] ?? Employee::SALARY_TYPE_HOURLY;
+        $validated['salary_type'] = $salaryType;
+
+        if ($salaryType === Employee::SALARY_TYPE_FIXED) {
+            if (! $request->filled('fixed_salary') || (float) $request->input('fixed_salary') <= 0) {
+                throw ValidationException::withMessages([
+                    'fixed_salary' => 'الراتب الشهري الثابت مطلوب ويجب أن يكون أكبر من صفر.',
+                ]);
+            }
+            $validated['fixed_salary'] = (float) $request->input('fixed_salary');
+            $validated['hourly_rate'] = $request->filled('hourly_rate')
+                ? (float) $request->input('hourly_rate')
+                : 0;
+        } else {
+            if (! $request->filled('hourly_rate') || (float) $request->input('hourly_rate') < 0) {
+                throw ValidationException::withMessages([
+                    'hourly_rate' => 'سعر الساعة مطلوب للموظفين بنظام الساعات.',
+                ]);
+            }
+            $validated['hourly_rate'] = (float) $request->input('hourly_rate');
+            $validated['fixed_salary'] = null;
+        }
+
+        return $validated;
     }
 
     /**
