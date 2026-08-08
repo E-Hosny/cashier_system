@@ -268,6 +268,31 @@
                           تاريخ التسليم: {{ formatDeliveryDate(employee.today_delivery_status.delivered_at) }}
                         </div>
                       </template>
+
+                      <div
+                        v-if="handedOutDeliveries(employee).length"
+                        class="mt-1 rounded-lg border border-teal-200 bg-teal-50 p-2 text-xs text-right"
+                      >
+                        <div class="font-semibold text-teal-900">
+                          سُلّم خلال هذا اليوم: {{ formatPrice(employee.handed_out_today_amount) }}
+                        </div>
+                        <div v-if="pastDaysHandedOut(employee).length" class="text-teal-700 mt-0.5">
+                          يشمل {{ pastDaysHandedOut(employee).length }} أيام سابقة
+                        </div>
+                        <details class="mt-1">
+                          <summary class="cursor-pointer text-teal-800 font-medium">عرض تفاصيل الأيام</summary>
+                          <ul class="mt-1 space-y-1 border-r-2 border-teal-300 pr-2">
+                            <li v-for="item in handedOutDeliveries(employee)" :key="item.id">
+                              <span :class="item.is_selected_day ? 'font-semibold text-teal-900' : 'text-gray-800'">
+                                {{ item.salary_date_arabic }}
+                                <span v-if="item.is_selected_day" class="text-[10px] text-gray-500">(يوم العمل)</span>
+                              </span>
+                              <span class="text-teal-800 font-semibold"> — {{ formatPrice(item.total_amount) }}</span>
+                              <span class="text-gray-500"> ({{ Number(item.hours_worked || 0).toFixed(2) }} س)</span>
+                            </li>
+                          </ul>
+                        </details>
+                      </div>
                     </div>
                   </td>
                   <td class="p-4">
@@ -592,6 +617,14 @@ export default {
     },
     isFixedSalary(employee) {
       return employee?.salary_type === 'fixed';
+    },
+    handedOutDeliveries(employee) {
+      return Array.isArray(employee?.handed_out_today_deliveries)
+        ? employee.handed_out_today_deliveries
+        : [];
+    },
+    pastDaysHandedOut(employee) {
+      return this.handedOutDeliveries(employee).filter((item) => !item.is_selected_day);
     },
     canWithdrawFixed(employee) {
       if (!this.isFixedSalary(employee)) return false;

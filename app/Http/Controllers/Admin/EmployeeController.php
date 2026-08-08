@@ -93,15 +93,34 @@ class EmployeeController extends Controller
 
         $totalTodayAmount = $employees->sum('today_amount');
         $totalTodayHours = $employees->sum('today_hours');
-        // إجمالي ما خرج فعلياً من الصندوق خلال يوم العمل (حتى لو لأيام سابقة)
-        $totalDeliveredToday = (float) SalaryDelivery::query()
-            ->deliveredDuringBusinessDay($selectedAnchor)
-            ->whereHas('employee', fn ($q) => $q->where('is_active', true))
-            ->sum('total_amount');
 
-        $employees->each(function ($employee) use ($selectedAnchor) {
-            $employee->handed_out_today_amount = $employee->getAmountHandedOutDuringBusinessDay($selectedAnchor);
+        $handedOutToday = SalaryDelivery::query()
+            ->deliveredDuringBusinessDay($selectedAnchor)
+            ->whereIn('employee_id', $employees->pluck('id'))
+            ->orderBy('salary_date')
+            ->orderBy('id')
+            ->get()
+            ->groupBy('employee_id');
+
+        $employees->each(function ($employee) use ($handedOutToday, $selectedAnchor) {
+            $items = collect($handedOutToday->get($employee->id, []));
+            $employee->handed_out_today_amount = round((float) $items->sum('total_amount'), 2);
+            $employee->handed_out_today_deliveries = $items->map(function (SalaryDelivery $delivery) use ($selectedAnchor) {
+                $salaryDate = $delivery->salary_date?->toDateString();
+
+                return [
+                    'id' => $delivery->id,
+                    'salary_date' => $salaryDate,
+                    'salary_date_arabic' => $delivery->salary_date?->format('d/m/Y'),
+                    'is_selected_day' => $salaryDate === $selectedAnchor,
+                    'hours_worked' => round((float) $delivery->hours_worked, 2),
+                    'total_amount' => round((float) $delivery->total_amount, 2),
+                    'delivered_at' => optional($delivery->delivered_at)?->format('Y-m-d H:i:s'),
+                ];
+            })->values();
         });
+
+        $totalDeliveredToday = round((float) $employees->sum('handed_out_today_amount'), 2);
 
         $currentPeriodText = Employee::periodTextForAnchorDate($selectedAnchor);
 
