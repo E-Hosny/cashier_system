@@ -270,7 +270,7 @@
                       </template>
 
                       <div
-                        v-if="handedOutDeliveries(employee).length"
+                        v-if="pastDaysHandedOut(employee).length"
                         class="mt-1 rounded-lg border border-teal-200 bg-teal-50 p-2 text-xs text-right"
                       >
                         <div class="font-semibold text-teal-900">
