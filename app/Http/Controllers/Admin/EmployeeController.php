@@ -794,36 +794,36 @@ class EmployeeController extends Controller
         ]);
 
         try {
-            $date = $request->input('date');
-            
-            // البحث عن سجل التسليم لهذا التاريخ أو إنشاؤه
-            $salaryDelivery = $employee->getSalaryDeliveryForDate($date);
-            
-            if (!$salaryDelivery) {
-                // حساب الساعات والمبلغ لهذا اليوم
-                $hours = $employee->getHoursForPeriod($date, $date);
-                $amount = $employee->getAmountForPeriod($date, $date);
-                
-                if ($hours <= 0) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'لا توجد ساعات عمل مسجلة لهذا الموظف في هذا التاريخ'
-                    ], 400);
-                }
-                
-                // إنشاء سجل تسليم جديد
-                $salaryDelivery = $employee->createSalaryDelivery($date, $hours, $amount);
+            $date = Carbon::parse($request->input('date'))->toDateString();
+            $hours = $employee->getHoursForBusinessDayAnchor($date);
+            $amount = $employee->getAmountForBusinessDayAnchor($date);
+
+            if ($hours <= 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'لا توجد ساعات عمل مسجلة لهذا الموظف في هذا التاريخ'
+                ], 400);
             }
 
-            // التحقق من حالة التسليم
-            if ($salaryDelivery->isDelivered()) {
+            $salaryDelivery = $employee->getSalaryDeliveryForDate($date);
+
+            if ($salaryDelivery && $salaryDelivery->isDelivered()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'تم تسليم راتب هذا الموظف لهذا التاريخ مسبقاً'
                 ], 400);
             }
 
-            // تحديد الراتب كمسلم
+            if (! $salaryDelivery) {
+                $salaryDelivery = $employee->createSalaryDelivery($date, $hours, $amount);
+            } else {
+                $salaryDelivery->update([
+                    'hours_worked' => $hours,
+                    'hourly_rate' => $employee->hourly_rate,
+                    'total_amount' => $amount,
+                ]);
+            }
+
             $salaryDelivery->markAsDelivered(auth()->id());
 
             return response()->json([
@@ -916,16 +916,6 @@ class EmployeeController extends Controller
         try {
             $dateFrom = $request->input('date_from');
             $dateTo = $request->input('date_to');
-            
-            // تحويل التواريخ إلى فترات زمنية (7 صباحاً إلى 7 صباحاً للوم التالي)
-            $startDateTime = Carbon::parse($dateFrom)->setTime(7, 0, 0);
-            $endDateTime = Carbon::parse($dateTo)->addDay()->setTime(7, 0, 0);
-
-            // البحث عن سجلات الحضور في الفترة المحددة
-            $attendances = $employee->attendanceRecords()
-                ->whereBetween('checkin_time', [$startDateTime, $endDateTime])
-                ->orderBy('checkin_time', 'asc')
-                ->get();
 
             $deliveredDays = [];
             $skippedDays = [];
@@ -933,57 +923,26 @@ class EmployeeController extends Controller
             $endDate = Carbon::parse($dateTo);
 
             while ($currentDate <= $endDate) {
-                $dayStart = $currentDate->copy()->setTime(7, 0, 0);
-                $dayEnd = $currentDate->copy()->addDay()->setTime(7, 0, 0);
                 $dateString = $currentDate->format('Y-m-d');
+                $dayHours = $employee->getHoursForBusinessDayAnchor($dateString);
+                $dayAmount = $employee->getAmountForBusinessDayAnchor($dateString);
 
-                // البحث عن سجلات الحضور لهذا اليوم
-                $dayAttendances = $attendances->filter(function ($attendance) use ($dayStart, $dayEnd) {
-                    $checkinTime = Carbon::parse($attendance->checkin_time);
-                    return $checkinTime >= $dayStart && $checkinTime < $dayEnd;
-                });
-
-                // حساب الساعات والمبلغ لهذا اليوم (مع خصم الخصومات)
-                $dayHours = 0;
-                foreach ($dayAttendances as $attendance) {
-                    if ($attendance->checkout_time) {
-                        $checkinTime = Carbon::parse($attendance->checkin_time);
-                        $checkoutTime = Carbon::parse($attendance->checkout_time);
-                        
-                        // التأكد من الحدود الزمنية
-                        if ($checkinTime < $dayStart) $checkinTime = $dayStart;
-                        if ($checkoutTime > $dayEnd) $checkoutTime = $dayEnd;
-                        if ($checkinTime < $checkoutTime) {
-                            $dayHours += $checkinTime->diffInHours($checkoutTime, true);
-                        }
-                    }
-                }
-
-                // استخدام getAmountForPeriod لخصم الخصومات تلقائياً
-                $dayAmount = $employee->getAmountForPeriod($dateString, $dateString);
-
-                // إذا كان هناك ساعات عمل في هذا اليوم
                 if ($dayHours > 0) {
-                    // البحث عن سجل التسليم الموجود
                     $salaryDelivery = $employee->getSalaryDeliveryForDate($dateString);
-                    
-                    if (!$salaryDelivery) {
-                        // إنشاء سجل تسليم جديد
+
+                    if (! $salaryDelivery) {
                         $salaryDelivery = $employee->createSalaryDelivery($dateString, $dayHours, $dayAmount);
                     }
 
-                    // تسليم الراتب إذا لم يتم تسليمه
-                    if (!$salaryDelivery->isDelivered()) {
-                        // تحديث البيانات أولاً
+                    if (! $salaryDelivery->isDelivered()) {
                         $salaryDelivery->update([
                             'hours_worked' => $dayHours,
                             'hourly_rate' => $employee->hourly_rate,
-                            'total_amount' => $dayAmount
+                            'total_amount' => $dayAmount,
                         ]);
-                        
-                        // تحديد كمسلم
+
                         $salaryDelivery->markAsDelivered(auth()->id());
-                        
+
                         $deliveredDays[] = [
                             'date' => $dateString,
                             'date_arabic' => $currentDate->format('d/m/Y'),
@@ -994,7 +953,7 @@ class EmployeeController extends Controller
                         $skippedDays[] = [
                             'date' => $dateString,
                             'date_arabic' => $currentDate->format('d/m/Y'),
-                            'reason' => 'تم تسليمه مسبقاً'
+                            'reason' => 'تم تسليمه مسبقاً',
                         ];
                     }
                 }

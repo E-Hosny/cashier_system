@@ -537,42 +537,39 @@ class Employee extends Model
     }
 
     /**
-     * الحصول على إجمالي ساعات العمل لفترة محددة
+     * إجمالي ساعات العمل لفترة (كل يوم عمل 7 ص → 7 ص).
      */
     public function getHoursForPeriod($startDate, $endDate = null)
     {
-        $query = $this->attendanceRecords()
-            ->whereNotNull('checkout_time')
-            ->whereBetween('checkin_time', [$startDate, $endDate ?? $startDate]);
+        $endDate = $endDate ?? $startDate;
+        $current = Carbon::parse($startDate)->startOfDay();
+        $end = Carbon::parse($endDate)->startOfDay();
+        $total = 0.0;
 
-        return $query->get()->sum(function ($record) {
-            $checkin = Carbon::parse($record->checkin_time);
-            $checkout = Carbon::parse($record->checkout_time);
-            return $checkin->diffInHours($checkout, true);
-        });
+        while ($current->lte($end)) {
+            $total += $this->getHoursForBusinessDayAnchor($current->toDateString());
+            $current->addDay();
+        }
+
+        return $total;
     }
 
     /**
-     * الحصول على إجمالي المبلغ المستحق لفترة محددة
-     * مع خصم الخصومات
+     * إجمالي المبلغ المستحق لفترة (كل يوم عمل 7 ص → 7 ص، بعد الخصومات).
      */
     public function getAmountForPeriod($startDate, $endDate = null)
     {
-        $hours = $this->getHoursForPeriod($startDate, $endDate);
-        $baseAmount = $hours * $this->hourly_rate;
-        
-        // حساب الخصومات للفترة
-        $start = Carbon::parse($startDate);
-        $end = $endDate ? Carbon::parse($endDate) : $start;
-        
-        $discounts = $this->discounts()
-            ->whereBetween('discount_date', [$start->toDateString(), $end->toDateString()])
-            ->get();
-        
-        $discountTotal = $discounts->sum('amount');
-        $finalAmount = max(0, $baseAmount - $discountTotal);
-        
-        return $finalAmount;
+        $endDate = $endDate ?? $startDate;
+        $current = Carbon::parse($startDate)->startOfDay();
+        $end = Carbon::parse($endDate)->startOfDay();
+        $total = 0.0;
+
+        while ($current->lte($end)) {
+            $total += $this->getAmountForBusinessDayAnchor($current->toDateString());
+            $current->addDay();
+        }
+
+        return $total;
     }
 
     /**

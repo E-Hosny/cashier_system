@@ -290,7 +290,7 @@
                           <div v-if="day.delivery_status.is_delivered && day.delivery_status.delivered_at" class="text-xs text-gray-500 mt-1">
                             {{ day.delivery_status.delivered_at }}
                           </div>
-                          <div v-if="day.delivery_status.is_delivered && day.delivery_status.delivered_amount" class="text-xs text-green-600">
+                          <div v-if="day.delivery_status.is_delivered && day.delivery_status.delivered_amount != null" class="text-xs text-green-600">
                             المبلغ المسلم: {{ formatPrice(day.delivery_status.delivered_amount) }}
                           </div>
                         </div>
