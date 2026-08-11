@@ -209,7 +209,7 @@
                       <span class="block text-gray-400">—</span>
                       <span class="block mt-0.5">يظهر بعد الانصراف وبعد التسليم</span>
                     </div>
-                    <div v-if="canViewSalaryAmounts && employee.today_discount_total > 0" class="text-xs text-red-600 mt-1 space-y-1">
+                    <div v-if="employee.today_discount_total > 0" class="text-xs text-red-600 mt-1 space-y-1">
                       <div v-if="employee.today_discounts && employee.today_discounts.length > 1">
                         خصومات: -{{ formatPrice(employee.today_discount_total) }}
                       </div>
