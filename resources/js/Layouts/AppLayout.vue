@@ -387,6 +387,14 @@ const logout = () => {
                             <ResponsiveNavLink v-if="!isBaristaOnly" :href="route('expenses.index')" :active="route().current('expenses.index')" @click="showingSidebar = false">
                                 المصروفات
                             </ResponsiveNavLink>
+                            <ResponsiveNavLink
+                                v-if="canManageJobApplications"
+                                :href="route('admin.job-applications.index')"
+                                :active="route().current('admin.job-applications.*')"
+                                @click="showingSidebar = false"
+                            >
+                                💼 طلبات التوظيف
+                            </ResponsiveNavLink>
                             <ResponsiveNavLink v-if="canUseBarista" :href="route('barista.index')" :active="route().current('barista.index')" @click="showingSidebar = false">
                                 الريسبي
                             </ResponsiveNavLink>
