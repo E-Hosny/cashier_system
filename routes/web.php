@@ -21,7 +21,9 @@ use App\Http\Controllers\BaristaController;
 
 use App\Http\Controllers\CashierShiftController;
 use App\Http\Controllers\FeedbackController;
+use App\Http\Controllers\JobApplicationController;
 use App\Http\Controllers\Admin\FeedbackController as AdminFeedbackController;
+use App\Http\Controllers\Admin\JobApplicationController as AdminJobApplicationController;
 use App\Http\Controllers\Admin\DisplayScreenController;
 use App\Http\Controllers\Admin\AttendanceGroupController;
 use App\Http\Controllers\Admin\EmployeeAttendanceSettingsController;
@@ -259,6 +261,9 @@ Route::middleware([
         Route::delete('/admin/feedback/{feedback}', [AdminFeedbackController::class, 'destroy'])->name('admin.feedback.destroy');
         Route::put('/admin/feedback/{id}/approve', [AdminFeedbackController::class, 'approve'])->name('admin.feedback.approve');
         Route::post('/admin/feedback/bulk-action', [AdminFeedbackController::class, 'bulkAction'])->name('admin.feedback.bulk-action');
+
+        Route::get('/admin/job-applications', [AdminJobApplicationController::class, 'index'])->name('admin.job-applications.index');
+        Route::delete('/admin/job-applications/{jobApplication}', [AdminJobApplicationController::class, 'destroy'])->name('admin.job-applications.destroy');
     });
 });
 
@@ -266,6 +271,10 @@ Route::middleware([
 Route::get('/feedback/display/{tenant?}', [FeedbackController::class, 'publicDisplay'])->name('feedback.public.display');
 Route::get('/feedback/{tenant?}', [FeedbackController::class, 'publicForm'])->name('feedback.public.form');
 Route::post('/feedback', [FeedbackController::class, 'publicStore'])->name('feedback.public.store');
+
+// Public Job Application Routes (No Authentication)
+Route::get('/jobs/apply/{tenant?}', [JobApplicationController::class, 'publicForm'])->name('job-applications.public.form');
+Route::post('/jobs/apply', [JobApplicationController::class, 'publicStore'])->name('job-applications.public.store');
 
 // Public Display Screen (full-screen slideshow, no auth) — المحتوى حسب الـ tenant في الرابط
 Route::get('/display/{tenant?}', [DisplayScreenController::class, 'show'])->name('display.screen');

@@ -35,6 +35,10 @@ const canUseBarista = computed(() =>
     userRoles.value.includes('admin') ||
     userRoles.value.includes('super admin')
 );
+const canManageJobApplications = computed(() =>
+    userRoles.value.includes('admin') ||
+    userRoles.value.includes('super admin')
+);
 
 const switchToTeam = (team) => {
     router.put(route('current-team.update'), {
@@ -141,6 +145,13 @@ const logout = () => {
                                     :active="route().current('admin.feedback.*')"
                                 >
                                     ⭐ التقييمات
+                                </NavLink>
+                                <NavLink
+                                    v-if="canManageJobApplications"
+                                    :href="route('admin.job-applications.index')"
+                                    :active="route().current('admin.job-applications.*')"
+                                >
+                                    💼 طلبات التوظيف
                                 </NavLink>
                                 <NavLink v-if="canUseBarista" :href="route('barista.index')" :active="route().current('barista.index')">
                                     الريسبي
