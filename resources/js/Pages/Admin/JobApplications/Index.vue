@@ -62,7 +62,7 @@
                                     <th class="px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider text-center">العنوان</th>
                                     <th class="px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider text-center">رقم التليفون</th>
                                     <th class="px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider text-center">تاريخ التقديم</th>
-                                    <th class="px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider text-center">إجراءات</th>
+                                    <th class="px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider text-center min-w-[180px]">الملحوظة</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
@@ -84,14 +84,26 @@
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
                                         {{ formatDate(application.created_at) }}
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-center">
+                                    <td class="px-6 py-4 text-sm text-center max-w-xs">
                                         <button
                                             type="button"
-                                            @click="deleteApplication(application.id)"
-                                            class="text-red-600 hover:text-red-800"
-                                            title="حذف"
+                                            @click="openNoteModal(application)"
+                                            class="w-full text-center rounded-md px-2 py-2 hover:bg-indigo-50 transition"
+                                            :title="application.note ? 'تعديل الملحوظة' : 'كتابة ملحوظة'"
                                         >
-                                            <i class="fas fa-trash"></i>
+                                            <span v-if="application.note" class="block whitespace-pre-wrap break-words text-gray-800">
+                                                {{ application.note }}
+                                            </span>
+                                            <span v-else class="text-indigo-600 font-medium">
+                                                <i class="fas fa-sticky-note ml-1"></i>
+                                                كتابة ملحوظة
+                                            </span>
+                                            <span
+                                                v-if="application.note && application.note_author?.name"
+                                                class="mt-1 block text-xs text-gray-500"
+                                            >
+                                                بواسطة: {{ application.note_author.name }}
+                                            </span>
                                         </button>
                                     </td>
                                 </tr>
@@ -149,11 +161,63 @@
                 </div>
             </div>
         </div>
+
+        <div
+            v-if="showNoteModal"
+            class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            @click.self="closeNoteModal"
+        >
+            <div class="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden" dir="rtl">
+                <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                    <h3 class="text-lg font-semibold text-gray-900">
+                        {{ selectedApplication?.note ? 'تعديل الملحوظة' : 'كتابة ملحوظة' }}
+                    </h3>
+                    <button type="button" class="text-gray-400 hover:text-gray-600" @click="closeNoteModal">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+
+                <div class="px-6 py-5 space-y-4">
+                    <div class="text-sm text-gray-600 text-right">
+                        المتقدم:
+                        <span class="font-semibold text-gray-900">{{ selectedApplication?.name }}</span>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2 text-right">الملحوظة</label>
+                        <textarea
+                            v-model="noteDraft"
+                            rows="5"
+                            class="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm text-right"
+                            autofocus
+                        ></textarea>
+                    </div>
+                </div>
+
+                <div class="px-6 py-4 border-t border-gray-200 flex items-center justify-end gap-3">
+                    <button
+                        type="button"
+                        class="px-4 py-2 rounded-md text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
+                        @click="closeNoteModal"
+                    >
+                        إلغاء
+                    </button>
+                    <button
+                        type="button"
+                        class="px-4 py-2 rounded-md text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"
+                        :disabled="saving"
+                        @click="saveNote"
+                    >
+                        {{ saving ? 'جاري الحفظ...' : 'حفظ' }}
+                    </button>
+                </div>
+            </div>
+        </div>
     </AppLayout>
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { Link, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
@@ -161,6 +225,11 @@ const page = usePage();
 const applications = computed(() => page.props.applications);
 const totalApplications = computed(() => page.props.totalApplications ?? 0);
 const publicFormUrl = computed(() => page.props.publicFormUrl || `${window.location.origin}/jobs/apply`);
+
+const showNoteModal = ref(false);
+const selectedApplication = ref(null);
+const noteDraft = ref('');
+const saving = ref(false);
 
 const formatDate = (dateString) => {
     if (!dateString) return '—';
@@ -179,9 +248,37 @@ const copyPublicLink = () => {
     });
 };
 
-const deleteApplication = (id) => {
-    if (confirm('هل تريد حذف هذا الطلب؟')) {
-        router.delete(route('admin.job-applications.destroy', id));
-    }
+const openNoteModal = (application) => {
+    selectedApplication.value = application;
+    noteDraft.value = application.note ?? '';
+    showNoteModal.value = true;
+};
+
+const closeNoteModal = () => {
+    if (saving.value) return;
+    showNoteModal.value = false;
+    selectedApplication.value = null;
+    noteDraft.value = '';
+};
+
+const saveNote = () => {
+    if (!selectedApplication.value) return;
+
+    saving.value = true;
+    router.put(
+        route('admin.job-applications.update-note', selectedApplication.value.id),
+        { note: noteDraft.value ?? '' },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                showNoteModal.value = false;
+                selectedApplication.value = null;
+                noteDraft.value = '';
+            },
+            onFinish: () => {
+                saving.value = false;
+            },
+        }
+    );
 };
 </script>

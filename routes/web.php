@@ -263,6 +263,7 @@ Route::middleware([
         Route::post('/admin/feedback/bulk-action', [AdminFeedbackController::class, 'bulkAction'])->name('admin.feedback.bulk-action');
 
         Route::get('/admin/job-applications', [AdminJobApplicationController::class, 'index'])->name('admin.job-applications.index');
+        Route::put('/admin/job-applications/{jobApplication}/note', [AdminJobApplicationController::class, 'updateNote'])->name('admin.job-applications.update-note');
         Route::delete('/admin/job-applications/{jobApplication}', [AdminJobApplicationController::class, 'destroy'])->name('admin.job-applications.destroy');
     });
 });
