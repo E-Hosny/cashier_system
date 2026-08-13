@@ -55,6 +55,46 @@ class SalaryDelivery extends Model
     }
 
     /**
+     * حدود يوم العمل على عمود delivered_at (7 ص → 7 ص).
+     *
+     * @return array{0: \Carbon\Carbon, 1: \Carbon\Carbon}
+     */
+    public static function deliveredAtBoundsForAnchor(string $anchorDate): array
+    {
+        $start = Carbon::parse($anchorDate)->setTime(7, 0, 0);
+        $end = $start->copy()->addDay();
+
+        return [$start, $end];
+    }
+
+    /**
+     * تسليمات تمت فعلياً خلال يوم عمل معيّن (حسب وقت الضغط على تسليم).
+     */
+    public function scopeDeliveredDuringBusinessDay($query, string $anchorDate)
+    {
+        [$start, $end] = self::deliveredAtBoundsForAnchor($anchorDate);
+
+        return $query
+            ->where('status', 'delivered')
+            ->where('delivered_at', '>=', $start)
+            ->where('delivered_at', '<', $end);
+    }
+
+    /**
+     * تسليمات تمت فعلياً خلال فترة أيام عمل (من تاريخ إلى تاريخ شامل).
+     */
+    public function scopeDeliveredDuringBusinessDayRange($query, string $dateFrom, string $dateTo)
+    {
+        $start = Carbon::parse($dateFrom)->setTime(7, 0, 0);
+        $end = Carbon::parse($dateTo)->addDay()->setTime(7, 0, 0);
+
+        return $query
+            ->where('status', 'delivered')
+            ->where('delivered_at', '>=', $start)
+            ->where('delivered_at', '<', $end);
+    }
+
+    /**
      * تحديد حالة التسليم إلى "تم التسليم"
      */
     public function markAsDelivered($userId = null)

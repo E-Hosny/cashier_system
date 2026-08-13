@@ -11,6 +11,7 @@ use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\FridgeController;
 use App\Http\Controllers\Admin\RawMaterialController;
+use App\Http\Controllers\Admin\InventoryCountController;
 use App\Http\Controllers\Admin\RawMaterialCategoryController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\EmployeeController;
@@ -20,13 +21,16 @@ use App\Http\Controllers\BaristaController;
 
 use App\Http\Controllers\CashierShiftController;
 use App\Http\Controllers\FeedbackController;
+use App\Http\Controllers\JobApplicationController;
 use App\Http\Controllers\Admin\FeedbackController as AdminFeedbackController;
+use App\Http\Controllers\Admin\JobApplicationController as AdminJobApplicationController;
 use App\Http\Controllers\Admin\DisplayScreenController;
 use App\Http\Controllers\Admin\AttendanceGroupController;
 use App\Http\Controllers\Admin\EmployeeAttendanceSettingsController;
 use App\Http\Controllers\Admin\BranchController;
 use App\Http\Controllers\Admin\TenantSettingsController;
 use App\Http\Controllers\BranchContextController;
+use App\Http\Controllers\QzTrayController;
 
 Route::get('/', function () {
     return Inertia::render('Welcome', [
@@ -49,6 +53,9 @@ Route::middleware([
             'canManageFeedback' => Auth::user()->hasRole('admin') || Auth::user()->hasRole('super admin'),
         ]);
     })->name('dashboard');
+
+    Route::get('/qz/certificate', [QzTrayController::class, 'certificate'])->name('qz.certificate');
+    Route::post('/qz/sign', [QzTrayController::class, 'sign'])->name('qz.sign');
 
     // Barista (الريسبي)
     Route::get('/barista', [BaristaController::class, 'index'])->name('barista.index');
@@ -90,6 +97,8 @@ Route::middleware([
     Route::post('/raw-materials/pending-receive', [RawMaterialController::class, 'receiveByBarcode'])->name('admin.raw-materials.pending-receive.store');
     Route::get('/raw-materials/labels/{label}/print', [RawMaterialController::class, 'printLabel'])->name('admin.raw-materials.labels.print');
     Route::post('/raw-materials/{raw_material}/labels', [RawMaterialController::class, 'storeLabel'])->name('admin.raw-materials.labels.store');
+    Route::post('/raw-materials/combined-labels', [RawMaterialController::class, 'storeCombinedLabel'])->name('admin.raw-materials.combined-labels.store');
+    Route::get('/raw-materials/branch-pulls-report', [RawMaterialController::class, 'allBranchesPullsReport'])->name('admin.raw-materials.branch-pulls-report');
     Route::resource('raw-materials', RawMaterialController::class, ['as' => 'admin'])->except(['show']);
     Route::get('raw-materials/{raw_material}/add-quantity', [RawMaterialController::class, 'addQuantityForm'])->name('admin.raw-materials.add-quantity');
     Route::post('raw-materials/{raw_material}/add-quantity', [RawMaterialController::class, 'addQuantity'])->name('admin.raw-materials.add-quantity.store');
@@ -108,6 +117,24 @@ Route::middleware([
             ->name('admin.raw-materials.branch-stock.update');
         Route::put('/raw-materials/fridge/branch/{branch}/stocks/{config}', [FridgeController::class, 'updateBranchStock'])
             ->name('admin.fridge.branch-stock.update');
+
+        Route::get('/raw-materials/inventory-counts', [InventoryCountController::class, 'index'])
+            ->name('admin.raw-materials.inventory-counts.index');
+        Route::post('/raw-materials/inventory-counts/branches/{branch}/start', [InventoryCountController::class, 'start'])
+            ->name('admin.raw-materials.inventory-counts.start');
+        Route::get('/raw-materials/inventory-counts/{inventoryCount}/pdf', [InventoryCountController::class, 'pdf'])
+            ->name('admin.raw-materials.inventory-counts.pdf');
+        Route::get('/raw-materials/inventory-counts/{inventoryCount}', [InventoryCountController::class, 'show'])
+            ->name('admin.raw-materials.inventory-counts.show');
+        Route::put('/raw-materials/inventory-counts/{inventoryCount}/items/{item}', [InventoryCountController::class, 'updateItem'])
+            ->name('admin.raw-materials.inventory-counts.items.update');
+        Route::delete('/raw-materials/inventory-counts/{inventoryCount}/items/{item}', [InventoryCountController::class, 'clearItem'])
+            ->name('admin.raw-materials.inventory-counts.items.clear');
+        Route::post('/raw-materials/inventory-counts/{inventoryCount}/complete', [InventoryCountController::class, 'complete'])
+            ->name('admin.raw-materials.inventory-counts.complete');
+        Route::post('/raw-materials/inventory-counts/{inventoryCount}/cancel', [InventoryCountController::class, 'cancel'])
+            ->name('admin.raw-materials.inventory-counts.cancel');
+
         Route::get('/raw-material-categories', [RawMaterialCategoryController::class, 'index'])->name('admin.raw-material-categories.index');
         Route::post('/raw-material-categories', [RawMaterialCategoryController::class, 'store'])->name('admin.raw-material-categories.store');
         Route::put('/raw-material-categories/{category}', [RawMaterialCategoryController::class, 'update'])->name('admin.raw-material-categories.update');
@@ -139,6 +166,9 @@ Route::middleware([
         Route::get('/', [TenantSettingsController::class, 'index'])->name('index');
         Route::post('/logo', [TenantSettingsController::class, 'updateLogo'])->name('logo.update');
         Route::delete('/logo', [TenantSettingsController::class, 'destroyLogo'])->name('logo.destroy');
+        Route::put('/branches/{branch}/printers', [TenantSettingsController::class, 'updateBranchPrinters'])->name('branches.printers.update');
+        Route::post('/qz-keys', [TenantSettingsController::class, 'uploadQzKeys'])->name('qz-keys.upload');
+        Route::get('/qz-trust-package', [QzTrayController::class, 'downloadTrustPackage'])->name('qz-trust-package.download');
     });
 
     Route::middleware(['branch.context'])->group(function () {
@@ -149,6 +179,7 @@ Route::middleware([
 
         // Employees Management (admin and cashier with attendance permission)
         Route::middleware(['employee.attendance'])->group(function () {
+            Route::get('/employees/salary-withdrawals', [EmployeeController::class, 'salaryWithdrawals'])->name('admin.employees.salary-withdrawals');
             Route::resource('employees', EmployeeController::class, ['as' => 'admin'])->except(['show']);
             Route::post('/employees/{employee}/checkin', [EmployeeController::class, 'checkin'])->name('admin.employees.checkin');
             Route::post('/employees/{employee}/checkout', [EmployeeController::class, 'checkout'])->name('admin.employees.checkout');
@@ -161,6 +192,9 @@ Route::middleware([
             Route::post('/employees/{employee}/deliver-salary-for-period', [EmployeeController::class, 'deliverSalaryForPeriod'])->name('admin.employees.deliver-salary-for-period');
             Route::post('/employees/{employee}/undo-salary-delivery-for-date', [EmployeeController::class, 'undoSalaryDeliveryForDate'])->name('admin.employees.undo-salary-delivery-for-date');
             Route::post('/employees/{employee}/add-discount', [EmployeeController::class, 'addDiscount'])->name('admin.employees.add-discount');
+            Route::delete('/employees/{employee}/discounts/{discount}', [EmployeeController::class, 'removeDiscount'])->name('admin.employees.remove-discount');
+            Route::post('/employees/{employee}/withdraw-salary', [EmployeeController::class, 'withdrawSalary'])->name('admin.employees.withdraw-salary');
+            Route::delete('/employees/{employee}/salary-withdrawals/{withdrawal}', [EmployeeController::class, 'cancelSalaryWithdrawal'])->name('admin.employees.salary-withdrawals.cancel');
         });
 
         Route::middleware(['super_admin'])->prefix('employees/attendance-groups')->name('admin.employees.attendance-groups.')->group(function () {
@@ -227,6 +261,10 @@ Route::middleware([
         Route::delete('/admin/feedback/{feedback}', [AdminFeedbackController::class, 'destroy'])->name('admin.feedback.destroy');
         Route::put('/admin/feedback/{id}/approve', [AdminFeedbackController::class, 'approve'])->name('admin.feedback.approve');
         Route::post('/admin/feedback/bulk-action', [AdminFeedbackController::class, 'bulkAction'])->name('admin.feedback.bulk-action');
+
+        Route::get('/admin/job-applications', [AdminJobApplicationController::class, 'index'])->name('admin.job-applications.index');
+        Route::put('/admin/job-applications/{jobApplication}/note', [AdminJobApplicationController::class, 'updateNote'])->name('admin.job-applications.update-note');
+        Route::delete('/admin/job-applications/{jobApplication}', [AdminJobApplicationController::class, 'destroy'])->name('admin.job-applications.destroy');
     });
 });
 
@@ -234,6 +272,10 @@ Route::middleware([
 Route::get('/feedback/display/{tenant?}', [FeedbackController::class, 'publicDisplay'])->name('feedback.public.display');
 Route::get('/feedback/{tenant?}', [FeedbackController::class, 'publicForm'])->name('feedback.public.form');
 Route::post('/feedback', [FeedbackController::class, 'publicStore'])->name('feedback.public.store');
+
+// Public Job Application Routes (No Authentication)
+Route::get('/jobs/apply/{tenant?}', [JobApplicationController::class, 'publicForm'])->name('job-applications.public.form');
+Route::post('/jobs/apply', [JobApplicationController::class, 'publicStore'])->name('job-applications.public.store');
 
 // Public Display Screen (full-screen slideshow, no auth) — المحتوى حسب الـ tenant في الرابط
 Route::get('/display/{tenant?}', [DisplayScreenController::class, 'show'])->name('display.screen');

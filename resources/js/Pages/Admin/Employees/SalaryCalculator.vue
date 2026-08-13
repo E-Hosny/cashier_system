@@ -126,6 +126,21 @@
               </div>
             </div>
 
+            <!-- مستحق اليوم / إجمالي المسلم اليوم (حسب وقت التسليم) -->
+            <div v-if="salaryData.today_cash" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="bg-purple-50 border border-purple-200 rounded-lg p-5">
+                <div class="text-sm text-purple-700 mb-1">مستحق يوم العمل الحالي فقط</div>
+                <div class="text-3xl font-bold text-purple-900">{{ formatPrice(salaryData.today_cash.due_today) }}</div>
+                <p class="text-xs text-purple-600 mt-2">{{ salaryData.today_cash.period_text }}</p>
+                <p class="text-xs text-gray-500 mt-1">راتب يوم العمل الحالي فقط (لا يشمل الأيام السابقة في الفترة)</p>
+              </div>
+              <div class="bg-teal-50 border border-teal-200 rounded-lg p-5">
+                <div class="text-sm text-teal-700 mb-1">إجمالي ما سُلّم خلال يوم العمل الحالي</div>
+                <div class="text-3xl font-bold text-teal-900">{{ formatPrice(salaryData.today_cash.handed_out_today) }}</div>
+                <p class="text-xs text-teal-600 mt-2">حسب وقت الضغط على «تسليم» — يشمل أيام سابقة سُلّمت اليوم</p>
+              </div>
+            </div>
+
             <!-- تجميع الخصومات -->
             <div v-if="salaryData.discount_summary" class="bg-red-50 border border-red-200 rounded-lg p-6">
               <h4 class="text-lg font-semibold text-red-900 mb-4">📉 تجميع الخصومات خلال الفترة</h4>
@@ -275,7 +290,7 @@
                           <div v-if="day.delivery_status.is_delivered && day.delivery_status.delivered_at" class="text-xs text-gray-500 mt-1">
                             {{ day.delivery_status.delivered_at }}
                           </div>
-                          <div v-if="day.delivery_status.is_delivered && day.delivery_status.delivered_amount" class="text-xs text-green-600">
+                          <div v-if="day.delivery_status.is_delivered && day.delivery_status.delivered_amount != null" class="text-xs text-green-600">
                             المبلغ المسلم: {{ formatPrice(day.delivery_status.delivered_amount) }}
                           </div>
                         </div>
@@ -543,6 +558,12 @@ export default {
             };
           }
 
+          if (this.salaryData.today_cash) {
+            this.salaryData.today_cash.handed_out_today = Number(
+              (Number(this.salaryData.today_cash.handed_out_today || 0) + Number(data.delivery.total_amount || 0)).toFixed(2)
+            );
+          }
+
           this.successMessage = `تم تسليم راتب ${day.day_name} ${day.date_arabic} بمبلغ ${this.formatPrice(data.delivery.total_amount)} بنجاح!`;
           
           // مسح رسالة النجاح بعد 5 ثواني
@@ -617,6 +638,12 @@ export default {
               };
             }
           });
+
+          if (this.salaryData.today_cash && data.summary?.total_amount_delivered != null) {
+            this.salaryData.today_cash.handed_out_today = Number(
+              (Number(this.salaryData.today_cash.handed_out_today || 0) + Number(data.summary.total_amount_delivered || 0)).toFixed(2)
+            );
+          }
 
           // عرض رسالة نجاح مفصلة
           let message = `تم تسليم رواتب ${data.summary.total_days_delivered} أيام بنجاح! `;

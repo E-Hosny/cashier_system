@@ -175,7 +175,18 @@
             <p class="font-bold text-xl text-end">الإجمالي: {{ totalAmount }} جنيه</p>
           </div>
 
-          <button 
+          <div v-if="usesDualPrinters" class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-1">ملاحظات لطابعة العامل</label>
+            <textarea
+              v-model="staffNotes"
+              rows="2"
+              maxlength="1000"
+              class="w-full border border-gray-300 rounded-lg p-2 text-sm resize-none"
+            ></textarea>
+            <p class="text-xs text-gray-500 mt-1">تظهر في نسخة العامل فقط ولا تُطبع للزبون.</p>
+          </div>
+
+          <button
             @click="checkout" 
             :disabled="cart.length === 0 || isCheckoutLoading" 
             class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg transition disabled:bg-gray-400 flex items-center justify-center gap-2"
@@ -594,9 +605,13 @@ export default {
       refundRecentLoading: false,
       refundError: '',
       refundSearchDebounceTimer: null,
+      staffNotes: '',
     };
   },
   computed: {
+    usesDualPrinters() {
+      return this.$page.props.branchContext?.printerSettings?.mode === 'dual';
+    },
     filteredProducts() {
       return this.liveProducts
         .filter(p => this.selectedCategoryId === null || p.category_id === this.selectedCategoryId)
@@ -786,6 +801,7 @@ export default {
     },
     clearCart() {
       this.cart = [];
+      this.staffNotes = '';
     },
     async checkout() {
       // منع الضغط المتكرر
@@ -809,7 +825,8 @@ export default {
           from_fridge: !!item.from_fridge,
         })),
         total_price: parseFloat(this.totalAmount) || 0,
-        payment_method: 'cash'
+        payment_method: 'cash',
+        staff_notes: this.usesDualPrinters && this.staffNotes.trim() ? this.staffNotes.trim() : null,
       };
 
       try {
@@ -876,19 +893,38 @@ export default {
 
 
     printInvoice() {
+      const settings = this.$page.props.branchContext?.printerSettings;
+
+      if (settings?.method === 'qz' && settings?.customer_printer) {
+        this.printInvoiceViaQzTray(settings);
+        return;
+      }
+
+      this.printInvoiceViaBrowser();
+    },
+    printInvoiceViaBrowser() {
       this.iframeVisible = true;
 
       this.$nextTick(() => {
         const iframe = document.getElementById('invoice-frame');
         if (iframe) {
           iframe.onload = () => {
-            // الطباعة التلقائية ستتم من داخل الفاتورة HTML
             console.log('تم تحميل الفاتورة - الطباعة ستتم تلقائياً');
           };
 
-          iframe.src = `/invoice-html/${this.orderId}`;
+          iframe.src = `/invoice-html/${this.orderId}?copy=customer`;
         }
       });
+    },
+    async printInvoiceViaQzTray(settings) {
+      try {
+        const { printInvoiceViaQz } = await import('@/utils/qzPrint');
+        await printInvoiceViaQz(this.orderId, settings);
+      } catch (error) {
+        console.error('QZ print failed, falling back to browser:', error);
+        alert('فشلت الطباعة عبر QZ Tray. تأكد أن البرنامج يعمل. سيتم استخدام طباعة المتصفح.');
+        this.printInvoiceViaBrowser();
+      }
     },
     closeIframe() {
       this.iframeVisible = false;

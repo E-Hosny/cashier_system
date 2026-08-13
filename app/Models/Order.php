@@ -17,6 +17,7 @@ class Order extends Model
         'total',
         'status',
         'payment_method',
+        'staff_notes',
         'tenant_id',
         'branch_id',
         'user_id',

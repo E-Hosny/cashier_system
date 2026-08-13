@@ -7,12 +7,20 @@
 
     <div class="no-print bg-white border rounded-xl p-8 max-w-md mx-auto text-center shadow mb-4">
       <h2 class="text-xl font-bold text-gray-900 mb-2">{{ productName }}</h2>
-      <p class="text-gray-700 mb-1">
-        <span class="font-semibold">{{ label.piece_count }}</span> {{ unit || 'قطعة' }}
-      </p>
-      <p class="text-sm text-gray-600 mb-4">
-        ≈ {{ formatNum(label.consume_amount) }} {{ consumeUnit }}
-      </p>
+      <ul v-if="lines && lines.length > 1" class="text-right text-sm mb-4 space-y-2 border rounded-lg p-3">
+        <li v-for="(row, i) in lines" :key="i" class="flex justify-between gap-2 border-b pb-1 last:border-0">
+          <span>{{ row.product_name }}</span>
+          <span class="font-bold">{{ row.piece_count }} {{ row.unit || 'قطعة' }}</span>
+        </li>
+      </ul>
+      <template v-else>
+        <p class="text-gray-700 mb-1">
+          <span class="font-semibold">{{ label.piece_count }}</span> {{ unit || 'قطعة' }}
+        </p>
+        <p class="text-sm text-gray-600 mb-4">
+          ≈ {{ formatNum(label.consume_amount) }} {{ consumeUnit }}
+        </p>
+      </template>
       <div class="flex justify-center mb-2">
         <svg ref="barcodeSvgPreview" class="max-w-full h-auto"></svg>
       </div>
@@ -20,8 +28,8 @@
     </div>
 
     <div class="label-print-area print-only sticker-label" dir="rtl">
-      <h2 class="sticker-title">{{ productName }}</h2>
-      <p class="sticker-qty sticker-meta">{{ label.piece_count }} {{ unit || 'قطعة' }}</p>
+      <h2 class="sticker-title">{{ printTitle }}</h2>
+      <p v-if="printSubtitle" class="sticker-qty sticker-meta">{{ printSubtitle }}</p>
       <div class="sticker-barcode-wrap">
         <svg ref="barcodeSvgPrint" class="sticker-barcode"></svg>
       </div>
@@ -44,6 +52,24 @@ export default {
     productName: { type: String, default: '' },
     unit: { type: String, default: '' },
     consumeUnit: { type: String, default: '' },
+    lines: { type: Array, default: () => [] },
+  },
+  computed: {
+    printTitle() {
+      if (this.lines?.length > 1) {
+        return `مجمّع (${this.lines.length})`;
+      }
+      return this.productName;
+    },
+    printSubtitle() {
+      if (this.lines?.length > 1) {
+        return null;
+      }
+      if (this.label.piece_count) {
+        return `${this.label.piece_count} ${this.unit || 'قطعة'}`;
+      }
+      return null;
+    },
   },
   mounted() {
     this.renderBarcodes();

@@ -32,8 +32,26 @@
               <div v-if="errors.name" class="text-red-500 text-sm mt-1">{{ errors.name }}</div>
             </div>
 
+            <!-- نوع الراتب -->
+            <div v-if="canManageSchedule" class="mb-4">
+              <label class="block text-gray-700 text-sm font-bold mb-2">
+                نوع الراتب *
+              </label>
+              <div class="flex flex-wrap gap-4">
+                <label class="inline-flex items-center gap-2 cursor-pointer">
+                  <input v-model="form.salary_type" type="radio" value="hourly" class="text-blue-600" />
+                  <span>بالساعة (افتراضي)</span>
+                </label>
+                <label class="inline-flex items-center gap-2 cursor-pointer">
+                  <input v-model="form.salary_type" type="radio" value="fixed" class="text-blue-600" />
+                  <span>راتب شهري ثابت</span>
+                </label>
+              </div>
+              <div v-if="errors.salary_type" class="text-red-500 text-sm mt-1">{{ errors.salary_type }}</div>
+            </div>
+
             <!-- سعر الساعة -->
-            <div class="mb-4">
+            <div v-if="form.salary_type === 'hourly'" class="mb-4">
               <label class="block text-gray-700 text-sm font-bold mb-2">
                 سعر الساعة (جنيه) *
               </label>
@@ -47,6 +65,24 @@
                 placeholder="أدخل سعر الساعة"
               />
               <div v-if="errors.hourly_rate" class="text-red-500 text-sm mt-1">{{ errors.hourly_rate }}</div>
+            </div>
+
+            <!-- الراتب الثابت -->
+            <div v-if="form.salary_type === 'fixed'" class="mb-4">
+              <label class="block text-gray-700 text-sm font-bold mb-2">
+                الراتب الشهري الثابت (جنيه) *
+              </label>
+              <input
+                v-model="form.fixed_salary"
+                type="number"
+                step="0.01"
+                min="0.01"
+                required
+                class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="أدخل الراتب الشهري"
+              />
+              <p class="text-xs text-gray-500 mt-1">لا يعتمد على ساعات العمل. يمكن سحب جزء منه خلال الشهر.</p>
+              <div v-if="errors.fixed_salary" class="text-red-500 text-sm mt-1">{{ errors.fixed_salary }}</div>
             </div>
 
             <!-- رقم الهاتف -->
@@ -104,27 +140,12 @@
               <div v-if="errors.notes" class="text-red-500 text-sm mt-1">{{ errors.notes }}</div>
             </div>
 
-            <div v-if="canManageSchedule" class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <h4 class="font-bold text-blue-900 mb-3">⏰ مواعيد الحضور والانصراف</h4>
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label class="block text-gray-700 text-sm font-bold mb-2">موعد الحضور المتوقع</label>
-                  <input v-model="form.expected_checkin_time" type="time" class="w-full p-3 border border-gray-300 rounded-lg" />
-                </div>
-                <div>
-                  <label class="block text-gray-700 text-sm font-bold mb-2">موعد الانصراف المتوقع</label>
-                  <input v-model="form.expected_checkout_time" type="time" class="w-full p-3 border border-gray-300 rounded-lg" />
-                </div>
-                <div>
-                  <label class="block text-gray-700 text-sm font-bold mb-2">فترة السماح (دقيقة)</label>
-                  <input v-model.number="form.grace_minutes" type="number" min="0" max="120" class="w-full p-3 border border-gray-300 rounded-lg" />
-                </div>
-              </div>
-              <label class="flex items-center mt-3">
-                <input v-model="form.late_deductions_enabled" type="checkbox" class="rounded border-gray-300 text-blue-600" />
-                <span class="mr-2 text-sm font-medium text-gray-700">تطبيق قوانين خصم التأخير</span>
-              </label>
-            </div>
+            <EmployeeWorkScheduleFields
+              v-if="canManageSchedule"
+              :form="form"
+              :errors="errors"
+              class="mb-6"
+            />
 
             <div v-if="canManageAttendanceDependency" class="mb-6">
               <label class="block text-gray-700 text-sm font-bold mb-2">
@@ -204,11 +225,13 @@
 <script>
 import { Link, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import EmployeeWorkScheduleFields, { defaultWorkSchedules } from '@/Components/Admin/EmployeeWorkScheduleFields.vue';
 
 export default {
   layout: AppLayout,
   components: {
     Link,
+    EmployeeWorkScheduleFields,
   },
   props: {
     employee: Object,
@@ -233,7 +256,9 @@ export default {
   setup(props) {
     const form = useForm({
       name: props.employee.name,
+      salary_type: props.employee.salary_type || 'hourly',
       hourly_rate: props.employee.hourly_rate,
+      fixed_salary: props.employee.fixed_salary || '',
       phone: props.employee.phone || '',
       position: props.employee.position || '',
       notes: props.employee.notes || '',
@@ -244,6 +269,10 @@ export default {
       expected_checkout_time: props.employee.expected_checkout_time || '',
       grace_minutes: props.employee.grace_minutes ?? 0,
       late_deductions_enabled: props.employee.late_deductions_enabled !== false,
+      use_weekly_schedule: props.employee.use_weekly_schedule || false,
+      work_schedules: props.employee.work_schedules?.length
+        ? props.employee.work_schedules
+        : defaultWorkSchedules(),
     });
 
     return { form };

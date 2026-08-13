@@ -9,6 +9,7 @@ use App\Models\FridgeProductConfig;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Models\Branch;
 use App\Models\Tenant;
 use App\Support\BranchContext;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -128,6 +129,7 @@ class CashierController extends Controller
         $data = $request->validate([
             'total_price' => 'required|numeric',
             'payment_method' => 'required|string',
+            'staff_notes' => 'nullable|string|max:1000',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
@@ -160,6 +162,7 @@ class CashierController extends Controller
                 $orderData = [
                     'total' => $data['total_price'],
                     'payment_method' => $data['payment_method'],
+                    'staff_notes' => filled($data['staff_notes'] ?? null) ? trim($data['staff_notes']) : null,
                     'status' => 'completed',
                     'invoice_number' => InvoiceNumberService::generateInvoiceNumber(),
                 ];
@@ -371,15 +374,52 @@ class CashierController extends Controller
 
     public function invoiceHtml($orderId)
     {
-        $order = Order::select('id', 'total', 'created_at', 'invoice_number', 'tenant_id')
-            ->with(['items' => function($query) {
-                $query->select('order_id', 'product_name', 'quantity', 'price', 'size');
-            }])
+        $order = Order::select('id', 'total', 'created_at', 'invoice_number', 'tenant_id', 'staff_notes')
+            ->with([
+                'items' => function ($query) {
+                    $query->select('order_id', 'product_id', 'product_name', 'quantity', 'price', 'size', 'from_fridge');
+                },
+                'items.product.category',
+            ])
             ->findOrFail($orderId);
 
         $logoUrl = $this->invoiceLogoUrl($order->tenant_id);
+        $copy = request('copy', 'customer');
+        if (! in_array($copy, ['customer', 'staff'], true)) {
+            $copy = 'customer';
+        }
+        $qzMode = request()->boolean('qz');
+        $staffHasItems = true;
 
-        return view('invoice-html', compact('order', 'logoUrl'));
+        // نسخة العامل: فئات محددة بدون أسعار، واستبعاد منتجات التلاجة دائماً
+        if ($copy === 'staff') {
+            $branchId = BranchContext::id();
+            $staffCategoryIds = [];
+
+            if ($branchId) {
+                $branch = Branch::find($branchId);
+                $settings = $branch?->normalizedPrinterSettings() ?? [];
+                $staffCategoryIds = $settings['staff_category_ids'] ?? [];
+            }
+
+            $order->setRelation('items', $order->items->filter(function ($item) use ($staffCategoryIds) {
+                if (! empty($item->from_fridge)) {
+                    return false;
+                }
+
+                if (is_array($staffCategoryIds) && ! empty($staffCategoryIds)) {
+                    $categoryId = $item->product?->category_id;
+
+                    return $categoryId !== null && in_array((int) $categoryId, $staffCategoryIds, true);
+                }
+
+                return true;
+            })->values());
+
+            $staffHasItems = $order->items->isNotEmpty();
+        }
+
+        return view('invoice-html', compact('order', 'logoUrl', 'copy', 'qzMode', 'staffHasItems'));
     }
 
     protected function invoiceLogoUrl(?int $tenantId): ?string

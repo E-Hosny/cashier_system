@@ -10,9 +10,13 @@ use App\Models\Category;
 use App\Models\Employee;
 use App\Models\Product;
 use App\Models\RawMaterialPendingLabel;
+use App\Models\RawMaterialPendingLabelItem;
+use App\Models\FridgePendingLabel;
 use App\Models\StockMovement;
+use App\Services\InventoryCountService;
 use App\Support\BranchContext;
 use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -97,11 +101,7 @@ class RawMaterialController extends Controller
             }
 
             $rawMaterials = $query->get();
-            $pendingSums = RawMaterialPendingLabel::query()
-                ->where('status', RawMaterialPendingLabel::STATUS_PENDING)
-                ->selectRaw('product_id, SUM(piece_count) as total')
-                ->groupBy('product_id')
-                ->pluck('total', 'product_id');
+            $pendingSums = $this->pendingPieceTotalsByProduct();
             $rawMaterials = $rawMaterials->map(function (Product $m) use ($pendingSums) {
                 $m->pending_pieces = (float) ($pendingSums[$m->id] ?? 0);
 
@@ -115,6 +115,7 @@ class RawMaterialController extends Controller
 
         return Inertia::render('Admin/RawMaterials/Index', [
             'rawMaterials' => $rawMaterials,
+            'pendingLabelsForBundle' => $viewScope === 'central' ? $this->pendingLabelsForBundlePayload() : [],
             'rawMaterialCategories' => Category::forRawMaterials()->orderBy('name')->get(['id', 'name']),
             'hubBranches' => $hubBranches,
             'branchDetail' => $branchDetail,
@@ -172,20 +173,13 @@ class RawMaterialController extends Controller
         })->values();
 
         $todayPulls = RawMaterialPendingLabel::query()
-            ->with('product:id,name,unit')
+            ->with(['product:id,name,unit', 'items.product:id,name,unit'])
             ->where('branch_id', $branchId)
             ->where('status', RawMaterialPendingLabel::STATUS_RECEIVED)
             ->whereBetween('received_at', [$dayStart, $dayEnd])
             ->orderByDesc('received_at')
             ->get()
-            ->map(fn (RawMaterialPendingLabel $label) => [
-                'id' => $label->id,
-                'received_at' => $label->received_at?->format('Y-m-d H:i'),
-                'product_name' => $label->product?->name ?? '—',
-                'piece_count' => (float) $label->piece_count,
-                'unit' => $label->product?->unit ?? '',
-                'label_code' => $label->label_code,
-            ]);
+            ->map(fn (RawMaterialPendingLabel $label) => $this->formatPullRow($label));
 
         return [
             'branch_id' => $branch->id,
@@ -194,6 +188,30 @@ class RawMaterialController extends Controller
             'todayPulls' => $todayPulls->values()->all(),
             'businessDayLabel' => Employee::periodTextForAnchorDate(Employee::businessDayAnchorFromNow()),
             'can_edit_stock' => auth()->user()?->hasRole('super admin') ?? false,
+            'active_inventory_count' => $this->activeInventoryCountSummary($branchId),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function activeInventoryCountSummary(int $branchId): ?array
+    {
+        if (! auth()->user()?->hasRole('super admin')) {
+            return null;
+        }
+
+        $open = app(InventoryCountService::class)->findOpenForBranch($branchId);
+        if (! $open) {
+            return null;
+        }
+
+        return [
+            'id' => $open->id,
+            'status' => $open->status,
+            'items_count' => $open->items_count,
+            'counted_items_count' => $open->counted_items_count,
+            'started_at' => optional($open->started_at)?->format('Y-m-d H:i'),
         ];
     }
 
@@ -267,6 +285,105 @@ class RawMaterialController extends Controller
             ->with('success', 'تم تحديث مخزون الفرع لـ «'.$raw_material->name.'».');
     }
 
+    public function allBranchesPullsReport(Request $request)
+    {
+        $this->requireAnyRole(['admin', 'super admin']);
+
+        if (! $this->isCentralHub()) {
+            return redirect()->route('admin.raw-materials.branch-pull');
+        }
+
+        $maxBusinessDay = Employee::businessDayAnchorFromNow();
+        $selectedDate = $request->input('date', $maxBusinessDay);
+        $branchFilter = $request->filled('branch_id') ? (int) $request->input('branch_id') : null;
+
+        try {
+            $selectedDate = Carbon::parse($selectedDate)->toDateString();
+        } catch (\Throwable) {
+            $selectedDate = $maxBusinessDay;
+        }
+
+        if ($selectedDate > $maxBusinessDay) {
+            $selectedDate = $maxBusinessDay;
+        }
+
+        [$dayStart, $dayEnd] = Employee::businessDayBoundsForAnchor($selectedDate);
+
+        $rawQuery = RawMaterialPendingLabel::query()
+            ->with(['product:id,name,unit', 'items.product:id,name,unit', 'branch:id,name'])
+            ->where('status', RawMaterialPendingLabel::STATUS_RECEIVED)
+            ->whereNotNull('branch_id')
+            ->whereBetween('received_at', [$dayStart, $dayEnd]);
+
+        $fridgeQuery = FridgePendingLabel::query()
+            ->with(['product:id,name', 'items.product:id,name', 'branch:id,name'])
+            ->where('status', FridgePendingLabel::STATUS_RECEIVED)
+            ->whereNotNull('branch_id')
+            ->whereBetween('received_at', [$dayStart, $dayEnd]);
+
+        if ($branchFilter) {
+            $rawQuery->where('branch_id', $branchFilter);
+            $fridgeQuery->where('branch_id', $branchFilter);
+        }
+
+        $rawPulls = $rawQuery->get()->map(function (RawMaterialPendingLabel $label) {
+            $row = $this->formatPullRow($label);
+            $row['row_key'] = 'raw-'.$label->id;
+            $row['type'] = 'raw';
+            $row['type_label'] = 'مواد خام';
+            $row['branch_id'] = $label->branch_id;
+            $row['branch_name'] = $label->branch?->name ?? '—';
+
+            return $row;
+        });
+
+        $fridgePulls = $fridgeQuery->get()->map(function (FridgePendingLabel $label) {
+            $row = $this->formatFridgePullRow($label);
+            $row['row_key'] = 'fridge-'.$label->id;
+            $row['type'] = 'fridge';
+            $row['type_label'] = 'تلاجة';
+            $row['branch_id'] = $label->branch_id;
+            $row['branch_name'] = $label->branch?->name ?? '—';
+
+            return $row;
+        });
+
+        $pulls = $rawPulls
+            ->concat($fridgePulls)
+            ->sortByDesc(fn (array $row) => $row['received_at'] ?? '')
+            ->values();
+
+        $summaryByBranch = $pulls
+            ->groupBy('branch_name')
+            ->map(fn ($items, $branchName) => [
+                'branch_name' => $branchName,
+                'pull_count' => $items->count(),
+                'raw_count' => $items->where('type', 'raw')->count(),
+                'fridge_count' => $items->where('type', 'fridge')->count(),
+            ])
+            ->values()
+            ->sortBy('branch_name')
+            ->values()
+            ->all();
+
+        $hubBranches = Branch::query()->orderBy('name')->get(['id', 'name']);
+
+        return Inertia::render('Admin/RawMaterials/BranchPullsReport', [
+            'pulls' => $pulls->all(),
+            'selectedDate' => $selectedDate,
+            'maxBusinessDay' => $maxBusinessDay,
+            'businessDayLabel' => Employee::periodTextForAnchorDate($selectedDate),
+            'summaryByBranch' => $summaryByBranch,
+            'totalPulls' => $pulls->count(),
+            'totalRawPulls' => $rawPulls->count(),
+            'totalFridgePulls' => $fridgePulls->count(),
+            'hubBranches' => $hubBranches,
+            'filters' => [
+                'branch_id' => $branchFilter ? (string) $branchFilter : '',
+            ],
+        ]);
+    }
+
     public function branchPullForm(Request $request)
     {
         $this->requireAnyRole(['cashier', 'admin', 'super admin']);
@@ -293,20 +410,13 @@ class RawMaterialController extends Controller
         [$dayStart, $dayEnd] = Employee::businessDayBoundsForAnchor($selectedDate);
 
         $todayPulls = RawMaterialPendingLabel::query()
-            ->with('product:id,name,unit')
+            ->with(['product:id,name,unit', 'items.product:id,name,unit'])
             ->where('branch_id', $branchId)
             ->where('status', RawMaterialPendingLabel::STATUS_RECEIVED)
             ->whereBetween('received_at', [$dayStart, $dayEnd])
             ->orderByDesc('received_at')
             ->get()
-            ->map(fn (RawMaterialPendingLabel $label) => [
-                'id' => $label->id,
-                'received_at' => $label->received_at?->format('H:i'),
-                'product_name' => $label->product?->name ?? '—',
-                'piece_count' => (float) $label->piece_count,
-                'unit' => $label->product?->unit ?? '',
-                'label_code' => $label->label_code,
-            ]);
+            ->map(fn (RawMaterialPendingLabel $label) => $this->formatBranchPullRow($label));
 
         return Inertia::render('Admin/RawMaterials/BranchPull', [
             'todayPulls' => $todayPulls,
@@ -338,34 +448,49 @@ class RawMaterialController extends Controller
             return back()->withErrors(['label_code' => 'الكود غير صالح أو تم سحبه مسبقاً.'])->withInput();
         }
 
-        $product = $label->product;
-        if (! $product || $product->type !== 'raw') {
-            return back()->withErrors(['label_code' => 'المادة المرتبطة بهذا الكود غير صالحة.'])->withInput();
+        $lines = $label->resolveLines();
+
+        if ($lines->isEmpty()) {
+            return back()->withErrors(['label_code' => 'الملصق فارغ.'])->withInput();
         }
 
-        $amount = (float) $label->consume_amount;
-        $centralBefore = (float) $product->stock;
-        $wasInsufficient = $centralBefore < $amount;
+        $warnings = [];
+        $lineCount = 0;
 
-        DB::transaction(function () use ($product, $label, $amount, $branchId) {
-            $product->decrement('stock', $amount);
+        DB::transaction(function () use ($label, $lines, $branchId, &$warnings, &$lineCount) {
+            foreach ($lines as $line) {
+                $product = $line->product;
+                if (! $product || $product->type !== 'raw') {
+                    continue;
+                }
 
-            BranchRawMaterialStock::adjust($branchId, $product->id, $amount, $product->tenant_id);
+                $amount = (float) $line->consume_amount;
+                $centralBefore = (float) $product->stock;
+                if ($centralBefore < $amount) {
+                    $warnings[] = $product->name;
+                }
 
-            StockMovement::create([
-                'product_id' => $product->id,
-                'branch_id' => $branchId,
-                'quantity' => $amount,
-                'type' => 'branch_pull',
-                'tenant_id' => $product->tenant_id,
-            ]);
+                $product->decrement('stock', $amount);
 
-            StockMovement::create([
-                'product_id' => $product->id,
-                'quantity' => -$amount,
-                'type' => 'branch_pull_central',
-                'tenant_id' => $product->tenant_id,
-            ]);
+                BranchRawMaterialStock::adjust($branchId, $product->id, $amount, $product->tenant_id);
+
+                StockMovement::create([
+                    'product_id' => $product->id,
+                    'branch_id' => $branchId,
+                    'quantity' => $amount,
+                    'type' => 'branch_pull',
+                    'tenant_id' => $product->tenant_id,
+                ]);
+
+                StockMovement::create([
+                    'product_id' => $product->id,
+                    'quantity' => -$amount,
+                    'type' => 'branch_pull_central',
+                    'tenant_id' => $product->tenant_id,
+                ]);
+
+                $lineCount++;
+            }
 
             $label->update([
                 'status' => RawMaterialPendingLabel::STATUS_RECEIVED,
@@ -374,14 +499,184 @@ class RawMaterialController extends Controller
             ]);
         });
 
-        $message = 'تم سحب الكمية وإضافتها لمخزون الفرع.';
-        if ($wasInsufficient) {
-            $message .= ' تنبيه: المخزون المركزي كان '.round($centralBefore, 2).' '.$product->consume_unit
-                .' — تم السحب رغم النقص (قد يصبح المخزون سالباً).';
+        if ($lineCount === 0) {
+            return back()->withErrors(['label_code' => 'المادة المرتبطة بهذا الكود غير صالحة.'])->withInput();
+        }
+
+        $message = $lineCount > 1
+            ? "تم سحب {$lineCount} مواد وإضافتها لمخزون الفرع."
+            : 'تم سحب الكمية وإضافتها لمخزون الفرع.';
+        if ($warnings !== []) {
+            $message .= ' تنبيه: المخزون المركزي كان ناقصاً لـ: '.implode('، ', array_unique($warnings)).'.';
         }
 
         return redirect()->route('admin.raw-materials.branch-pull')
             ->with('success', $message);
+    }
+
+    public function storeCombinedLabel(Request $request): JsonResponse
+    {
+        $this->requireAnyRole(['admin', 'super admin']);
+
+        if (! $this->isCentralHub()) {
+            abort(403);
+        }
+
+        $data = $request->validate([
+            'label_ids' => 'required|array|min:2',
+            'label_ids.*' => 'required|integer|distinct|exists:raw_material_pending_labels,id',
+        ]);
+
+        $sourceLabels = RawMaterialPendingLabel::query()
+            ->with('product:id,name,unit,consume_unit,type')
+            ->whereIn('id', $data['label_ids'])
+            ->where('status', RawMaterialPendingLabel::STATUS_PENDING)
+            ->whereNotNull('product_id')
+            ->whereDoesntHave('items')
+            ->lockForUpdate()
+            ->get();
+
+        if ($sourceLabels->count() !== count($data['label_ids'])) {
+            return response()->json([
+                'message' => 'يجب اختيار أكواد معلّقة فقط (لم تُسحَب ولم تُجمَّع مسبقاً).',
+            ], 422);
+        }
+
+        $bundle = DB::transaction(function () use ($sourceLabels) {
+            $bundle = RawMaterialPendingLabel::create([
+                'label_code' => $this->generateRawLabelCode(),
+                'status' => RawMaterialPendingLabel::STATUS_PENDING,
+            ]);
+
+            foreach ($sourceLabels as $source) {
+                RawMaterialPendingLabelItem::create([
+                    'raw_material_pending_label_id' => $bundle->id,
+                    'product_id' => $source->product_id,
+                    'piece_count' => $source->piece_count,
+                    'consume_amount' => $source->consume_amount,
+                    'source_label_id' => $source->id,
+                ]);
+
+                $source->update([
+                    'status' => RawMaterialPendingLabel::STATUS_BUNDLED,
+                ]);
+            }
+
+            return $bundle->load(['items.product', 'items.sourceLabel:id,label_code']);
+        });
+
+        return response()->json([
+            'id' => $bundle->id,
+            'label_code' => $bundle->label_code,
+            'items' => $bundle->items->map(fn (RawMaterialPendingLabelItem $item) => [
+                'product_name' => $item->product?->name,
+                'piece_count' => (float) $item->piece_count,
+                'unit' => $item->product?->unit,
+                'consume_amount' => (float) $item->consume_amount,
+                'consume_unit' => $item->product?->consume_unit,
+                'source_label_code' => $item->sourceLabel?->label_code,
+            ])->values()->all(),
+        ]);
+    }
+
+    /** @return array<int, float> */
+    private function pendingPieceTotalsByProduct(): array
+    {
+        $totals = [];
+
+        RawMaterialPendingLabel::query()
+            ->where('status', RawMaterialPendingLabel::STATUS_PENDING)
+            ->with(['items', 'product'])
+            ->get()
+            ->each(function (RawMaterialPendingLabel $label) use (&$totals) {
+                foreach ($label->resolveLines() as $line) {
+                    $productId = (int) $line->product_id;
+                    $totals[$productId] = ($totals[$productId] ?? 0) + (float) $line->piece_count;
+                }
+            });
+
+        return $totals;
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function pendingLabelsForBundlePayload(): array
+    {
+        return RawMaterialPendingLabel::query()
+            ->with('product:id,name,unit,consume_unit')
+            ->where('status', RawMaterialPendingLabel::STATUS_PENDING)
+            ->whereNotNull('product_id')
+            ->whereDoesntHave('items')
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn (RawMaterialPendingLabel $label) => [
+                'id' => $label->id,
+                'label_code' => $label->label_code,
+                'product_id' => $label->product_id,
+                'product_name' => $label->product?->name ?? '—',
+                'piece_count' => (float) $label->piece_count,
+                'consume_amount' => (float) $label->consume_amount,
+                'unit' => $label->product?->unit ?? '',
+                'consume_unit' => $label->product?->consume_unit ?? '',
+                'created_at' => $label->created_at?->format('Y-m-d H:i'),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /** @return array<string, mixed> */
+    private function formatPullRow(RawMaterialPendingLabel $label): array
+    {
+        $lines = $label->resolveLines();
+        $combined = $lines->count() > 1;
+
+        return [
+            'id' => $label->id,
+            'received_at' => $label->received_at?->format('Y-m-d H:i'),
+            'product_name' => $combined
+                ? 'كود مجمّع ('.$lines->count().' مواد)'
+                : ($lines->first()?->product?->name ?? '—'),
+            'piece_count' => $combined ? null : (float) ($lines->first()?->piece_count ?? 0),
+            'unit' => $combined ? '' : ($lines->first()?->product?->unit ?? ''),
+            'label_code' => $label->label_code,
+            'lines' => $combined ? $lines->map(fn ($line) => [
+                'product_name' => $line->product?->name,
+                'piece_count' => (float) $line->piece_count,
+                'unit' => $line->product?->unit ?? '',
+            ])->values()->all() : [],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function formatFridgePullRow(FridgePendingLabel $label): array
+    {
+        $lines = $label->resolveLines();
+        $combined = $lines->count() > 1;
+
+        return [
+            'id' => $label->id,
+            'received_at' => $label->received_at?->format('Y-m-d H:i'),
+            'product_name' => $combined
+                ? 'كود مجمّع ('.$lines->count().' منتجات)'
+                : ($lines->first()?->product?->name ?? '—'),
+            'piece_count' => $combined ? null : (float) ($lines->first()?->unit_count ?? 0),
+            'unit' => $combined ? '' : 'وحدة',
+            'label_code' => $label->label_code,
+            'lines' => $combined ? $lines->map(fn ($item) => [
+                'product_name' => $item->product?->name,
+                'piece_count' => (float) $item->unit_count,
+                'unit' => 'وحدة',
+                'size' => $item->size ?? '',
+            ])->values()->all() : [],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function formatBranchPullRow(RawMaterialPendingLabel $label): array
+    {
+        $row = $this->formatPullRow($label);
+        $row['received_at'] = $label->received_at?->format('H:i');
+
+        return $row;
     }
 
     public function receiveByBarcodeForm(): RedirectResponse
@@ -553,6 +848,7 @@ class RawMaterialController extends Controller
             $label->loadMissing('product');
 
             return response()->json([
+                'id' => $label->id,
                 'label_code' => $label->label_code,
                 'piece_count' => (float) $label->piece_count,
                 'consume_amount' => (float) $label->consume_amount,
@@ -574,19 +870,31 @@ class RawMaterialController extends Controller
             abort(403);
         }
 
-        $label->loadMissing('product');
+        $label->loadMissing(['product', 'items.product']);
+
+        $lines = $label->resolveLines();
+        $isCombined = $lines->count() > 1;
 
         return Inertia::render('Admin/RawMaterials/PrintLabel', [
             'label' => [
                 'id' => $label->id,
                 'label_code' => $label->label_code,
-                'piece_count' => (float) $label->piece_count,
-                'consume_amount' => (float) $label->consume_amount,
+                'piece_count' => $label->piece_count !== null ? (float) $label->piece_count : null,
+                'consume_amount' => $label->consume_amount !== null ? (float) $label->consume_amount : null,
                 'status' => $label->status,
             ],
-            'productName' => $label->product?->name ?? '',
-            'unit' => $label->product?->unit ?? '',
-            'consumeUnit' => $label->product?->consume_unit ?? '',
+            'productName' => $isCombined
+                ? 'كود مجمّع ('.$lines->count().' مواد)'
+                : ($label->product?->name ?? $lines->first()?->product?->name ?? ''),
+            'unit' => $isCombined ? '' : ($label->product?->unit ?? $lines->first()?->product?->unit ?? ''),
+            'consumeUnit' => $isCombined ? '' : ($label->product?->consume_unit ?? $lines->first()?->product?->consume_unit ?? ''),
+            'lines' => $isCombined ? $lines->map(fn (RawMaterialPendingLabelItem $item) => [
+                'product_name' => $item->product?->name,
+                'piece_count' => (float) $item->piece_count,
+                'unit' => $item->product?->unit,
+                'consume_unit' => $item->product?->consume_unit,
+                'consume_amount' => (float) $item->consume_amount,
+            ])->values()->all() : [],
         ]);
     }
 

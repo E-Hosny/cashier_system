@@ -14,9 +14,14 @@ class Employee extends Model
     use BelongsToTenant;
     use HasFactory;
 
+    public const SALARY_TYPE_HOURLY = 'hourly';
+    public const SALARY_TYPE_FIXED = 'fixed';
+
     protected $fillable = [
         'name',
         'hourly_rate',
+        'salary_type',
+        'fixed_salary',
         'is_active',
         'phone',
         'position',
@@ -35,6 +40,7 @@ class Employee extends Model
 
     protected $casts = [
         'hourly_rate' => 'decimal:2',
+        'fixed_salary' => 'decimal:2',
         'is_active' => 'boolean',
         'grace_minutes' => 'integer',
         'late_deductions_enabled' => 'boolean',
@@ -71,6 +77,69 @@ class Employee extends Model
     }
 
     /**
+     * مسحوبات الراتب الثابت
+     */
+    public function salaryWithdrawals()
+    {
+        return $this->hasMany(EmployeeSalaryWithdrawal::class);
+    }
+
+    public function isFixedSalary(): bool
+    {
+        return ($this->salary_type ?? self::SALARY_TYPE_HOURLY) === self::SALARY_TYPE_FIXED;
+    }
+
+    public function isHourlySalary(): bool
+    {
+        return ! $this->isFixedSalary();
+    }
+
+    /**
+     * ملخص راتب الشهر للموظفين ذوي الراتب الثابت.
+     *
+     * @return array{
+     *   year_month: string,
+     *   fixed_salary: float,
+     *   withdrawals_total: float,
+     *   discounts_total: float,
+     *   remaining: float,
+     *   withdrawals_count: int
+     * }
+     */
+    public function getFixedSalaryMonthSummary(?string $yearMonth = null): array
+    {
+        $yearMonth = $yearMonth ?: Carbon::now()->format('Y-m');
+        [$year, $month] = array_map('intval', explode('-', $yearMonth));
+        $start = Carbon::create($year, $month, 1)->startOfDay();
+        $end = $start->copy()->endOfMonth();
+
+        $withdrawalsTotal = (float) $this->salaryWithdrawals()
+            ->where('year_month', $yearMonth)
+            ->sum('amount');
+
+        $withdrawalsCount = (int) $this->salaryWithdrawals()
+            ->where('year_month', $yearMonth)
+            ->count();
+
+        $discountsTotal = (float) $this->discounts()
+            ->whereDate('discount_date', '>=', $start->toDateString())
+            ->whereDate('discount_date', '<=', $end->toDateString())
+            ->sum('amount');
+
+        $fixedSalary = (float) ($this->fixed_salary ?? 0);
+        $remaining = max(0, $fixedSalary - $discountsTotal - $withdrawalsTotal);
+
+        return [
+            'year_month' => $yearMonth,
+            'fixed_salary' => round($fixedSalary, 2),
+            'withdrawals_total' => round($withdrawalsTotal, 2),
+            'discounts_total' => round($discountsTotal, 2),
+            'remaining' => round($remaining, 2),
+            'withdrawals_count' => $withdrawalsCount,
+        ];
+    }
+
+    /**
      * الموظف الذي يعتمد عليه هذا الموظف في السماح بالحضور.
      */
     public function attendanceDependencyEmployee()
@@ -94,6 +163,104 @@ class Employee extends Model
     public function attendanceDeductionRules()
     {
         return $this->belongsToMany(AttendanceDeductionRule::class, 'deduction_rule_employee');
+    }
+
+    public function workSchedules()
+    {
+        return $this->hasMany(EmployeeWorkSchedule::class)->orderBy('day_of_week');
+    }
+
+    public function usesWeeklySchedule(): bool
+    {
+        return $this->relationLoaded('workSchedules')
+            ? $this->workSchedules->isNotEmpty()
+            : $this->workSchedules()->exists();
+    }
+
+    /**
+     * @return array{is_working: bool, expected_checkin_time: string|null, expected_checkout_time: string|null, grace_minutes: int}
+     */
+    public function getEffectiveWorkScheduleForCheckin(Carbon $checkinTime): array
+    {
+        $dayOfWeek = $checkinTime->dayOfWeek;
+        $weekly = $this->workSchedules->firstWhere('day_of_week', $dayOfWeek);
+
+        if ($this->usesWeeklySchedule()) {
+            if (! $weekly || ! $weekly->is_working) {
+                return [
+                    'is_working' => false,
+                    'expected_checkin_time' => null,
+                    'expected_checkout_time' => null,
+                    'grace_minutes' => 0,
+                ];
+            }
+
+            return [
+                'is_working' => true,
+                'expected_checkin_time' => $weekly->formattedExpectedCheckinTime()
+                    ?? $this->formattedExpectedCheckinTime(),
+                'expected_checkout_time' => $weekly->formattedExpectedCheckoutTime()
+                    ?? $this->formattedExpectedCheckoutTime(),
+                'grace_minutes' => $weekly->grace_minutes ?? (int) ($this->grace_minutes ?? 0),
+            ];
+        }
+
+        return [
+            'is_working' => (bool) $this->expected_checkin_time,
+            'expected_checkin_time' => $this->formattedExpectedCheckinTime(),
+            'expected_checkout_time' => $this->formattedExpectedCheckoutTime(),
+            'grace_minutes' => (int) ($this->grace_minutes ?? 0),
+        ];
+    }
+
+    /**
+     * @return array<int, array{day_of_week: int, label: string, is_working: bool, expected_checkin_time: string, expected_checkout_time: string, grace_minutes: int|null}>
+     */
+    public function getWorkSchedulesForForm(): array
+    {
+        $existing = $this->workSchedules->keyBy('day_of_week');
+
+        return collect(EmployeeWorkSchedule::DAY_LABELS)
+            ->map(function (string $label, int $dayOfWeek) use ($existing) {
+                $row = $existing->get($dayOfWeek);
+
+                return [
+                    'day_of_week' => $dayOfWeek,
+                    'label' => $label,
+                    'is_working' => $row ? (bool) $row->is_working : true,
+                    'expected_checkin_time' => $row?->formattedExpectedCheckinTime() ?? '',
+                    'expected_checkout_time' => $row?->formattedExpectedCheckoutTime() ?? '',
+                    'grace_minutes' => $row?->grace_minutes,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    public function scheduleSummaryForDisplay(): ?string
+    {
+        if ($this->usesWeeklySchedule()) {
+            $workingDays = $this->workSchedules->where('is_working', true);
+
+            if ($workingDays->isEmpty()) {
+                return 'بدون مواعيد';
+            }
+
+            $times = $workingDays
+                ->map(fn (EmployeeWorkSchedule $row) => $row->formattedExpectedCheckinTime()
+                    ?? $this->formattedExpectedCheckinTime())
+                ->filter()
+                ->unique()
+                ->values();
+
+            if ($times->count() === 1) {
+                return $times->first();
+            }
+
+            return 'مواعيد مخصصة';
+        }
+
+        return $this->formattedExpectedCheckinTime();
     }
 
     public function formattedExpectedCheckinTime(): ?string
@@ -307,6 +474,11 @@ class Employee extends Model
      */
     public function getAmountForBusinessDayAnchor(string $anchorDate): float
     {
+        // الراتب الثابت لا يُحسب يومياً من الساعات
+        if ($this->isFixedSalary()) {
+            return 0;
+        }
+
         $hours = $this->getHoursForBusinessDayAnchor($anchorDate);
         $baseAmount = $hours * (float) $this->hourly_rate;
         $discountTotal = $this->getDiscountTotalForBusinessDayAnchor($anchorDate);
@@ -365,42 +537,39 @@ class Employee extends Model
     }
 
     /**
-     * الحصول على إجمالي ساعات العمل لفترة محددة
+     * إجمالي ساعات العمل لفترة (كل يوم عمل 7 ص → 7 ص).
      */
     public function getHoursForPeriod($startDate, $endDate = null)
     {
-        $query = $this->attendanceRecords()
-            ->whereNotNull('checkout_time')
-            ->whereBetween('checkin_time', [$startDate, $endDate ?? $startDate]);
+        $endDate = $endDate ?? $startDate;
+        $current = Carbon::parse($startDate)->startOfDay();
+        $end = Carbon::parse($endDate)->startOfDay();
+        $total = 0.0;
 
-        return $query->get()->sum(function ($record) {
-            $checkin = Carbon::parse($record->checkin_time);
-            $checkout = Carbon::parse($record->checkout_time);
-            return $checkin->diffInHours($checkout, true);
-        });
+        while ($current->lte($end)) {
+            $total += $this->getHoursForBusinessDayAnchor($current->toDateString());
+            $current->addDay();
+        }
+
+        return $total;
     }
 
     /**
-     * الحصول على إجمالي المبلغ المستحق لفترة محددة
-     * مع خصم الخصومات
+     * إجمالي المبلغ المستحق لفترة (كل يوم عمل 7 ص → 7 ص، بعد الخصومات).
      */
     public function getAmountForPeriod($startDate, $endDate = null)
     {
-        $hours = $this->getHoursForPeriod($startDate, $endDate);
-        $baseAmount = $hours * $this->hourly_rate;
-        
-        // حساب الخصومات للفترة
-        $start = Carbon::parse($startDate);
-        $end = $endDate ? Carbon::parse($endDate) : $start;
-        
-        $discounts = $this->discounts()
-            ->whereBetween('discount_date', [$start->toDateString(), $end->toDateString()])
-            ->get();
-        
-        $discountTotal = $discounts->sum('amount');
-        $finalAmount = max(0, $baseAmount - $discountTotal);
-        
-        return $finalAmount;
+        $endDate = $endDate ?? $startDate;
+        $current = Carbon::parse($startDate)->startOfDay();
+        $end = Carbon::parse($endDate)->startOfDay();
+        $total = 0.0;
+
+        while ($current->lte($end)) {
+            $total += $this->getAmountForBusinessDayAnchor($current->toDateString());
+            $current->addDay();
+        }
+
+        return $total;
     }
 
     /**
@@ -525,6 +694,36 @@ class Employee extends Model
             ->where('status', 'delivered')
             ->whereBetween('salary_date', [$startDate, $endDate])
             ->sum('total_amount');
+    }
+
+    /**
+     * إجمالي المبالغ التي سُلّمت فعلياً خلال يوم عمل (حسب delivered_at)، حتى لو كانت لأيام سابقة.
+     */
+    public function getAmountHandedOutDuringBusinessDay(string $anchorDate): float
+    {
+        return (float) $this->salaryDeliveries()
+            ->deliveredDuringBusinessDay($anchorDate)
+            ->sum('total_amount');
+    }
+
+    /**
+     * إجمالي المبالغ التي سُلّمت فعلياً خلال فترة أيام عمل (حسب delivered_at).
+     */
+    public static function sumAmountHandedOutDuringBusinessDayRange(string $dateFrom, ?string $dateTo = null, ?callable $employeeConstraint = null): float
+    {
+        $query = SalaryDelivery::query()->where('status', 'delivered');
+
+        if ($dateTo) {
+            $query->deliveredDuringBusinessDayRange($dateFrom, $dateTo);
+        } else {
+            $query->deliveredDuringBusinessDay($dateFrom);
+        }
+
+        if ($employeeConstraint) {
+            $query->whereHas('employee', $employeeConstraint);
+        }
+
+        return (float) $query->sum('total_amount');
     }
 
     /**

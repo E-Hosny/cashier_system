@@ -60,4 +60,50 @@ class BranchRawMaterialStock extends Model
     {
         return static::adjust($branchId, $productId, -abs($amount), $tenantId);
     }
+
+    /**
+     * تعيين كمية مطلقة لمخزون الفرع مع تسجيل حركة.
+     *
+     * @return array{row: self, old: float, new: float, delta: float}
+     */
+    public static function setAbsolute(
+        int $branchId,
+        int $productId,
+        float $newStock,
+        ?int $tenantId = null,
+        string $movementType = 'branch_manual_adjustment'
+    ): array {
+        $tenantId = $tenantId ?? auth()->user()?->tenant_id;
+        $newStock = max(0, $newStock);
+
+        $row = static::query()->firstOrCreate(
+            ['branch_id' => $branchId, 'product_id' => $productId],
+            ['tenant_id' => $tenantId, 'stock' => 0]
+        );
+
+        $old = (float) $row->stock;
+        $delta = $newStock - $old;
+
+        if (abs($delta) > 0.0001) {
+            $row->update([
+                'stock' => $newStock,
+                'tenant_id' => $row->tenant_id ?? $tenantId,
+            ]);
+
+            StockMovement::create([
+                'product_id' => $productId,
+                'branch_id' => $branchId,
+                'quantity' => $delta,
+                'type' => $movementType,
+                'tenant_id' => $row->tenant_id ?? $tenantId,
+            ]);
+        }
+
+        return [
+            'row' => $row->fresh(),
+            'old' => $old,
+            'new' => $newStock,
+            'delta' => $delta,
+        ];
+    }
 }
