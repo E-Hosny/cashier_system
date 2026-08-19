@@ -3,11 +3,15 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Branch;
 use App\Models\Category;
+use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Support\BranchContext;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use App\Exports\ProductsExport;
@@ -328,7 +332,15 @@ class ProductController extends Controller
         $dateFrom = $request->input('date_from');
         $dateTo = $request->input('date_to');
 
-        $orderDateFilter = function ($query) use ($dateFrom, $dateTo) {
+        $user = Auth::user();
+        $salesAnalysisHub = $user && $user->hasRole('super admin') && BranchContext::id() === null;
+        $branchId = $salesAnalysisHub ? $this->normalizeSalesAnalysisBranchId($request) : null;
+
+        $applyOrderFilters = function ($query) use ($dateFrom, $dateTo, $branchId) {
+            $query->where('status', 'completed');
+            if ($branchId !== null) {
+                $query->where('branch_id', $branchId);
+            }
             if (!$dateFrom) {
                 return;
             }
@@ -343,7 +355,7 @@ class ProductController extends Controller
         };
 
         $baseQuery = OrderItem::query()
-            ->whereHas('order', $orderDateFilter)
+            ->whereHas('order', $applyOrderFilters)
             ->join('products', 'order_items.product_id', '=', 'products.id');
 
         if ($groupBy === 'category') {
@@ -396,14 +408,69 @@ class ProductController extends Controller
 
         $categories = Category::orderBy('name')->get(['id', 'name']);
 
+        $invoiceQuery = Order::query()->where($applyOrderFilters);
+        $invoiceCount = (int) (clone $invoiceQuery)->count();
+        $invoiceTotal = (float) (clone $invoiceQuery)->sum('total');
+        $averageInvoice = $invoiceCount > 0 ? round($invoiceTotal / $invoiceCount, 2) : 0;
+
+        $branchInvoiceStats = [];
+        if ($salesAnalysisHub && $branchId === null) {
+            $branchRows = Order::query()
+                ->where($applyOrderFilters)
+                ->selectRaw('branch_id, COUNT(*) as invoice_count, COALESCE(SUM(total), 0) as invoice_total, COALESCE(AVG(total), 0) as average_invoice')
+                ->groupBy('branch_id')
+                ->get();
+
+            $branchNames = Branch::query()
+                ->whereIn('id', $branchRows->pluck('branch_id')->filter())
+                ->pluck('name', 'id');
+
+            $branchInvoiceStats = $branchRows->map(function ($row) use ($branchNames) {
+                return [
+                    'branch_id' => $row->branch_id,
+                    'branch_name' => $row->branch_id === null
+                        ? 'بدون فرع'
+                        : ($branchNames[$row->branch_id] ?? ('فرع #'.$row->branch_id)),
+                    'invoice_count' => (int) $row->invoice_count,
+                    'invoice_total' => round((float) $row->invoice_total, 2),
+                    'average_invoice' => round((float) $row->average_invoice, 2),
+                ];
+            })->sortByDesc('invoice_total')->values()->all();
+        }
+
         return Inertia::render('Admin/Products/SalesAnalysis', [
             'analysis' => $analysis,
             'group_by' => $groupBy,
             'date_from' => $dateFrom,
             'date_to' => $dateTo,
+            'branch_id' => $branchId,
             'total_quantity' => $totalQuantity,
             'total_revenue' => round($totalRevenue, 2),
+            'invoice_count' => $invoiceCount,
+            'average_invoice' => $averageInvoice,
             'categories' => $categories,
+            'salesAnalysisHub' => $salesAnalysisHub,
+            'branches' => $salesAnalysisHub
+                ? Branch::query()->orderBy('name')->get(['id', 'name'])->values()->all()
+                : [],
+            'branchInvoiceStats' => $branchInvoiceStats,
         ]);
+    }
+
+    protected function normalizeSalesAnalysisBranchId(Request $request): ?int
+    {
+        if (! $request->filled('branch_id')) {
+            return null;
+        }
+
+        $id = (int) $request->input('branch_id');
+        if ($id <= 0) {
+            return null;
+        }
+
+        $tenantId = Auth::user()?->tenant_id;
+        $exists = Branch::query()->whereKey($id)->where('tenant_id', $tenantId)->exists();
+
+        return $exists ? $id : null;
     }
 }

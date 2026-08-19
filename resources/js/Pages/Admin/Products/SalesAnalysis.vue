@@ -23,6 +23,13 @@
           <label class="text-gray-700 font-semibold">إلى تاريخ:</label>
           <input type="date" v-model="dateTo" class="p-3 border border-gray-300 rounded-lg focus:ring focus:ring-blue-300" />
         </div>
+        <div v-if="salesAnalysisHub" class="flex flex-col gap-1">
+          <label class="text-gray-700 font-semibold">الفرع:</label>
+          <select v-model="selectedBranchId" class="p-3 border border-gray-300 rounded-lg focus:ring focus:ring-blue-300 min-w-[200px]">
+            <option value="">جميع الفروع</option>
+            <option v-for="branch in branches" :key="branch.id" :value="String(branch.id)">{{ branch.name }}</option>
+          </select>
+        </div>
         <button @click="applyFilters" class="btn-primary py-3 px-5">تطبيق</button>
       </div>
       <p class="text-sm text-gray-500 mt-3">
@@ -31,15 +38,54 @@
     </div>
 
     <!-- ملخص سريع -->
-    <div v-if="analysis.length > 0" class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
       <div class="bg-white rounded-xl shadow-lg p-6 border-r-4 border-blue-500">
         <div class="text-gray-600 font-medium mb-1">إجمالي الوحدات المباعة</div>
-        <div class="text-2xl font-bold text-blue-600">{{ total_quantity.toLocaleString('ar-EG') }}</div>
+        <div class="text-2xl font-bold text-blue-600">{{ Number(total_quantity || 0).toLocaleString('ar-EG') }}</div>
       </div>
       <div class="bg-white rounded-xl shadow-lg p-6 border-r-4 border-green-500">
         <div class="text-gray-600 font-medium mb-1">إجمالي المبيعات</div>
         <div class="text-2xl font-bold text-green-600">{{ formatPrice(total_revenue) }} جنيه</div>
       </div>
+      <div class="bg-white rounded-xl shadow-lg p-6 border-r-4 border-indigo-500">
+        <div class="text-gray-600 font-medium mb-1">عدد الفواتير</div>
+        <div class="text-2xl font-bold text-indigo-600">{{ Number(invoice_count || 0).toLocaleString('ar-EG') }}</div>
+      </div>
+      <div class="bg-white rounded-xl shadow-lg p-6 border-r-4 border-amber-500">
+        <div class="text-gray-600 font-medium mb-1">متوسط قيمة الفاتورة</div>
+        <div class="text-2xl font-bold text-amber-600">{{ formatPrice(average_invoice) }} جنيه</div>
+      </div>
+    </div>
+
+    <!-- متوسط الفاتورة حسب الفرع -->
+    <div v-if="salesAnalysisHub && !selectedBranchId && branchInvoiceStats.length > 0" class="bg-white rounded-xl shadow-lg overflow-x-auto mb-6">
+      <div class="p-4 border-b border-gray-200">
+        <h2 class="text-lg font-bold text-gray-800">متوسط قيمة الفاتورة حسب الفرع</h2>
+      </div>
+      <table class="w-full text-end">
+        <thead class="bg-gray-100">
+          <tr>
+            <th class="p-4">الفرع</th>
+            <th class="p-4">عدد الفواتير</th>
+            <th class="p-4">إجمالي الفواتير</th>
+            <th class="p-4">متوسط قيمة الفاتورة</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="row in branchInvoiceStats"
+            :key="row.branch_id ?? 'none'"
+            class="border-t border-gray-200 hover:bg-gray-50 cursor-pointer"
+            @click="filterByBranch(row.branch_id)"
+          >
+            <td class="p-4 font-semibold text-gray-800">{{ row.branch_name }}</td>
+            <td class="p-4 text-indigo-600 font-bold">{{ Number(row.invoice_count).toLocaleString('ar-EG') }}</td>
+            <td class="p-4 text-green-600 font-bold">{{ formatPrice(row.invoice_total) }} جنيه</td>
+            <td class="p-4 text-amber-600 font-bold">{{ formatPrice(row.average_invoice) }} جنيه</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="text-sm text-gray-500 p-4">اضغط على فرع لتصفية كل النتائج حسب هذا الفرع.</p>
     </div>
 
     <!-- جدول النتائج -->
@@ -110,15 +156,28 @@ export default {
     group_by: String,
     date_from: String,
     date_to: String,
+    branch_id: [Number, String],
     total_quantity: Number,
     total_revenue: Number,
+    invoice_count: Number,
+    average_invoice: Number,
     categories: Array,
+    salesAnalysisHub: Boolean,
+    branches: {
+      type: Array,
+      default: () => [],
+    },
+    branchInvoiceStats: {
+      type: Array,
+      default: () => [],
+    },
   },
   data() {
     return {
       groupBy: this.group_by || 'category',
       dateFrom: this.date_from || '',
       dateTo: this.date_to || '',
+      selectedBranchId: this.branch_id ? String(this.branch_id) : '',
     };
   },
   watch: {
@@ -131,13 +190,21 @@ export default {
     date_to(val) {
       this.dateTo = val || '';
     },
+    branch_id(val) {
+      this.selectedBranchId = val ? String(val) : '';
+    },
   },
   methods: {
     applyFilters() {
       const params = { group_by: this.groupBy };
       if (this.dateFrom) params.date_from = this.dateFrom;
       if (this.dateTo) params.date_to = this.dateTo;
+      if (this.selectedBranchId) params.branch_id = this.selectedBranchId;
       router.get(route('admin.products.sales-analysis'), params);
+    },
+    filterByBranch(branchId) {
+      this.selectedBranchId = branchId ? String(branchId) : '';
+      this.applyFilters();
     },
     formatPrice(price) {
       return price != null ? Number(price).toFixed(2) : '0.00';
