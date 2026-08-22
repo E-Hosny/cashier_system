@@ -23,6 +23,7 @@ class Order extends Model
         'user_id',
         'cashier_shift_id',
         'invoice_number',
+        'client_request_id',
         'refunded_at',
         'refunded_by',
     ];

@@ -573,6 +573,7 @@ export default {
       iframeVisible: false,
       liveProducts: [],
       isCheckoutLoading: false,
+      pendingClientRequestId: null,
       sizeTranslations: {
         small: 'صغير',
         medium: 'وسط',
@@ -802,20 +803,35 @@ export default {
     clearCart() {
       this.cart = [];
       this.staffNotes = '';
+      this.pendingClientRequestId = null;
+    },
+    createClientRequestId() {
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID().replace(/-/g, '');
+      }
+      return 'req_' + Date.now() + '_' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
     },
     async checkout() {
-      // منع الضغط المتكرر
+      // منع الضغط المتكرر أثناء انتظار الرد
       if (this.isCheckoutLoading) {
         console.log('طلب معلق قيد المعالجة...');
         return;
       }
-      
+
+      if (!this.cart.length) {
+        return;
+      }
+
       this.isCheckoutLoading = true;
-      
-      // إنشاء معرف فريد للطلب
-      const requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-      
+
+      // معرف ثابت لنفس محاولة البيع — لا يتغير عند إعادة المحاولة بعد ضعف الشبكة
+      if (!this.pendingClientRequestId) {
+        this.pendingClientRequestId = this.createClientRequestId();
+      }
+      const clientRequestId = this.pendingClientRequestId;
+
       const checkoutData = {
+        client_request_id: clientRequestId,
         items: this.cart.map(item => ({
           product_id: item.product_id,
           product_name: item.name,
@@ -830,54 +846,52 @@ export default {
       };
 
       try {
-        // إنشاء طلب عادي
-        console.log('محاولة إنشاء طلب عادي...');
+        console.log('محاولة إنشاء طلب...', clientRequestId);
         const response = await axios.post('/store-order', checkoutData, {
-          timeout: 10000, // timeout 10 ثوانٍ
+          timeout: 20000,
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
-            'X-Request-ID': requestId // إضافة معرف فريد للطلب
-          }
+            'X-Client-Request-ID': clientRequestId,
+          },
         });
 
         if (response.data.success) {
           this.orderId = response.data.order_id;
+          this.pendingClientRequestId = null;
           this.clearCart();
           this.printInvoice();
-        } else {
-          // التحقق من وجود طلب مكرر
-          if (response.data.duplicate) {
-            console.log('تم اكتشاف طلب مكرر، انتظار...');
-            // انتظار قليل ثم إعادة المحاولة
-            setTimeout(() => {
-              this.isCheckoutLoading = false;
-              this.checkout();
-            }, 2000);
-            return;
+          if (response.data.idempotent_replay) {
+            console.log('تم استرجاع فاتورة محفوظة مسبقاً بنفس المفتاح (منع التكرار).');
           }
-          alert('فشل في إنشاء الطلب: ' + response.data.message);
+        } else if (response.data.processing) {
+          alert('الطلب قيد المعالجة على السيرفر. انتظر لحظات ثم اضغط إصدار الفاتورة مرة أخرى إن لم تُطبع.');
+        } else {
+          alert('فشل في إنشاء الطلب: ' + (response.data.message || ''));
         }
       } catch (error) {
         console.error('خطأ أثناء إصدار الفاتورة:', error);
-        console.error('تفاصيل الخطأ:', {
-          code: error.code,
-          message: error.message,
-          response: error.response?.data,
-          status: error.response?.status
-        });
-        
-        // التحقق من وجود طلب مكرر في الاستجابة
-        if (error.response?.data?.duplicate) {
-          console.log('تم اكتشاف طلب مكرر، انتظار...');
-          setTimeout(() => {
-            this.isCheckoutLoading = false;
-            this.checkout();
-          }, 2000);
+
+        // إن وصلت استجابة نجاح/إعادة تشغيل من السيرفر رغم الخطأ الشبكي الظاهر
+        if (error.response?.data?.success && error.response?.data?.order_id) {
+          this.orderId = error.response.data.order_id;
+          this.pendingClientRequestId = null;
+          this.clearCart();
+          this.printInvoice();
           return;
         }
-        
-        alert('حدث خطأ: ' + (error.response?.data?.message || 'يرجى مراجعة البيانات'));
+
+        if (error.response?.data?.processing) {
+          alert('الطلب قيد المعالجة. انتظر قليلاً ثم أعد المحاولة — لن تُنشأ فاتورة مكررة.');
+          return;
+        }
+
+        const networkIssue = !error.response || error.code === 'ECONNABORTED' || error.message?.includes('timeout');
+        if (networkIssue) {
+          alert('تعذر تأكيد الحفظ بسبب الشبكة. أعد المحاولة بنفس السلة — النظام يمنع تكرار الفاتورة تلقائياً.');
+        } else {
+          alert('حدث خطأ: ' + (error.response?.data?.message || 'يرجى مراجعة البيانات'));
+        }
       } finally {
         this.isCheckoutLoading = false;
       }

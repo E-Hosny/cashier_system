@@ -23,8 +23,9 @@ use App\Services\FridgeInventoryService;
 use App\Services\InvoiceNumberService;
 use App\Services\OrderRefundService;
 use Illuminate\Support\Facades\Auth;
-
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Database\QueryException;
 use Mpdf\Mpdf;
 
 class CashierController extends Controller
@@ -106,30 +107,11 @@ class CashierController extends Controller
 
     public function store(Request $request)
     {
-        // حماية ضد الطلبات المكررة
-        $requestId = $request->header('X-Request-ID') ?: uniqid();
-        $sessionKey = 'order_request_' . $requestId;
-        
-        // التحقق من وجود طلب معلق لهذا المعرف
-        if (session()->has($sessionKey)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'تم إرسال هذا الطلب مسبقاً. يرجى الانتظار...',
-                'duplicate' => true
-            ], 409);
-        }
-        
-        // تسجيل الطلب في الجلسة لمدة 30 ثانية
-        session([$sessionKey => time()]);
-        session()->save();
-        
-        // تنظيف الجلسة بعد 30 ثانية
-        \Illuminate\Support\Facades\Cache::put($sessionKey, true, 30);
-
         $data = $request->validate([
             'total_price' => 'required|numeric',
             'payment_method' => 'required|string',
             'staff_notes' => 'nullable|string|max:1000',
+            'client_request_id' => 'required|string|min:16|max:64',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
@@ -138,6 +120,25 @@ class CashierController extends Controller
             'items.*.size' => 'nullable|string',
             'items.*.from_fridge' => 'sometimes|boolean',
         ]);
+
+        $clientRequestId = $data['client_request_id'];
+        $tenantId = Auth::user()?->tenant_id;
+        $lockKey = 'order_idempotency:'.($tenantId ?? '0').':'.$clientRequestId;
+
+        // إن وُجد طلب سابق بنفس المفتاح → أعد نجاحه بدون إنشاء فاتورة جديدة
+        $existing = Order::query()
+            ->where('client_request_id', $clientRequestId)
+            ->when($tenantId, fn ($q) => $q->where('tenant_id', $tenantId))
+            ->first();
+
+        if ($existing) {
+            return response()->json([
+                'success' => true,
+                'message' => 'تم إنشاء الطلب مسبقاً',
+                'order_id' => $existing->id,
+                'idempotent_replay' => true,
+            ]);
+        }
 
         $draftProductIds = Product::whereIn('id', collect($data['items'])->pluck('product_id'))
             ->where('is_draft', true)
@@ -150,31 +151,68 @@ class CashierController extends Controller
             ], 422);
         }
 
+        $lock = Cache::lock($lockKey, 30);
+
+        if (! $lock->get()) {
+            // طلب موازٍ قيد المعالجة بنفس المفتاح — انتظر النتيجة أو أعد المحاولة بنفس المفتاح
+            usleep(250000);
+            $existing = Order::query()
+                ->where('client_request_id', $clientRequestId)
+                ->when($tenantId, fn ($q) => $q->where('tenant_id', $tenantId))
+                ->first();
+
+            if ($existing) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'تم إنشاء الطلب مسبقاً',
+                    'order_id' => $existing->id,
+                    'idempotent_replay' => true,
+                ]);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'الطلب قيد المعالجة، يرجى الانتظار ثم المحاولة بنفس العملية.',
+                'processing' => true,
+            ], 409);
+        }
+
         $order = null;
-        
+
         try {
-            // تحسين الأداء: استخدام bulk operations بدلاً من عمليات فردية
-            DB::transaction(function () use ($data, &$order) {
-                // الحصول على الوردية النشطة للمستخدم
+            // فحص ثانٍ داخل القفل
+            $existing = Order::query()
+                ->where('client_request_id', $clientRequestId)
+                ->when($tenantId, fn ($q) => $q->where('tenant_id', $tenantId))
+                ->first();
+
+            if ($existing) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'تم إنشاء الطلب مسبقاً',
+                    'order_id' => $existing->id,
+                    'idempotent_replay' => true,
+                ]);
+            }
+
+            DB::transaction(function () use ($data, $clientRequestId, &$order) {
                 $activeShift = CashierShift::getActiveShift(Auth::id());
-                
-                // 1. إنشاء الطلب
+
                 $orderData = [
                     'total' => $data['total_price'],
                     'payment_method' => $data['payment_method'],
                     'staff_notes' => filled($data['staff_notes'] ?? null) ? trim($data['staff_notes']) : null,
                     'status' => 'completed',
                     'invoice_number' => InvoiceNumberService::generateInvoiceNumber(),
+                    'client_request_id' => $clientRequestId,
                 ];
-                
-                // إضافة معرف الوردية إذا كانت موجودة
+
                 if ($activeShift) {
                     $orderData['cashier_shift_id'] = $activeShift->id;
                 }
-                
+
                 $order = Order::create($orderData);
 
-                // 2. إنشاء عناصر الطلب بشكل جماعي (مع tenant_id لظهورها في التقارير والفواتير حسب الـ tenant)
                 $tenantId = $order->tenant_id ?? Auth::user()->tenant_id;
                 $orderItems = [];
                 foreach ($data['items'] as $item) {
@@ -193,18 +231,15 @@ class CashierController extends Controller
                 }
                 OrderItem::insert($orderItems);
 
-                // 3. تحسين عمليات المخزون: تجميع العمليات
                 $stockUpdates = [];
                 $stockMovements = [];
-                
-                // تجميع جميع المنتجات المطلوبة مسبقاً مع تحسين الاستعلام
+
                 $productIds = collect($data['items'])->pluck('product_id')->unique();
                 $products = Product::select('id', 'type', 'stock')
                     ->whereIn('id', $productIds)
                     ->get()
                     ->keyBy('id');
-                
-                // تجميع جميع المكونات المطلوبة مسبقاً
+
                 $finishedProductIds = $products->where('type', 'finished')->keys();
                 $ingredients = collect();
                 if ($finishedProductIds->isNotEmpty()) {
@@ -214,7 +249,7 @@ class CashierController extends Controller
                         ->get()
                         ->groupBy('finished_product_id');
                 }
-                
+
                 $fridgeConfigs = FridgeProductConfig::query()
                     ->with('ingredientRules')
                     ->where('is_active', true)
@@ -225,7 +260,9 @@ class CashierController extends Controller
 
                 foreach ($data['items'] as $item) {
                     $product = $products->get($item['product_id']);
-                    if (!$product) continue;
+                    if (! $product) {
+                        continue;
+                    }
 
                     $fromFridge = ! empty($item['from_fridge']);
                     $sizeKey = (string) ($item['size'] ?? '');
@@ -262,21 +299,18 @@ class CashierController extends Controller
                         continue;
                     }
 
-                    // A) إذا كان منتج نهائي، ابحث عن المكونات للمقاس المحدد
                     if ($product->type === 'finished') {
                         $productIngredients = $ingredients->get($product->id, collect());
                         $ingredientsForSize = $productIngredients->where('size', $item['size']);
 
                         foreach ($ingredientsForSize as $ingredient) {
                             $quantityToDeduct = $item['quantity'] * $ingredient->quantity_consumed;
-                            
-                            // تجميع تحديثات المخزون
-                            if (!isset($stockUpdates[$ingredient->raw_material_id])) {
+
+                            if (! isset($stockUpdates[$ingredient->raw_material_id])) {
                                 $stockUpdates[$ingredient->raw_material_id] = 0;
                             }
                             $stockUpdates[$ingredient->raw_material_id] -= $quantityToDeduct;
-                            
-                            // تجميع حركات المخزون (مع tenant_id)
+
                             $stockMovements[] = [
                                 'product_id' => $ingredient->raw_material_id,
                                 'quantity' => -$quantityToDeduct,
@@ -287,14 +321,12 @@ class CashierController extends Controller
                                 'updated_at' => now(),
                             ];
                         }
-                    } 
-                    // B) إذا كان منتج بسيط (مادة خام تباع مباشرة)
-                    else if ($product->type === 'raw' && $product->stock !== null) {
-                        if (!isset($stockUpdates[$product->id])) {
+                    } elseif ($product->type === 'raw' && $product->stock !== null) {
+                        if (! isset($stockUpdates[$product->id])) {
                             $stockUpdates[$product->id] = 0;
                         }
                         $stockUpdates[$product->id] -= $item['quantity'];
-                        
+
                         $stockMovements[] = [
                             'product_id' => $product->id,
                             'quantity' => -$item['quantity'],
@@ -328,29 +360,56 @@ class CashierController extends Controller
                     StockMovement::insert($stockMovements);
                 }
             });
-            
-            // إزالة الطلب من الجلسة بعد النجاح
-            session()->forget($sessionKey);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'تم إنشاء الطلب بنجاح!',
                 'order_id' => $order->id,
-
             ]);
-            
-        } catch (\Exception $e) {
-            // إزالة الطلب من الجلسة في حالة الخطأ
-            session()->forget($sessionKey);
-            
-            \Log::error('خطأ في إنشاء الطلب: ' . $e->getMessage());
-            
+        } catch (QueryException $e) {
+            // سباق نادر وصل لـ unique constraint
+            if ($this->isClientRequestIdUniqueViolation($e)) {
+                $existing = Order::query()
+                    ->where('client_request_id', $clientRequestId)
+                    ->when($tenantId, fn ($q) => $q->where('tenant_id', $tenantId))
+                    ->first();
+
+                if ($existing) {
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'تم إنشاء الطلب مسبقاً',
+                        'order_id' => $existing->id,
+                        'idempotent_replay' => true,
+                    ]);
+                }
+            }
+
+            Log::error('خطأ في إنشاء الطلب: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
                 'message' => 'حدث خطأ أثناء إنشاء الطلب. يرجى المحاولة مرة أخرى.',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
+        } catch (\Exception $e) {
+            Log::error('خطأ في إنشاء الطلب: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'حدث خطأ أثناء إنشاء الطلب. يرجى المحاولة مرة أخرى.',
+                'error' => $e->getMessage(),
+            ], 500);
+        } finally {
+            optional($lock)->release();
         }
+    }
+
+    protected function isClientRequestIdUniqueViolation(QueryException $e): bool
+    {
+        $message = $e->getMessage();
+
+        return str_contains($message, 'orders_tenant_client_request_unique')
+            || str_contains($message, 'client_request_id');
     }
 
     public function invoice($orderId)
