@@ -58,6 +58,21 @@
                   </option>
                 </select>
               </div>
+              <div v-if="hasOffersInPeriod" class="flex flex-col gap-1 justify-end">
+                <label class="inline-flex items-center gap-2 text-gray-700 font-medium cursor-pointer">
+                  <input v-model="offersOnly" type="checkbox" class="rounded" @change="onOffersOnlyChange" />
+                  🎁 العروض فقط
+                </label>
+              </div>
+              <div v-if="hasOffersInPeriod && offersOnly" class="flex flex-col gap-1">
+                <label class="text-gray-700 font-medium">عرض محدد (اختياري):</label>
+                <select v-model="selectedOfferId" class="p-2 border rounded-lg" @change="fetchSales">
+                  <option value="">جميع العروض</option>
+                  <option v-for="offer in offers" :key="offer.id" :value="offer.id">
+                    {{ offer.name }}
+                  </option>
+                </select>
+              </div>
               <button @click="clearFilters" class="bg-gray-500 hover:bg-gray-600 text-white font-bold px-4 py-2 rounded-lg mt-6 sm:mt-0">مسح الفلاتر</button>
             </div>
           </div>
@@ -69,11 +84,42 @@
             <span class="text-green-600 font-medium">🕐 تلقائي: إذا دخلت قبل الساعة 7 صباحاً، ستظهر مبيعات اليوم السابق. إذا دخلت بعد الساعة 7 صباحاً، ستظهر مبيعات اليوم الحالي.</span>
           </div>
 
+          <!-- ملخص العروض (عدد مرات البيع الكامل لكل عرض) -->
+          <div v-if="offersOnly && offerBundleSummary.length" class="mb-6">
+            <h3 class="text-lg font-bold text-gray-800 mb-3 text-end">🎁 ملخص العروض — عدد مرات البيع</h3>
+            <div class="overflow-x-auto rounded-lg border border-purple-200">
+              <table class="w-full bg-white text-end">
+                <thead class="bg-purple-50">
+                  <tr>
+                    <th class="p-3">العرض</th>
+                    <th class="p-3">عدد مرات البيع</th>
+                    <th class="p-3">إجمالي مبيعات العرض</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="row in offerBundleSummary" :key="'bundle-' + row.offer_id" class="border-t">
+                    <td class="p-3 font-semibold text-purple-900">{{ row.offer_name }}</td>
+                    <td class="p-3 font-bold text-blue-700">{{ row.bundle_count }}</td>
+                    <td class="p-3 font-bold text-green-700">{{ formatPrice(row.total_sales) }}</td>
+                  </tr>
+                </tbody>
+                <tfoot class="bg-gray-50 font-bold border-t">
+                  <tr>
+                    <td class="p-3">الإجمالي</td>
+                    <td class="p-3 text-blue-700">{{ totalOfferBundleCount }}</td>
+                    <td class="p-3 text-green-700">{{ formatPrice(totalOfferBundleSales) }}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
           <!-- جدول المبيعات -->
           <div class="overflow-x-auto">
             <table class="w-full bg-white rounded-lg text-end responsive-table">
               <thead class="bg-gray-100">
                 <tr class="text-gray-700 text-end">
+                  <th v-if="offersOnly" class="p-4">العرض</th>
                   <th class="p-4">المنتج</th>
                   <th class="p-4">الفئة</th>
                   <th class="p-4">الحجم</th>
@@ -84,11 +130,14 @@
               </thead>
               <tbody>
                 <tr v-if="sales.length === 0">
-                    <td colspan="6" class="text-center p-6 text-gray-500">
+                    <td :colspan="offersOnly ? 7 : 6" class="text-center p-6 text-gray-500">
                         لا توجد بيانات مبيعات للفترة المحددة.
                     </td>
                 </tr>
-                <tr v-for="sale in sales" :key="sale.product_id + '-' + (sale.size || 'no-size')" class="border-t text-end">
+                <tr v-for="sale in sales" :key="(sale.offer_id || 'none') + '-' + sale.product_id + '-' + (sale.size || 'no-size')" class="border-t text-end">
+                  <td v-if="offersOnly" class="p-4 text-purple-700 font-medium" data-label="العرض">
+                    {{ sale.offer_name || '—' }}
+                  </td>
                   <td class="p-4 font-semibold" data-label="المنتج">{{ sale.product.name }}</td>
                   <td class="p-4 text-gray-600" data-label="الفئة">{{ sale.product.category?.name || 'غير محدد' }}</td>
                   <td class="p-4" data-label="الحجم">{{ sizeToArabic(sale.size) }}</td>
@@ -218,6 +267,26 @@ export default {
     date_to: String,
     category_id: String,
     product_id: String,
+    offers_only: {
+      type: Boolean,
+      default: false,
+    },
+    has_offers_in_period: {
+      type: Boolean,
+      default: false,
+    },
+    offer_id: {
+      type: [Number, String],
+      default: null,
+    },
+    offers: {
+      type: Array,
+      default: () => [],
+    },
+    offer_bundle_summary: {
+      type: Array,
+      default: () => [],
+    },
     totalSales: Number,
     totalPurchases: Number,
     totalExpenses: Number,
@@ -259,6 +328,9 @@ export default {
       dateTo: this.date_to || '', // اجعل النهاية فارغة افتراضيًا
       selectedCategoryId: this.category_id || '',
       selectedProductId: this.product_id || '',
+      offersOnly: this.offers_only || false,
+      hasOffersInPeriod: this.has_offers_in_period || false,
+      selectedOfferId: this.offer_id ? String(this.offer_id) : '',
       selectedReportBranchId:
         this.hub_report_branch_id !== null && this.hub_report_branch_id !== ''
           ? String(this.hub_report_branch_id)
@@ -270,6 +342,13 @@ export default {
       this.selectedReportBranchId =
         val !== null && val !== undefined && val !== '' ? String(val) : '';
     },
+    has_offers_in_period(val) {
+      this.hasOffersInPeriod = !!val;
+      if (!val) {
+        this.offersOnly = false;
+        this.selectedOfferId = '';
+      }
+    },
   },
   computed: {
     filteredProducts() {
@@ -280,6 +359,15 @@ export default {
     },
     netTotal() {
       return Number(this.totalSales || 0) - Number(this.totalExpenses || 0) - Number(this.totalSalaries || 0);
+    },
+    offerBundleSummary() {
+      return this.offer_bundle_summary || [];
+    },
+    totalOfferBundleCount() {
+      return this.offerBundleSummary.reduce((sum, row) => sum + Number(row.bundle_count || 0), 0);
+    },
+    totalOfferBundleSales() {
+      return this.offerBundleSummary.reduce((sum, row) => sum + Number(row.total_sales || 0), 0);
     },
   },
   mounted() {
@@ -327,8 +415,14 @@ export default {
       const params = { 
         date_from: this.dateFrom,
         category_id: this.selectedCategoryId,
-        product_id: this.selectedProductId
+        product_id: this.selectedProductId,
       };
+      if (this.offersOnly) {
+        params.offers_only = 1;
+        if (this.selectedOfferId) {
+          params.offer_id = this.selectedOfferId;
+        }
+      }
       if (this.dateTo) params.date_to = this.dateTo;
       if (this.salesReportHub && this.selectedReportBranchId) {
         params.report_branch_id = this.selectedReportBranchId;
@@ -340,9 +434,17 @@ export default {
       this.selectedProductId = '';
       this.fetchSales();
     },
+    onOffersOnlyChange() {
+      if (!this.offersOnly) {
+        this.selectedOfferId = '';
+      }
+      this.fetchSales();
+    },
     clearFilters() {
       this.selectedCategoryId = '';
       this.selectedProductId = '';
+      this.offersOnly = false;
+      this.selectedOfferId = '';
       this.selectedReportBranchId = '';
       this.dateFrom = this.getTodayDate(); // إعادة تعيين التاريخ الصحيح
       this.dateTo = '';

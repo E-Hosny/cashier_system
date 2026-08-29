@@ -39,5 +39,10 @@ class OrderItem extends Model
     {
         return $this->belongsTo(Order::class);
     }
+
+    public function offer()
+    {
+        return $this->belongsTo(Offer::class);
+    }
 }
 

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\Category;
 use App\Models\Expense;
+use App\Models\Offer;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\SalaryDelivery;
@@ -33,11 +34,21 @@ class SalesReportController extends Controller
         $dateTo = $request->input('date_to', null);
         $categoryId = $request->input('category_id', null);
         $productId = $request->input('product_id', null);
+        $offersOnly = $request->boolean('offers_only');
+        $offerId = $request->filled('offer_id') ? (int) $request->input('offer_id') : null;
 
         $user = Auth::user();
         $salesReportHub = $user->hasRole('super admin') && BranchContext::id() === null;
         $hubReportBranchId = $salesReportHub ? $this->normalizeReportBranchId($request) : null;
         $aggregateAllBranches = $salesReportHub && $hubReportBranchId === null;
+
+        $offerIdsInPeriod = $this->offerIdsInReportPeriod($dateFrom, $dateTo, $hubReportBranchId);
+        $hasOffersInPeriod = $offerIdsInPeriod->isNotEmpty();
+
+        if (! $hasOffersInPeriod) {
+            $offersOnly = false;
+            $offerId = null;
+        }
 
         $salesQuery = OrderItem::whereHas('order', function ($query) use ($dateFrom, $dateTo, $hubReportBranchId) {
             $query->where('status', 'completed');
@@ -68,10 +79,28 @@ class SalesReportController extends Controller
             $salesQuery->where('product_id', $productId);
         }
 
+        if ($offersOnly) {
+            $salesQuery->whereNotNull('offer_id');
+        }
+
+        if ($offerId) {
+            $salesQuery->where('offer_id', $offerId);
+        }
+
         $sales = $salesQuery
-            ->selectRaw('product_id, size, SUM(quantity) as total_quantity, AVG(price) as unit_price, SUM(quantity * price) as total_price')
-            ->groupBy('product_id', 'size')
+            ->selectRaw('offer_id, product_id, size, SUM(quantity) as total_quantity, AVG(price) as unit_price, SUM(quantity * price) as total_price')
+            ->groupBy('offer_id', 'product_id', 'size')
             ->get();
+
+        $offerNames = Offer::query()
+            ->whereIn('id', $sales->pluck('offer_id')->filter()->unique())
+            ->pluck('name', 'id');
+
+        $sales = $sales->map(function ($row) use ($offerNames) {
+            $row->offer_name = $row->offer_id ? ($offerNames[$row->offer_id] ?? null) : null;
+
+            return $row;
+        });
 
         if ($dateTo) {
             $totalPurchases = \App\Models\Purchase::whereBetween('purchase_date', [
@@ -106,7 +135,7 @@ class SalesReportController extends Controller
         $branchExpenseSummary = [];
         $branchSalarySummary = [];
         if ($aggregateAllBranches) {
-            $branchSalesSummary = $this->branchSalesTotals($dateFrom, $dateTo, $categoryId, $productId);
+            $branchSalesSummary = $this->branchSalesTotals($dateFrom, $dateTo, $categoryId, $productId, $offersOnly, $offerId);
             if ($dateTo) {
                 $branchExpenseSummary = $this->branchExpenseTotals($dateFrom, $dateTo);
                 $branchSalarySummary = $this->branchSalaryTotals($dateFrom, $dateTo);
@@ -126,6 +155,18 @@ class SalesReportController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'category_id']);
 
+        $offers = $hasOffersInPeriod
+            ? Offer::query()
+                ->whereIn('id', $offerIdsInPeriod)
+                ->orderByDesc('priority')
+                ->orderBy('name')
+                ->get(['id', 'name', 'offer_price', 'is_active'])
+            : collect();
+
+        $offerBundleSummary = $offersOnly
+            ? $this->offerBundleSummary($dateFrom, $dateTo, $hubReportBranchId, $categoryId, $productId, $offerId)
+            : [];
+
         return Inertia::render('Admin/SalesReport', [
             'sales' => $sales,
             'date' => $dateFrom,
@@ -133,6 +174,11 @@ class SalesReportController extends Controller
             'date_to' => $dateTo,
             'category_id' => $categoryId,
             'product_id' => $productId,
+            'offers_only' => $offersOnly,
+            'offer_id' => $offerId,
+            'has_offers_in_period' => $hasOffersInPeriod,
+            'offers' => $offers,
+            'offer_bundle_summary' => $offerBundleSummary,
             'totalSales' => $totalSales,
             'totalPurchases' => $totalPurchases,
             'totalExpenses' => $totalExpenses,
@@ -166,6 +212,106 @@ class SalesReportController extends Controller
         $exists = Branch::query()->whereKey($id)->where('tenant_id', $tenantId)->exists();
 
         return $exists ? $id : null;
+    }
+
+    /**
+     * @return Collection<int, int>
+     */
+    protected function offerIdsInReportPeriod(string $dateFrom, ?string $dateTo, ?int $hubReportBranchId): Collection
+    {
+        return OrderItem::query()
+            ->whereNotNull('offer_id')
+            ->whereHas('order', function ($query) use ($dateFrom, $dateTo, $hubReportBranchId) {
+                $query->where('status', 'completed');
+                if ($dateTo) {
+                    $query->whereBetween('created_at', [
+                        Carbon::parse($dateFrom)->setTime(7, 0, 0),
+                        Carbon::parse($dateTo)->setTime(7, 0, 0),
+                    ]);
+                } else {
+                    $query->whereBetween('created_at', [
+                        Carbon::parse($dateFrom)->setTime(7, 0, 0),
+                        Carbon::parse($dateFrom)->addDay()->setTime(7, 0, 0),
+                    ]);
+                }
+                if ($hubReportBranchId !== null) {
+                    $query->where('branch_id', $hubReportBranchId);
+                }
+            })
+            ->distinct()
+            ->pluck('offer_id');
+    }
+
+    /**
+     * عدد مرات بيع كل عرض كاملاً (حزمة واحدة = offer_bundle_key فريد).
+     *
+     * @return array<int, array{offer_id: int, offer_name: string, bundle_count: int, total_sales: float}>
+     */
+    protected function offerBundleSummary(
+        string $dateFrom,
+        ?string $dateTo,
+        ?int $hubReportBranchId,
+        ?string $categoryId,
+        ?string $productId,
+        ?int $offerId,
+    ): array {
+        $query = OrderItem::query()
+            ->join('orders', 'order_items.order_id', '=', 'orders.id')
+            ->where('orders.status', 'completed')
+            ->whereNotNull('order_items.offer_id');
+
+        if ($dateTo) {
+            $query->whereBetween('orders.created_at', [
+                Carbon::parse($dateFrom)->setTime(7, 0, 0),
+                Carbon::parse($dateTo)->setTime(7, 0, 0),
+            ]);
+        } else {
+            $query->whereBetween('orders.created_at', [
+                Carbon::parse($dateFrom)->setTime(7, 0, 0),
+                Carbon::parse($dateFrom)->copy()->addDay()->setTime(7, 0, 0),
+            ]);
+        }
+
+        if ($hubReportBranchId !== null) {
+            $query->where('orders.branch_id', $hubReportBranchId);
+        }
+
+        if ($categoryId) {
+            $query->join('products', 'order_items.product_id', '=', 'products.id')
+                ->where('products.category_id', $categoryId);
+        }
+
+        if ($productId) {
+            $query->where('order_items.product_id', $productId);
+        }
+
+        if ($offerId) {
+            $query->where('order_items.offer_id', $offerId);
+        }
+
+        $rows = $query
+            ->selectRaw("
+                order_items.offer_id,
+                COUNT(DISTINCT COALESCE(
+                    order_items.offer_bundle_key,
+                    CONCAT('legacy-', order_items.order_id, '-', order_items.offer_id)
+                )) as bundle_count,
+                SUM(order_items.quantity * order_items.price) as total_sales
+            ")
+            ->groupBy('order_items.offer_id')
+            ->orderByDesc('bundle_count')
+            ->get();
+
+        $names = Offer::query()
+            ->whereIn('id', $rows->pluck('offer_id'))
+            ->pluck('name', 'id');
+
+        return $rows->map(fn ($row) => [
+            'offer_id' => (int) $row->offer_id,
+            'offer_name' => $names[$row->offer_id] ?? ('عرض #'.$row->offer_id),
+            'bundle_count' => (int) $row->bundle_count,
+            'total_sales' => round((float) $row->total_sales, 2),
+        ])->values()->all();
     }
 
     protected function expensesSumForReport(string $dateFrom, ?string $dateTo, bool $salesReportHub, ?int $hubReportBranchId): float
@@ -231,7 +377,7 @@ class SalesReportController extends Controller
     /**
      * توزيع المبيعات حسب الفرع — نفس منطق جدول المنتجات (مجموع بنود الطلبات)، وليس orders.total، لتطابق إجمالي التقرير.
      */
-    protected function branchSalesTotals(string $dateFrom, ?string $dateTo, ?string $categoryId, ?string $productId): array
+    protected function branchSalesTotals(string $dateFrom, ?string $dateTo, ?string $categoryId, ?string $productId, bool $offersOnly = false, ?int $offerId = null): array
     {
         $query = OrderItem::query()
             ->join('orders', 'order_items.order_id', '=', 'orders.id')
@@ -256,6 +402,14 @@ class SalesReportController extends Controller
 
         if ($productId) {
             $query->where('order_items.product_id', $productId);
+        }
+
+        if ($offersOnly) {
+            $query->whereNotNull('order_items.offer_id');
+        }
+
+        if ($offerId) {
+            $query->where('order_items.offer_id', $offerId);
         }
 
         $rows = $query
