@@ -140,6 +140,94 @@ class Employee extends Model
     }
 
     /**
+     * سجل حضور شهري مع أيام الغياب (غياب = لا يوجد أي سجل حضور/انصراف لذلك اليوم).
+     *
+     * @return array{
+     *   absence_days_count: int,
+     *   absence_dates: array<int, array{date: string, date_arabic: string, day_name: string}>,
+     *   daily_log: array<int, array<string, mixed>>
+     * }
+     */
+    public function getMonthlyAttendanceSummary(string $yearMonth): array
+    {
+        [$year, $month] = array_map('intval', explode('-', $yearMonth));
+        $start = Carbon::create($year, $month, 1)->startOfDay();
+        $end = $start->copy()->endOfMonth();
+        $todayAnchor = self::businessDayAnchorFromNow();
+
+        $rangeStart = $start->copy()->setTime(7, 0, 0);
+        $rangeEnd = $end->copy()->addDay()->setTime(7, 0, 0);
+
+        $attendances = $this->attendanceRecords()
+            ->whereBetween('checkin_time', [$rangeStart, $rangeEnd])
+            ->orderBy('checkin_time')
+            ->get();
+
+        $absenceDates = [];
+        $dailyLog = [];
+        $currentDate = $start->copy();
+
+        while ($currentDate <= $end) {
+            $dateString = $currentDate->toDateString();
+            $isFuture = $dateString > $todayAnchor;
+            $isToday = $dateString === $todayAnchor;
+
+            [$dayStart, $dayEnd] = self::businessDayBoundsForAnchor($dateString);
+
+            $dayAttendances = $attendances->filter(function ($attendance) use ($dayStart, $dayEnd) {
+                $checkinTime = Carbon::parse($attendance->checkin_time);
+
+                return $checkinTime >= $dayStart && $checkinTime < $dayEnd;
+            });
+
+            $records = $dayAttendances->map(function ($attendance) {
+                $checkinTime = Carbon::parse($attendance->checkin_time);
+                $checkoutTime = $attendance->checkout_time
+                    ? Carbon::parse($attendance->checkout_time)
+                    : null;
+
+                return [
+                    'checkin_time' => $checkinTime->format('H:i'),
+                    'checkout_time' => $checkoutTime?->format('H:i'),
+                    'late_minutes' => $attendance->late_minutes,
+                    'total_hours' => $attendance->total_hours !== null ? (float) $attendance->total_hours : null,
+                    'is_completed' => $attendance->checkout_time !== null,
+                ];
+            })->values()->all();
+
+            $hasRecords = count($records) > 0;
+            $isAbsent = ! $isFuture && ! $isToday && ! $hasRecords;
+
+            if ($isAbsent) {
+                $absenceDates[] = [
+                    'date' => $dateString,
+                    'date_arabic' => $currentDate->format('d/m/Y'),
+                    'day_name' => $currentDate->locale('ar')->dayName,
+                ];
+            }
+
+            $dailyLog[] = [
+                'date' => $dateString,
+                'date_arabic' => $currentDate->format('d/m/Y'),
+                'day_name' => $currentDate->locale('ar')->dayName,
+                'has_records' => $hasRecords,
+                'is_absent' => $isAbsent,
+                'is_today' => $isToday,
+                'is_future' => $isFuture,
+                'records' => $records,
+            ];
+
+            $currentDate->addDay();
+        }
+
+        return [
+            'absence_days_count' => count($absenceDates),
+            'absence_dates' => $absenceDates,
+            'daily_log' => $dailyLog,
+        ];
+    }
+
+    /**
      * الموظف الذي يعتمد عليه هذا الموظف في السماح بالحضور.
      */
     public function attendanceDependencyEmployee()

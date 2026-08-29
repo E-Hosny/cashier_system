@@ -1186,6 +1186,8 @@ class EmployeeController extends Controller
                     'source' => $d->source,
                 ]);
 
+            $attendanceSummary = $employee->getMonthlyAttendanceSummary($yearMonth);
+
             return [
                 'id' => $employee->id,
                 'name' => $employee->name,
@@ -1197,6 +1199,9 @@ class EmployeeController extends Controller
                 'withdrawals_count' => $summary['withdrawals_count'],
                 'withdrawals' => $withdrawals,
                 'discounts' => $discounts,
+                'absence_days_count' => $attendanceSummary['absence_days_count'],
+                'absence_dates' => $attendanceSummary['absence_dates'],
+                'daily_log' => $attendanceSummary['daily_log'],
             ];
         })->values();
 
