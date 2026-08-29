@@ -6,6 +6,7 @@ use App\Models\BranchFridgeStock;
 use App\Models\BranchRawMaterialStock;
 use App\Models\Category;
 use App\Models\FridgeProductConfig;
+use App\Models\Offer;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
@@ -21,6 +22,7 @@ use App\Models\StockMovement;
 use App\Models\CashierShift;
 use App\Services\FridgeInventoryService;
 use App\Services\InvoiceNumberService;
+use App\Services\OfferMatchingService;
 use App\Services\OrderRefundService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -33,6 +35,7 @@ class CashierController extends Controller
     public function __construct(
         private FridgeInventoryService $fridgeService,
         private OrderRefundService $orderRefundService,
+        private OfferMatchingService $offerMatchingService,
     ) {}
 
     //comment
@@ -101,6 +104,12 @@ class CashierController extends Controller
         'categories' => $categories,
         'fridgeProducts' => $fridgeProducts,
         'fridgeSectionEnabled' => $fridgeSectionEnabled,
+        'offers' => Offer::query()
+            ->active()
+            ->orderByDesc('priority')
+            ->get()
+            ->map(fn (Offer $offer) => $offer->toCashierArray())
+            ->values(),
     ]);
 }
 
@@ -119,7 +128,33 @@ class CashierController extends Controller
             'items.*.product_name' => 'required|string',
             'items.*.size' => 'nullable|string',
             'items.*.from_fridge' => 'sometimes|boolean',
+            'items.*.offer_id' => 'nullable|integer|exists:offers,id',
+            'items.*.components' => 'nullable|array',
+            'items.*.components.*.product_id' => 'required|integer|exists:products,id',
+            'items.*.components.*.product_name' => 'required|string',
+            'items.*.components.*.quantity' => 'required|integer|min:1',
+            'items.*.components.*.unit_price' => 'required|numeric',
+            'items.*.components.*.size' => 'nullable|string',
         ]);
+
+        try {
+            $resolved = $this->offerMatchingService->resolveCheckoutItems($data['items']);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
+        if (abs($resolved['total'] - (float) $data['total_price']) > 0.05) {
+            return response()->json([
+                'success' => false,
+                'message' => 'إجمالي السلة غير متطابق. يرجى تحديث الصفحة.',
+            ], 422);
+        }
+
+        $data['items'] = $resolved['items'];
+        $data['total_price'] = $resolved['total'];
 
         $clientRequestId = $data['client_request_id'];
         $tenantId = Auth::user()?->tenant_id;
@@ -140,7 +175,8 @@ class CashierController extends Controller
             ]);
         }
 
-        $draftProductIds = Product::whereIn('id', collect($data['items'])->pluck('product_id'))
+        $productIds = collect($data['items'])->pluck('product_id')->filter()->unique();
+        $draftProductIds = Product::whereIn('id', $productIds)
             ->where('is_draft', true)
             ->pluck('id');
 
@@ -224,6 +260,9 @@ class CashierController extends Controller
                         'price' => $item['price'],
                         'size' => $item['size'],
                         'from_fridge' => ! empty($item['from_fridge']),
+                        'offer_id' => $item['offer_id'] ?? null,
+                        'offer_bundle_key' => $item['offer_bundle_key'] ?? null,
+                        'original_unit_price' => $item['original_unit_price'] ?? null,
                         'tenant_id' => $tenantId,
                         'created_at' => now(),
                         'updated_at' => now(),

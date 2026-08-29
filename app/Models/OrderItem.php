@@ -18,6 +18,10 @@ class OrderItem extends Model
         'quantity',
         'price',
         'size',
+        'from_fridge',
+        'offer_id',
+        'offer_bundle_key',
+        'original_unit_price',
         'tenant_id',
     ];
 

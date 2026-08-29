@@ -4,6 +4,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+use App\Http\Controllers\Admin\OfferController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\SalesReportController;
 use App\Http\Controllers\CashierController;
@@ -85,6 +86,16 @@ Route::middleware([
     Route::get('/products/export', [ProductController::class, 'export'])->name('admin.products.export');
     Route::get('/products/cost-analysis', [ProductController::class, 'costAnalysis'])->name('admin.products.cost-analysis');
     Route::get('/products/sales-analysis', [ProductController::class, 'salesAnalysis'])->name('admin.products.sales-analysis')->middleware('super_admin');
+
+    Route::middleware(['super_admin'])->prefix('offers')->name('admin.offers.')->group(function () {
+        Route::get('/', [OfferController::class, 'index'])->name('index');
+        Route::get('/create', [OfferController::class, 'create'])->name('create');
+        Route::post('/', [OfferController::class, 'store'])->name('store');
+        Route::get('/{offer}/edit', [OfferController::class, 'edit'])->name('edit');
+        Route::put('/{offer}', [OfferController::class, 'update'])->name('update');
+        Route::delete('/{offer}', [OfferController::class, 'destroy'])->name('destroy');
+        Route::post('/{offer}/toggle', [OfferController::class, 'toggle'])->name('toggle');
+    });
 
     // Categories
     Route::get('/categories', [CategoryController::class, 'index'])->name('admin.categories.index');

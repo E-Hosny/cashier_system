@@ -72,6 +72,18 @@
               :class="{ 'bg-green-200 border-green-300': !showFridgeView && selectedCategoryId === cat.id }"
               @click="selectCategory(cat.id)"
             >{{ cat.name }}</div>
+
+            <div v-if="offers.length" class="pt-2 mt-2 border-t border-gray-300">
+              <p class="text-xs text-gray-500 text-center mb-1">🎁 عروض نشطة</p>
+              <div
+                v-for="offer in offers"
+                :key="offer.id"
+                class="px-2 py-1.5 mb-1 bg-purple-50 border border-purple-200 rounded-lg text-xs text-purple-900 text-center"
+              >
+                <div class="font-bold">{{ offer.name }}</div>
+                <div>{{ offer.offer_price }} جنيه</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -153,19 +165,25 @@
           <div v-if="cart.length === 0" class="text-center text-gray-500 py-8">
               السلة فارغة حالياً.
           </div>
-          <div v-for="(item, index) in cart" :key="item.cartItemId" class="flex flex-col sm:flex-row justify-between items-center mb-3 pb-3 border-b border-gray-200 gap-2">
+          <div v-for="(item, index) in cart" :key="item.cartItemId" class="flex flex-col sm:flex-row justify-between items-center mb-3 pb-3 border-b border-gray-200 gap-2" :class="item.type === 'offer' ? 'bg-purple-50 -mx-2 px-2 rounded-lg' : ''">
             <div class="text-right w-full sm:w-auto">
               <span class="font-medium text-sm">{{ item.name }}</span>
+              <span v-if="item.type === 'offer'" class="text-xs text-purple-700 block">عرض — وفرت {{ item.savings }} جنيه</span>
+              <span v-if="item.type === 'offer'" class="text-xs text-gray-500 block">
+                {{ item.components.map(c => `${c.quantity}× ${c.product_name}`).join(' + ') }}
+              </span>
               <span v-if="item.size" class="text-xs text-gray-600 block">({{ translateSize(item.size) }})</span> 
               <br>
               <span class="text-green-600 font-bold">{{ item.price }} جنيه</span>
+              <span v-if="item.type === 'offer' && item.original_total" class="text-xs text-gray-400 line-through mr-1">{{ item.original_total }}</span>
             </div>
-            <div class="flex items-center gap-2 self-end sm:self-center">
+            <div v-if="item.type !== 'offer'" class="flex items-center gap-2 self-end sm:self-center">
               <button @click="updateQuantity(index, -1)" :disabled="item.quantity <= 1" class="bg-yellow-500 text-white w-7 h-7 rounded-full transition disabled:opacity-50 text-sm">-</button>
               <span class="text-gray-700 font-bold w-8 text-center text-sm">{{ item.quantity }}</span>
               <button @click="updateQuantity(index, 1)" class="bg-yellow-500 text-white w-7 h-7 rounded-full transition text-sm">+</button>
               <button @click="removeFromCart(index)" class="bg-red-500 text-white w-7 h-7 rounded-full transition mr-2 text-sm">×</button>
             </div>
+            <div v-else class="text-xs text-purple-600 self-end">تلقائي</div>
           </div>
         </div>
 
@@ -173,6 +191,7 @@
         <div class="p-4 border-t border-gray-200 bg-white">
           <div class="mb-4">
             <p class="font-bold text-xl text-end">الإجمالي: {{ totalAmount }} جنيه</p>
+            <p v-if="totalSavings > 0" class="text-sm text-purple-700 text-end">وفرت {{ totalSavings.toFixed(2) }} جنيه من العروض 🎁</p>
           </div>
 
           <div v-if="usesDualPrinters" class="mb-4">
@@ -554,7 +573,7 @@
 </template>
 
 <script>
-
+import { applyOffersToCart } from '@/utils/offerMatching';
 
 export default {
   props: {
@@ -562,13 +581,14 @@ export default {
     categories: Array,
     fridgeProducts: { type: Array, default: () => [] },
     fridgeSectionEnabled: { type: Boolean, default: false },
+    offers: { type: Array, default: () => [] },
   },
   data() {
     return {
       searchQuery: '',
       selectedCategoryId: null,
       showFridgeView: false,
-      cart: [],
+      rawCart: [],
       orderId: null,
       iframeVisible: false,
       liveProducts: [],
@@ -633,8 +653,21 @@ export default {
     displayProducts() {
       return this.showFridgeView ? this.filteredFridgeProducts : this.filteredProducts;
     },
+    cartProcessing() {
+      const fridgeItems = this.rawCart.filter((i) => i.from_fridge);
+      const regularItems = this.rawCart.filter((i) => !i.from_fridge);
+      const { applied, remaining } = applyOffersToCart(this.offers, regularItems);
+      return { applied, remaining, fridge: fridgeItems };
+    },
+    cart() {
+      const { applied, remaining, fridge } = this.cartProcessing;
+      return [...applied, ...remaining, ...fridge];
+    },
     totalAmount() {
       return this.cart.reduce((total, item) => total + item.price * item.quantity, 0).toFixed(2);
+    },
+    totalSavings() {
+      return this.cartProcessing.applied.reduce((sum, item) => sum + (item.savings || 0) * item.quantity, 0);
     },
     fridgePromptLabel() {
       const p = this.fridgePromptProduct;
@@ -720,11 +753,11 @@ export default {
     addFridgeToCart(product) {
       const quantity = product.quantityToAdd || 1;
       const cartItemId = `fridge-${product.product_id}-${product.size || ''}`;
-      const found = this.cart.find(item => item.cartItemId === cartItemId);
+      const found = this.rawCart.find(item => item.cartItemId === cartItemId);
       if (found) {
         found.quantity += quantity;
       } else {
-        this.cart.push({
+        this.rawCart.push({
           cartItemId,
           product_id: product.product_id,
           name: product.name,
@@ -759,14 +792,15 @@ export default {
             if (!variant) return;
             
             const cartItemId = `${product.id}-${variant.size}`;
-            const found = this.cart.find(item => item.cartItemId === cartItemId);
+            const found = this.rawCart.find(item => item.cartItemId === cartItemId);
 
             if (found) {
                 found.quantity += quantity;
             } else {
-                this.cart.push({
+                this.rawCart.push({
                     cartItemId: cartItemId,
                     product_id: product.id,
+                    category_id: product.category_id,
                     name: product.name,
                     size: variant.size,
                     price: parseFloat(variant.price) || 0,
@@ -775,14 +809,15 @@ export default {
             }
         } else {
             const cartItemId = `${product.id}`;
-            const found = this.cart.find(item => item.cartItemId === cartItemId);
+            const found = this.rawCart.find(item => item.cartItemId === cartItemId);
 
             if (found) {
                 found.quantity += quantity;
             } else {
-                this.cart.push({
+                this.rawCart.push({
                     cartItemId: cartItemId,
                     product_id: product.id,
+                    category_id: product.category_id,
                     name: product.name,
                     size: null,
                     price: parseFloat(product.price) || 0,
@@ -793,15 +828,22 @@ export default {
       product.quantityToAdd = 1;
     },
     removeFromCart(index) {
-      this.cart.splice(index, 1);
+      const item = this.cart[index];
+      if (!item || item.type === 'offer') return;
+      this.rawCart = this.rawCart.filter((r) => r.cartItemId !== item.cartItemId);
     },
     updateQuantity(index, change) {
       const item = this.cart[index];
-      item.quantity += change;
-      if (item.quantity <= 0) this.removeFromCart(index);
+      if (!item || item.type === 'offer') return;
+      const raw = this.rawCart.find((r) => r.cartItemId === item.cartItemId);
+      if (!raw) return;
+      raw.quantity += change;
+      if (raw.quantity <= 0) {
+        this.rawCart = this.rawCart.filter((r) => r.cartItemId !== item.cartItemId);
+      }
     },
     clearCart() {
-      this.cart = [];
+      this.rawCart = [];
       this.staffNotes = '';
       this.pendingClientRequestId = null;
     },
@@ -832,14 +874,28 @@ export default {
 
       const checkoutData = {
         client_request_id: clientRequestId,
-        items: this.cart.map(item => ({
-          product_id: item.product_id,
-          product_name: item.name,
-          quantity: parseInt(item.quantity) || 0,
-          price: parseFloat(item.price) || 0,
-          size: item.size,
-          from_fridge: !!item.from_fridge,
-        })),
+        items: this.cart.flatMap((item) => {
+          if (item.type === 'offer') {
+            return [{
+              offer_id: item.offer_id,
+              product_id: item.components[0].product_id,
+              product_name: item.name,
+              quantity: parseInt(item.quantity) || 1,
+              price: parseFloat(item.price) || 0,
+              size: null,
+              from_fridge: false,
+              components: item.components,
+            }];
+          }
+          return [{
+            product_id: item.product_id,
+            product_name: item.name,
+            quantity: parseInt(item.quantity) || 0,
+            price: parseFloat(item.price) || 0,
+            size: item.size,
+            from_fridge: !!item.from_fridge,
+          }];
+        }),
         total_price: parseFloat(this.totalAmount) || 0,
         payment_method: 'cash',
         staff_notes: this.usesDualPrinters && this.staffNotes.trim() ? this.staffNotes.trim() : null,

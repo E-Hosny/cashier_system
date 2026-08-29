@@ -105,6 +105,13 @@ const logout = () => {
                                 <NavLink v-if="!isBaristaOnly" :href="route('admin.products.index')" :active="route().current('admin.products.index')">
                                     المنتجات النهائية
                                 </NavLink>
+                                <NavLink
+                                    v-if="isSuperAdmin"
+                                    :href="route('admin.offers.index')"
+                                    :active="route().current('admin.offers.*')"
+                                >
+                                    العروض
+                                </NavLink>
                                 <NavLink v-if="showRawMaterialsNav" :href="route('admin.raw-materials.index')" :active="route().current('admin.raw-materials.*')">
                                     المواد الخام
                                 </NavLink>
@@ -350,6 +357,14 @@ const logout = () => {
                             </ResponsiveNavLink>
                             <ResponsiveNavLink v-if="!isBaristaOnly" :href="route('admin.products.index')" :active="route().current('admin.products.index')" @click="showingSidebar = false">
                                 المنتجات النهائية
+                            </ResponsiveNavLink>
+                            <ResponsiveNavLink
+                                v-if="isSuperAdmin"
+                                :href="route('admin.offers.index')"
+                                :active="route().current('admin.offers.*')"
+                                @click="showingSidebar = false"
+                            >
+                                العروض
                             </ResponsiveNavLink>
                             <ResponsiveNavLink v-if="showRawMaterialsNav" :href="route('admin.raw-materials.index')" :active="route().current('admin.raw-materials.*')" @click="showingSidebar = false">
                                 المواد الخام
