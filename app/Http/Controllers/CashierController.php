@@ -60,7 +60,7 @@ class CashierController extends Controller
     if (BranchContext::hasBranch()) {
         $branchId = BranchContext::requireId();
         $configs = FridgeProductConfig::query()
-            ->with('product:id,name,size_variants,image')
+            ->with('product:id,name,category_id,size_variants,image')
             ->where('is_active', true)
             ->get();
         $fridgeSectionEnabled = $configs->isNotEmpty();
@@ -90,6 +90,7 @@ class CashierController extends Controller
             $fridgeProducts[] = [
                 'config_id' => $config->id,
                 'product_id' => $config->product_id,
+                'category_id' => $product->category_id,
                 'name' => $product->name,
                 'size' => $config->size !== '' ? $config->size : null,
                 'price' => $price,
@@ -135,6 +136,7 @@ class CashierController extends Controller
             'items.*.components.*.quantity' => 'required|integer|min:1',
             'items.*.components.*.unit_price' => 'required|numeric',
             'items.*.components.*.size' => 'nullable|string',
+            'items.*.components.*.from_fridge' => 'sometimes|boolean',
         ]);
 
         try {

@@ -25,7 +25,7 @@ export function applyOffersToCart(offers, cartItems) {
 function expandCartUnits(cartItems) {
   const units = {};
   for (const item of cartItems || []) {
-    if (item.from_fridge || item.type === 'offer') continue;
+    if (item.type === 'offer') continue;
     const qty = item.quantity || 1;
     for (let i = 0; i < qty; i++) {
       const key = `${item.cartItemId}#${i}`;
@@ -36,6 +36,7 @@ function expandCartUnits(cartItems) {
         size: item.size ?? null,
         name: item.name,
         price: parseFloat(item.price) || 0,
+        from_fridge: !!item.from_fridge,
       };
     }
   }
@@ -138,7 +139,7 @@ function collapseUnitsToCartLines(units, originalCart) {
 function buildAppliedBundle(offer, units) {
   const grouped = {};
   units.forEach((unit) => {
-    const key = `${unit.product_id}|${unit.size || ''}`;
+    const key = `${unit.product_id}|${unit.size || ''}|${unit.from_fridge ? 1 : 0}`;
     if (!grouped[key]) {
       grouped[key] = {
         product_id: unit.product_id,
@@ -146,6 +147,7 @@ function buildAppliedBundle(offer, units) {
         size: unit.size,
         quantity: 0,
         unit_price: unit.price,
+        from_fridge: !!unit.from_fridge,
       };
     }
     grouped[key].quantity += 1;

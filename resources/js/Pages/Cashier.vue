@@ -170,7 +170,7 @@
               <span class="font-medium text-sm">{{ item.name }}</span>
               <span v-if="item.type === 'offer'" class="text-xs text-purple-700 block">عرض — وفرت {{ item.savings }} جنيه</span>
               <span v-if="item.type === 'offer'" class="text-xs text-gray-500 block">
-                {{ item.components.map(c => `${c.quantity}× ${c.product_name}`).join(' + ') }}
+                {{ item.components.map(c => `${c.quantity}× ${c.product_name}${c.from_fridge ? ' (تلاجة)' : ''}`).join(' + ') }}
               </span>
               <span v-if="item.size" class="text-xs text-gray-600 block">({{ translateSize(item.size) }})</span> 
               <br>
@@ -654,14 +654,13 @@ export default {
       return this.showFridgeView ? this.filteredFridgeProducts : this.filteredProducts;
     },
     cartProcessing() {
-      const fridgeItems = this.rawCart.filter((i) => i.from_fridge);
-      const regularItems = this.rawCart.filter((i) => !i.from_fridge);
-      const { applied, remaining } = applyOffersToCart(this.offers, regularItems);
-      return { applied, remaining, fridge: fridgeItems };
+      const eligible = this.rawCart.filter((i) => i.type !== 'offer');
+      const { applied, remaining } = applyOffersToCart(this.offers, eligible);
+      return { applied, remaining };
     },
     cart() {
-      const { applied, remaining, fridge } = this.cartProcessing;
-      return [...applied, ...remaining, ...fridge];
+      const { applied, remaining } = this.cartProcessing;
+      return [...applied, ...remaining];
     },
     totalAmount() {
       return this.cart.reduce((total, item) => total + item.price * item.quantity, 0).toFixed(2);
@@ -734,6 +733,14 @@ export default {
         return fpSize === size;
       }) || null;
     },
+    findProductCategoryId(productId) {
+      const fromLive = this.liveProducts.find((p) => p.id === productId);
+      if (fromLive?.category_id) {
+        return fromLive.category_id;
+      }
+      const fromFridge = (this.fridgeProducts || []).find((fp) => fp.product_id === productId);
+      return fromFridge?.category_id ?? null;
+    },
     closeFridgeAvailableModal() {
       this.showFridgeAvailableModal = false;
       this.fridgePromptProduct = null;
@@ -760,6 +767,7 @@ export default {
         this.rawCart.push({
           cartItemId,
           product_id: product.product_id,
+          category_id: product.category_id ?? this.findProductCategoryId(product.product_id),
           name: product.name,
           size: product.size,
           price: parseFloat(product.price) || 0,

@@ -12,7 +12,7 @@ class OfferMatchingService
 {
     /**
      * @param  array<int, array<string, mixed>>  $offers  Cashier-format offers
-     * @param  array<int, array<string, mixed>>  $cartItems  Regular cart lines (non-offer, non-fridge)
+     * @param  array<int, array<string, mixed>>  $cartItems  Cart lines eligible for offers (excludes offer bundles)
      * @return array{applied: array<int, array<string, mixed>>, remaining: array<int, array<string, mixed>>}
      */
     public function applyOffersToCart(array $offers, array $cartItems): array
@@ -159,14 +159,18 @@ class OfferMatchingService
         $bundleKey = (string) Str::uuid();
         $bundleQty = max(1, (int) ($item['quantity'] ?? 1));
         $lineTotal = round($expectedPrice * $bundleQty, 2);
-        $componentGroups = collect($components)->map(function ($component) use ($bundleQty) {
-            return [
+        $componentGroups = collect($components)->flatMap(function ($component) use ($bundleQty) {
+            $fromFridge = ! empty($component['from_fridge']);
+            $baseQty = (int) ($component['quantity'] ?? 1) * $bundleQty;
+
+            return [[
                 'product_id' => (int) $component['product_id'],
                 'product_name' => $component['product_name'],
                 'size' => $component['size'] ?? null,
-                'quantity' => (int) ($component['quantity'] ?? 1) * $bundleQty,
+                'quantity' => $baseQty,
                 'unit_price' => (float) ($component['unit_price'] ?? 0),
-            ];
+                'from_fridge' => $fromFridge,
+            ]];
         });
 
         $originalTotal = $componentGroups->sum(fn ($c) => $c['unit_price'] * $c['quantity']);
@@ -187,7 +191,7 @@ class OfferMatchingService
                 'quantity' => $component['quantity'],
                 'price' => $unitPrice,
                 'size' => $component['size'],
-                'from_fridge' => false,
+                'from_fridge' => ! empty($component['from_fridge']),
                 'offer_id' => $offerId,
                 'offer_bundle_key' => $bundleKey,
                 'original_unit_price' => round($component['unit_price'], 2),
@@ -328,7 +332,7 @@ class OfferMatchingService
     {
         $units = [];
         foreach ($cartItems as $item) {
-            if (! empty($item['from_fridge']) || ! empty($item['type']) && $item['type'] === 'offer') {
+            if (! empty($item['type']) && $item['type'] === 'offer') {
                 continue;
             }
             $qty = (int) ($item['quantity'] ?? 1);
@@ -341,6 +345,7 @@ class OfferMatchingService
                     'size' => $item['size'] ?? null,
                     'name' => $item['name'] ?? $item['product_name'] ?? '',
                     'price' => (float) ($item['price'] ?? 0),
+                    'from_fridge' => ! empty($item['from_fridge']),
                 ];
             }
         }
@@ -387,7 +392,7 @@ class OfferMatchingService
     {
         $grouped = [];
         foreach ($units as $unit) {
-            $key = $unit['product_id'].'|'.($unit['size'] ?? '');
+            $key = $unit['product_id'].'|'.($unit['size'] ?? '').'|'.(! empty($unit['from_fridge']) ? '1' : '0');
             if (! isset($grouped[$key])) {
                 $grouped[$key] = [
                     'product_id' => $unit['product_id'],
@@ -395,6 +400,7 @@ class OfferMatchingService
                     'size' => $unit['size'] ?? null,
                     'quantity' => 0,
                     'unit_price' => $unit['price'],
+                    'from_fridge' => ! empty($unit['from_fridge']),
                 ];
             }
             $grouped[$key]['quantity']++;
