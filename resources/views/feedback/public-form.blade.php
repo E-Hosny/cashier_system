@@ -374,6 +374,23 @@
             </div>
             
             <div class="form-group">
+                <label class="form-label" for="branch_id">
+                    <i class="fas fa-store text-blue-500 ml-2"></i>
+                    الفرع (اختياري)
+                </label>
+                <select id="branch_id"
+                        name="branch_id"
+                        class="form-input @error('branch_id') border-red-500 @enderror">
+                    <option value="">— بدون تحديد فرع —</option>
+                    @foreach($branches ?? [] as $branch)
+                        <option value="{{ $branch->id }}" @selected((string) old('branch_id') === (string) $branch->id)>
+                            {{ $branch->name }}
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+
+            <div class="form-group">
                 <label class="form-label" for="comment">
                     <i class="fas fa-comment text-green-500 ml-2"></i>
                     تعليق (اختياري)

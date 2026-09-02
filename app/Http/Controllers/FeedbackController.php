@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Branch;
 use App\Models\Feedback;
 use App\Models\Tenant;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class FeedbackController extends Controller
@@ -71,27 +73,47 @@ class FeedbackController extends Controller
         $formUrl = $tenantParam ? route('feedback.public.form', ['tenant' => $tenantParam]) : route('feedback.public.form');
         $displayUrl = $tenantParam ? route('feedback.public.display', ['tenant' => $tenantParam]) : route('feedback.public.display');
 
+        $branches = $tenantModel
+            ? Branch::withoutGlobalScope('tenant')
+                ->where('tenant_id', $tenantModel->id)
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name'])
+            : collect();
+
         return view('feedback.public-form', [
             'tenant_param' => $tenantParam,
             'form_url' => $formUrl,
             'display_url' => $displayUrl,
+            'branches' => $branches,
         ]);
     }
 
     public function publicStore(Request $request)
     {
+        $tenantModel = $this->resolveTenant($request->input('tenant'));
+        $tenantId = $tenantModel?->id;
+
         $validator = Validator::make($request->all(), [
             'rating' => 'required|integer|between:1,5',
             'comment' => 'nullable|string|max:1000',
             'tenant' => 'nullable|string',
+            'branch_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('branches', 'id')->where(function ($query) use ($tenantId) {
+                    if ($tenantId !== null) {
+                        $query->where('tenant_id', $tenantId)->where('is_active', true);
+                    }
+                }),
+            ],
         ]);
 
         if ($validator->fails()) {
             return back()->withErrors($validator)->withInput();
         }
 
-        $tenantModel = $this->resolveTenant($request->input('tenant'));
-        $tenantId = $tenantModel?->id;
+        $branchId = $request->filled('branch_id') ? (int) $request->branch_id : null;
 
         $feedback = Feedback::withoutGlobalScope('tenant')->create([
             'rating' => $request->rating,
@@ -99,6 +121,7 @@ class FeedbackController extends Controller
             'ip_address' => $request->ip(),
             'user_agent' => $request->userAgent(),
             'tenant_id' => $tenantId,
+            'branch_id' => $branchId,
         ]);
 
         $backUrl = $tenantModel

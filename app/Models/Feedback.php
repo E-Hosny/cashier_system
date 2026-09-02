@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Feedback extends Model
 {
@@ -18,6 +19,7 @@ class Feedback extends Model
         'ip_address',
         'user_agent',
         'tenant_id',
+        'branch_id',
     ];
 
     protected static function booted()
@@ -38,6 +40,11 @@ class Feedback extends Model
     public function scopeOrderByLatest($query)
     {
         return $query->orderBy('created_at', 'desc');
+    }
+
+    public function branch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class);
     }
 
     public function getRatingStarsAttribute()

@@ -12,7 +12,8 @@ class FeedbackController extends Controller
 {
     public function index(Request $request)
     {
-        $feedback = Feedback::orderBy('created_at', 'desc')
+        $feedback = Feedback::with('branch:id,name')
+            ->orderBy('created_at', 'desc')
             ->paginate(15);
 
         $stats = [

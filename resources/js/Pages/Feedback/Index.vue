@@ -111,6 +111,11 @@
                                     <div v-if="item.comment" class="text-gray-700 mb-3 text-right">
                                         {{ item.comment }}
                                     </div>
+
+                                    <div v-if="item.branch" class="text-sm text-blue-700 mb-2 text-right">
+                                        <i class="fas fa-store ml-1"></i>
+                                        الفرع: {{ item.branch.name }}
+                                    </div>
                                     
                                     <div class="flex items-center text-sm text-gray-500 justify-end">
                                         <span class="mr-4">
