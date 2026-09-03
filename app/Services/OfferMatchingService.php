@@ -256,7 +256,7 @@ class OfferMatchingService
                         if ((int) $unit['product_id'] !== (int) $ruleProduct['product_id']) {
                             continue;
                         }
-                        if (! empty($ruleProduct['size']) && ($unit['size'] ?? null) !== $ruleProduct['size']) {
+                        if (! $this->sizeMatches($unit['size'] ?? null, $ruleProduct['size'] ?? null)) {
                             continue;
                         }
                         $foundKey = $key;
@@ -276,16 +276,21 @@ class OfferMatchingService
         if ($ruleType === Offer::RULE_CATEGORY_PICK) {
             $need = (int) ($rule['quantity'] ?? 1);
             $categoryId = (int) ($rule['category_id'] ?? 0);
+            $requiredSize = ! empty($rule['size']) ? (string) $rule['size'] : null;
             for ($i = 0; $i < $need; $i++) {
                 $foundKey = null;
                 foreach ($units as $key => $unit) {
                     if (isset($usedSet[$key])) {
                         continue;
                     }
-                    if ((int) ($unit['category_id'] ?? 0) === $categoryId) {
-                        $foundKey = $key;
-                        break;
+                    if ((int) ($unit['category_id'] ?? 0) !== $categoryId) {
+                        continue;
                     }
+                    if (! $this->sizeMatches($unit['size'] ?? null, $requiredSize)) {
+                        continue;
+                    }
+                    $foundKey = $key;
+                    break;
                 }
                 if ($foundKey === null) {
                     return null;
@@ -299,16 +304,26 @@ class OfferMatchingService
 
         if ($ruleType === Offer::RULE_PRODUCT_PICK) {
             $need = (int) ($rule['quantity'] ?? 1);
-            $allowed = collect($rule['products'] ?? [])->pluck('product_id')->map(fn ($id) => (int) $id)->all();
+            $allowedProducts = collect($rule['products'] ?? [])->map(fn ($p) => [
+                'product_id' => (int) ($p['product_id'] ?? 0),
+                'size' => ! empty($p['size']) ? (string) $p['size'] : null,
+            ])->all();
+
             for ($i = 0; $i < $need; $i++) {
                 $foundKey = null;
                 foreach ($units as $key => $unit) {
                     if (isset($usedSet[$key])) {
                         continue;
                     }
-                    if (in_array((int) $unit['product_id'], $allowed, true)) {
+                    foreach ($allowedProducts as $allowed) {
+                        if ((int) $unit['product_id'] !== $allowed['product_id']) {
+                            continue;
+                        }
+                        if (! $this->sizeMatches($unit['size'] ?? null, $allowed['size'])) {
+                            continue;
+                        }
                         $foundKey = $key;
-                        break;
+                        break 2;
                     }
                 }
                 if ($foundKey === null) {
@@ -420,5 +435,17 @@ class OfferMatchingService
             'savings' => round(max(0, $originalTotal - (float) $offer['offer_price']), 2),
             'components' => $components,
         ];
+    }
+
+    private function sizeMatches(mixed $actual, mixed $required): bool
+    {
+        $need = is_string($required) ? trim($required) : (string) ($required ?? '');
+        if ($need === '') {
+            return true;
+        }
+
+        $got = is_string($actual) ? trim($actual) : (string) ($actual ?? '');
+
+        return $got === $need;
     }
 }

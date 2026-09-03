@@ -77,9 +77,23 @@
 
               <div v-if="rule.rule_type === 'category_pick'">
                 <label class="block text-sm font-medium text-gray-700 mb-1">الفئة</label>
-                <select v-model="rule.category_id" class="w-full border rounded-lg px-3 py-2" required>
+                <select v-model="rule.category_id" class="w-full border rounded-lg px-3 py-2" required @change="onCategoryChange(rule)">
                   <option :value="null">— اختر فئة —</option>
                   <option v-for="cat in categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
+                </select>
+              </div>
+
+              <div v-if="rule.rule_type === 'category_pick' && categoryHasSizes(rule.category_id)">
+                <label class="block text-sm font-medium text-gray-700 mb-1">الحجم *</label>
+                <select v-model="rule.size" class="w-full border rounded-lg px-3 py-2" required>
+                  <option :value="null">— اختر الحجم —</option>
+                  <option
+                    v-for="size in categorySizes(rule.category_id)"
+                    :key="size"
+                    :value="size"
+                  >
+                    {{ translateSize(size) }}
+                  </option>
                 </select>
               </div>
 
@@ -102,10 +116,36 @@
                 :key="rowIndex"
                 class="flex flex-col sm:flex-row gap-2 items-start sm:items-center bg-white p-2 rounded-lg border"
               >
-                <select v-model="row.product_id" class="flex-1 border rounded-lg px-2 py-1.5 text-sm" required>
+                <select
+                  v-model="row.product_id"
+                  class="flex-1 border rounded-lg px-2 py-1.5 text-sm"
+                  required
+                  @change="onProductChange(row)"
+                >
                   <option :value="null">— منتج —</option>
                   <option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }}</option>
                 </select>
+                <select
+                  v-if="productHasSizes(row.product_id)"
+                  v-model="row.size"
+                  class="w-36 border rounded-lg px-2 py-1.5 text-sm"
+                  required
+                >
+                  <option :value="null">— الحجم —</option>
+                  <option
+                    v-for="size in productSizes(row.product_id)"
+                    :key="size"
+                    :value="size"
+                  >
+                    {{ translateSize(size) }}
+                  </option>
+                </select>
+                <span
+                  v-else-if="row.product_id"
+                  class="text-xs text-gray-400 w-36 text-center"
+                >
+                  بدون أحجام
+                </span>
                 <input
                   v-if="rule.rule_type === 'fixed_products'"
                   v-model.number="row.quantity"
@@ -136,6 +176,7 @@
 <script>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { Link, router } from '@inertiajs/vue3';
+import { translateSize } from '@/utils/productSizes';
 
 export default {
   layout: AppLayout,
@@ -155,8 +196,12 @@ export default {
     isEdit() {
       return !!this.offer?.id;
     },
+    productsById() {
+      return Object.fromEntries((this.products || []).map((p) => [p.id, p]));
+    },
   },
   methods: {
+    translateSize,
     buildForm() {
       if (this.offer) {
         return {
@@ -171,6 +216,7 @@ export default {
             rule_type: r.rule_type,
             quantity: r.quantity || 1,
             category_id: r.category_id,
+            size: r.size || null,
             products: (r.products || []).map((p) => ({
               product_id: p.product_id,
               quantity: p.quantity || 1,
@@ -196,8 +242,64 @@ export default {
         rule_type: type,
         quantity: 1,
         category_id: null,
+        size: null,
         products: [{ product_id: null, quantity: 1, size: null }],
       };
+    },
+    productSizes(productId) {
+      if (!productId) return [];
+      const product = this.productsById[productId] || this.productsById[Number(productId)];
+      if (!product?.size_variants?.length) return [];
+      return product.size_variants
+        .map((v) => v?.size)
+        .filter((size) => !!size);
+    },
+    productHasSizes(productId) {
+      return this.productSizes(productId).length > 0;
+    },
+    categorySizes(categoryId) {
+      if (!categoryId) return [];
+      const sizes = [];
+      (this.products || []).forEach((product) => {
+        if (Number(product.category_id) !== Number(categoryId)) return;
+        (product.size_variants || []).forEach((variant) => {
+          if (variant?.size && !sizes.includes(variant.size)) {
+            sizes.push(variant.size);
+          }
+        });
+      });
+      const order = ['small', 'medium', 'large', 'extra_large'];
+      return sizes.sort((a, b) => {
+        const ai = order.indexOf(a);
+        const bi = order.indexOf(b);
+        if (ai === -1 && bi === -1) return a.localeCompare(b);
+        if (ai === -1) return 1;
+        if (bi === -1) return -1;
+        return ai - bi;
+      });
+    },
+    categoryHasSizes(categoryId) {
+      return this.categorySizes(categoryId).length > 0;
+    },
+    onCategoryChange(rule) {
+      const sizes = this.categorySizes(rule.category_id);
+      if (!sizes.length) {
+        rule.size = null;
+        return;
+      }
+      if (!sizes.includes(rule.size)) {
+        rule.size = sizes.length === 1 ? sizes[0] : null;
+      }
+    },
+    onProductChange(row) {
+      const sizes = this.productSizes(row.product_id);
+      if (!sizes.length) {
+        row.size = null;
+        return;
+      }
+      if (!sizes.includes(row.size)) {
+        row.size = sizes.length === 1 ? sizes[0] : null;
+      }
     },
     addRule() {
       this.form.rules.push(this.emptyRule('category_pick'));
@@ -207,6 +309,7 @@ export default {
     },
     onRuleTypeChange(rule) {
       rule.category_id = null;
+      rule.size = null;
       rule.quantity = 1;
       if (rule.rule_type === 'category_pick') {
         rule.products = [];
@@ -217,11 +320,29 @@ export default {
     addProductToRule(rule) {
       rule.products.push({ product_id: null, quantity: 1, size: null });
     },
+    validateSizes() {
+      for (const [ruleIndex, rule] of this.form.rules.entries()) {
+        if (rule.rule_type === 'category_pick' && this.categoryHasSizes(rule.category_id) && !rule.size) {
+          alert(`اختر الحجم للشرط ${ruleIndex + 1}`);
+          return false;
+        }
+        if (!['fixed_products', 'product_pick'].includes(rule.rule_type)) continue;
+        for (const [rowIndex, row] of (rule.products || []).entries()) {
+          if (!this.productHasSizes(row.product_id)) continue;
+          if (!row.size) {
+            alert(`اختر الحجم للمنتج في الشرط ${ruleIndex + 1} (صف ${rowIndex + 1})`);
+            return false;
+          }
+        }
+      }
+      return true;
+    },
     submit() {
       if (this.form.rules.length === 0) {
         alert('أضف شرطاً واحداً على الأقل');
         return;
       }
+      if (!this.validateSizes()) return;
 
       this.submitting = true;
       const url = this.isEdit

@@ -14,6 +14,7 @@ class OfferRule extends Model
         'rule_type',
         'quantity',
         'category_id',
+        'size',
     ];
 
     protected $casts = [
@@ -41,14 +42,15 @@ class OfferRule extends Model
         $this->loadMissing('products');
 
         return [
-            'slot_index' => $this->slot_index,
+            'slot_index' => (int) $this->slot_index,
             'rule_type' => $this->rule_type,
             'quantity' => (int) $this->quantity,
-            'category_id' => $this->category_id,
+            'category_id' => $this->category_id !== null ? (int) $this->category_id : null,
+            'size' => $this->size ? (string) $this->size : null,
             'products' => $this->products->map(fn (OfferRuleProduct $p) => [
-                'product_id' => $p->product_id,
+                'product_id' => (int) $p->product_id,
                 'quantity' => (int) $p->quantity,
-                'size' => $p->size,
+                'size' => $p->size ? (string) $p->size : null,
             ])->values()->all(),
         ];
     }

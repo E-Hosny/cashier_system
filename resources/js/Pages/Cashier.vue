@@ -130,7 +130,7 @@
                       v-for="(variant, v_idx) in product.size_variants" 
                       :key="variant.size"
                       @click="selectVariant(product, v_idx)"
-                      :class="['px-2 py-1 rounded-full text-xs font-semibold', product.selectedVariantIndex === v_idx ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700']"
+                      :class="['px-2 py-1 rounded-full text-xs font-semibold', Number(product.selectedVariantIndex) === Number(v_idx) ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700']"
                     >
                       {{ translateSize(variant.size) }}
                     </button>
@@ -170,7 +170,7 @@
               <span class="font-medium text-sm">{{ item.name }}</span>
               <span v-if="item.type === 'offer'" class="text-xs text-purple-700 block">عرض — وفرت {{ item.savings }} جنيه</span>
               <span v-if="item.type === 'offer'" class="text-xs text-gray-500 block">
-                {{ item.components.map(c => `${c.quantity}× ${c.product_name}${c.from_fridge ? ' (تلاجة)' : ''}`).join(' + ') }}
+                {{ item.components.map(c => `${c.quantity}× ${c.product_name}${c.size ? ' (' + translateSize(c.size) + ')' : ''}${c.from_fridge ? ' (تلاجة)' : ''}`).join(' + ') }}
               </span>
               <span v-if="item.size" class="text-xs text-gray-600 block">({{ translateSize(item.size) }})</span> 
               <br>
@@ -694,8 +694,8 @@ export default {
         if (product.from_fridge) {
             return `${product.price} جنيه`;
         }
-        if (this.hasVariants(product) && product.selectedVariantIndex !== -1) {
-            return `${product.size_variants[product.selectedVariantIndex].price} جنيه`;
+        if (this.hasVariants(product) && Number(product.selectedVariantIndex) !== -1) {
+            return `${product.size_variants[Number(product.selectedVariantIndex)].price} جنيه`;
         }
         if (product.price) {
             return `${product.price} جنيه`;
@@ -714,8 +714,8 @@ export default {
       this.selectedCategoryId = null;
     },
     getProductSizeForCart(product) {
-      if (this.hasVariants(product) && product.selectedVariantIndex !== -1) {
-        return product.size_variants[product.selectedVariantIndex]?.size ?? null;
+      if (this.hasVariants(product) && Number(product.selectedVariantIndex) >= 0) {
+        return product.size_variants[Number(product.selectedVariantIndex)]?.size ?? null;
       }
       return null;
     },
@@ -796,7 +796,7 @@ export default {
         const quantity = product.quantityToAdd || 1;
 
         if (this.hasVariants(product)) {
-            const variant = product.size_variants[product.selectedVariantIndex];
+            const variant = product.size_variants[Number(product.selectedVariantIndex)];
             if (!variant) return;
             
             const cartItemId = `${product.id}-${variant.size}`;

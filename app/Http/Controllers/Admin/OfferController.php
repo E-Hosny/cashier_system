@@ -85,6 +85,7 @@ class OfferController extends Controller
                     'rule_type' => $rule->rule_type,
                     'quantity' => (int) $rule->quantity,
                     'category_id' => $rule->category_id,
+                    'size' => $rule->size,
                     'products' => $rule->products->map(fn ($rp) => [
                         'product_id' => $rp->product_id,
                         'product_name' => optional($rp->product)->name,
@@ -159,6 +160,7 @@ class OfferController extends Controller
             'rules.*.rule_type' => 'required|in:fixed_products,category_pick,product_pick',
             'rules.*.quantity' => 'required|integer|min:1|max:50',
             'rules.*.category_id' => 'nullable|integer|exists:categories,id',
+            'rules.*.size' => 'nullable|string|max:64',
             'rules.*.products' => 'nullable|array',
             'rules.*.products.*.product_id' => 'required|integer|exists:products,id',
             'rules.*.products.*.quantity' => 'nullable|integer|min:1|max:50',
@@ -171,11 +173,44 @@ class OfferController extends Controller
                     "rules.{$index}.category_id" => 'يجب اختيار فئة لهذا الشرط.',
                 ]);
             }
+            if ($rule['rule_type'] === Offer::RULE_CATEGORY_PICK && ! empty($rule['category_id'])) {
+                $categorySizes = $this->sizesForCategory((int) $rule['category_id']);
+                if (! empty($categorySizes) && empty($rule['size'])) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        "rules.{$index}.size" => 'يجب اختيار حجم لهذا الشرط لأن منتجات الفئة لها أحجام.',
+                    ]);
+                }
+                if (! empty($rule['size']) && ! empty($categorySizes) && ! in_array($rule['size'], $categorySizes, true)) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        "rules.{$index}.size" => 'الحجم المحدد غير متاح لمنتجات هذه الفئة.',
+                    ]);
+                }
+            }
             if (in_array($rule['rule_type'], [Offer::RULE_FIXED_PRODUCTS, Offer::RULE_PRODUCT_PICK], true)
                 && empty($rule['products'])) {
                 throw \Illuminate\Validation\ValidationException::withMessages([
                     "rules.{$index}.products" => 'يجب اختيار منتج واحد على الأقل.',
                 ]);
+            }
+
+            if (in_array($rule['rule_type'], [Offer::RULE_FIXED_PRODUCTS, Offer::RULE_PRODUCT_PICK], true)) {
+                foreach ($rule['products'] ?? [] as $productIndex => $productRow) {
+                    $product = Product::query()->find($productRow['product_id'] ?? null);
+                    if (! $product) {
+                        continue;
+                    }
+                    $availableSizes = $product->available_sizes;
+                    if (! empty($availableSizes) && empty($productRow['size'])) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            "rules.{$index}.products.{$productIndex}.size" => 'يجب اختيار حجم للمنتج «'.$product->name.'».',
+                        ]);
+                    }
+                    if (! empty($productRow['size']) && ! empty($availableSizes) && ! in_array($productRow['size'], $availableSizes, true)) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            "rules.{$index}.products.{$productIndex}.size" => 'الحجم المحدد غير متاح لهذا المنتج.',
+                        ]);
+                    }
+                }
             }
         }
 
@@ -205,6 +240,9 @@ class OfferController extends Controller
                 'category_id' => $ruleData['rule_type'] === Offer::RULE_CATEGORY_PICK
                     ? ($ruleData['category_id'] ?? null)
                     : null,
+                'size' => $ruleData['rule_type'] === Offer::RULE_CATEGORY_PICK
+                    ? ($this->normalizeSize($ruleData['size'] ?? null))
+                    : null,
             ]);
 
             if (in_array($ruleData['rule_type'], [Offer::RULE_FIXED_PRODUCTS, Offer::RULE_PRODUCT_PICK], true)) {
@@ -215,10 +253,35 @@ class OfferController extends Controller
                         'quantity' => $ruleData['rule_type'] === Offer::RULE_PRODUCT_PICK
                             ? 1
                             : (int) ($productRow['quantity'] ?? 1),
-                        'size' => $productRow['size'] ?? null,
+                        'size' => $this->normalizeSize($productRow['size'] ?? null),
                     ]);
                 }
             }
         }
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function sizesForCategory(int $categoryId): array
+    {
+        return Product::query()
+            ->where('type', 'finished')
+            ->where('category_id', $categoryId)
+            ->get(['size_variants'])
+            ->flatMap(fn (Product $product) => $product->available_sizes)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function normalizeSize(mixed $size): ?string
+    {
+        if ($size === null || $size === '' || $size === false) {
+            return null;
+        }
+
+        return (string) $size;
     }
 }

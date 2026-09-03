@@ -60,6 +60,19 @@ function tryMatchOffer(offer, units) {
   return { units: matchedUnits, usedKeys };
 }
 
+function idsEqual(a, b) {
+  const na = Number(a);
+  const nb = Number(b);
+  return Number.isFinite(na) && Number.isFinite(nb) && na === nb;
+}
+
+function sizeMatches(actual, required) {
+  const need = required == null ? '' : String(required).trim();
+  if (!need) return true;
+  const got = actual == null ? '' : String(actual).trim();
+  return got === need;
+}
+
 function pickForRule(rule, units, usedKeys) {
   const picked = {};
   const usedSet = new Set(usedKeys);
@@ -71,9 +84,8 @@ function pickForRule(rule, units, usedKeys) {
         const foundKey = Object.keys(units).find((key) => {
           if (usedSet.has(key)) return false;
           const unit = units[key];
-          if (unit.product_id !== ruleProduct.product_id) return false;
-          if (ruleProduct.size && unit.size !== ruleProduct.size) return false;
-          return true;
+          if (!idsEqual(unit.product_id, ruleProduct.product_id)) return false;
+          return sizeMatches(unit.size, ruleProduct.size);
         });
         if (!foundKey) return null;
         picked[foundKey] = units[foundKey];
@@ -86,10 +98,13 @@ function pickForRule(rule, units, usedKeys) {
   if (rule.rule_type === 'category_pick') {
     const need = rule.quantity || 1;
     const categoryId = rule.category_id;
+    const requiredSize = rule.size || null;
     for (let i = 0; i < need; i++) {
       const foundKey = Object.keys(units).find((key) => {
         if (usedSet.has(key)) return false;
-        return units[key].category_id === categoryId;
+        const unit = units[key];
+        if (!idsEqual(unit.category_id, categoryId)) return false;
+        return sizeMatches(unit.size, requiredSize);
       });
       if (!foundKey) return null;
       picked[foundKey] = units[foundKey];
@@ -100,11 +115,18 @@ function pickForRule(rule, units, usedKeys) {
 
   if (rule.rule_type === 'product_pick') {
     const need = rule.quantity || 1;
-    const allowed = new Set((rule.products || []).map((p) => p.product_id));
+    const allowedProducts = (rule.products || []).map((p) => ({
+      product_id: p.product_id,
+      size: p.size || null,
+    }));
     for (let i = 0; i < need; i++) {
       const foundKey = Object.keys(units).find((key) => {
         if (usedSet.has(key)) return false;
-        return allowed.has(units[key].product_id);
+        const unit = units[key];
+        return allowedProducts.some((allowed) => {
+          if (!idsEqual(unit.product_id, allowed.product_id)) return false;
+          return sizeMatches(unit.size, allowed.size);
+        });
       });
       if (!foundKey) return null;
       picked[foundKey] = units[foundKey];
