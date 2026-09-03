@@ -127,7 +127,7 @@
 
         <div class="mt-3 bg-white rounded-lg p-3 border border-gray-200">
           <div class="text-gray-600 mb-1 text-sm">الكمية الحالية (المخزون المركزي)</div>
-          <div class="font-mono font-bold text-gray-900">
+          <div class="font-mono font-bold" :class="isStockNegative(material) ? 'text-red-600' : 'text-gray-900'">
             <template v-if="material.quantity_per_unit">
               {{ formatStockUnits(material) }} {{ material.unit }}
               <span class="text-gray-600 font-normal">({{ formatStockConsume(material) }} {{ material.consume_unit }})</span>
@@ -187,7 +187,7 @@
               {{ formatQuantityPerUnit(material) }}
               <span v-if="material.consume_unit" class="text-gray-500">{{ material.consume_unit }}</span>
             </td>
-            <td class="p-4 block sm:table-cell font-mono font-bold min-w-[320px]" data-label="الكمية الحالية (المخزون المركزي)">
+            <td class="p-4 block sm:table-cell font-mono font-bold min-w-[320px]" :class="isStockNegative(material) ? 'text-red-600' : ''" data-label="الكمية الحالية (المخزون المركزي)">
               <template v-if="material.quantity_per_unit">
                 {{ formatStockUnits(material) }} {{ material.unit }}
                 <span class="text-gray-600 font-normal">({{ formatStockConsume(material) }} {{ material.consume_unit }})</span>
@@ -1117,6 +1117,9 @@ export default {
     isStockLow(material) {
         if (!material.stock_alert_threshold) return false;
         return parseFloat(material.stock) <= parseFloat(material.stock_alert_threshold);
+    },
+    isStockNegative(material) {
+      return parseFloat(material.stock) < 0;
     },
     formatStockUnits(material) {
       if (!material.quantity_per_unit) return material.stock;
