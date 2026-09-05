@@ -91,13 +91,38 @@
       <!-- المنتجات - قابلة للتمرير -->
       <div class="flex-1 flex flex-col overflow-hidden">
         <!-- شريط البحث ثابت -->
-        <div class="flex-shrink-0 p-4 bg-white border-b border-gray-200">
+        <div class="flex-shrink-0 p-4 bg-white border-b border-gray-200 space-y-3">
           <input 
             v-model="searchQuery" 
             type="text" 
             placeholder="ابحث عن عصير..." 
             class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
           />
+
+          <div v-if="showFridgeView && fridgeCategories.length" class="flex gap-2 overflow-x-auto pb-1">
+            <button
+              type="button"
+              class="shrink-0 px-3 py-1.5 rounded-full text-sm font-semibold border transition"
+              :class="selectedFridgeCategoryId === null
+                ? 'bg-cyan-600 text-white border-cyan-700'
+                : 'bg-white text-cyan-800 border-cyan-200 hover:bg-cyan-50'"
+              @click="selectFridgeCategory(null)"
+            >
+              كل التلاجة
+            </button>
+            <button
+              v-for="cat in fridgeCategories"
+              :key="cat.id"
+              type="button"
+              class="shrink-0 px-3 py-1.5 rounded-full text-sm font-semibold border transition"
+              :class="Number(selectedFridgeCategoryId) === Number(cat.id)
+                ? 'bg-cyan-600 text-white border-cyan-700'
+                : 'bg-white text-cyan-800 border-cyan-200 hover:bg-cyan-50'"
+              @click="selectFridgeCategory(cat.id)"
+            >
+              {{ cat.name }}
+            </button>
+          </div>
         </div>
 
         <!-- قائمة المنتجات - قابلة للتمرير -->
@@ -590,6 +615,7 @@ export default {
       searchQuery: '',
       selectedCategoryId: null,
       showFridgeView: false,
+      selectedFridgeCategoryId: null,
       rawCart: [],
       orderId: null,
       iframeVisible: false,
@@ -644,7 +670,22 @@ export default {
     filteredFridgeProducts() {
       const q = (this.searchQuery || '').toLowerCase();
       return (this.liveFridgeProducts || [])
+        .filter((p) => {
+          if (this.selectedFridgeCategoryId === null || this.selectedFridgeCategoryId === '') {
+            return true;
+          }
+          return Number(p.category_id) === Number(this.selectedFridgeCategoryId);
+        })
         .filter((p) => !q || (p.name || '').toLowerCase().includes(q));
+    },
+    fridgeCategories() {
+      const ids = new Set(
+        (this.liveFridgeProducts || [])
+          .map((p) => p.category_id)
+          .filter((id) => id != null && id !== '')
+          .map((id) => Number(id))
+      );
+      return (this.categories || []).filter((cat) => ids.has(Number(cat.id)));
     },
     displayProducts() {
       return this.showFridgeView ? this.filteredFridgeProducts : this.filteredProducts;
@@ -798,6 +839,10 @@ export default {
     selectFridgeView() {
       this.showFridgeView = true;
       this.selectedCategoryId = null;
+      this.selectedFridgeCategoryId = null;
+    },
+    selectFridgeCategory(categoryId) {
+      this.selectedFridgeCategoryId = categoryId;
     },
     getProductSizeForCart(product) {
       if (this.hasVariants(product) && Number(product.selectedVariantIndex) >= 0) {
