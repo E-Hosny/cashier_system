@@ -119,20 +119,22 @@
                 <h3 class="text-sm font-semibold text-gray-800 text-center leading-tight">
                   {{ product.name }}
                   <span v-if="product.from_fridge" class="text-cyan-600 text-xs block">
-                    تلاجة ({{ product.fridge_quantity }})
-                    <span v-if="product.outOfFridgeStock" class="text-red-600"> — نفد</span>
+                    تلاجة ({{ getFridgeQuantity(product) }})
+                    <span v-if="isFridgeOutOfStock(product)" class="text-red-600"> — نفد</span>
                   </span>
                 </h3>
                 
                 <!-- Size Selection -->
-                <div v-if="!product.from_fridge && hasVariants(product)" class="my-2 flex justify-center gap-1">
+                <div v-if="hasVariants(product)" class="my-2 flex justify-center gap-1 flex-wrap">
                     <button 
                       v-for="(variant, v_idx) in product.size_variants" 
                       :key="variant.size"
+                      type="button"
                       @click="selectVariant(product, v_idx)"
-                      :class="['px-2 py-1 rounded-full text-xs font-semibold', Number(product.selectedVariantIndex) === Number(v_idx) ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700']"
+                      :class="['px-2 py-1 rounded-full text-xs font-semibold', Number(product.selectedVariantIndex) === Number(v_idx) ? (product.from_fridge ? 'bg-cyan-600 text-white' : 'bg-green-500 text-white') : 'bg-gray-200 text-gray-700']"
                     >
                       {{ translateSize(variant.size) }}
+                      <span v-if="product.from_fridge" class="opacity-80">({{ parseFloat(variant.fridge_quantity) || 0 }})</span>
                     </button>
                 </div>
 
@@ -592,6 +594,7 @@ export default {
       orderId: null,
       iframeVisible: false,
       liveProducts: [],
+      liveFridgeProducts: [],
       isCheckoutLoading: false,
       pendingClientRequestId: null,
       sizeTranslations: {
@@ -639,16 +642,9 @@ export default {
         .filter(p => p.name.toLowerCase().includes(this.searchQuery.toLowerCase()));
     },
     filteredFridgeProducts() {
-      return (this.fridgeProducts || [])
-        .filter(p => p.name.toLowerCase().includes(this.searchQuery.toLowerCase()))
-        .map(p => ({
-          ...p,
-          from_fridge: true,
-          cartKey: `fridge-${p.product_id}-${p.size || ''}`,
-          quantityToAdd: 1,
-          selectedVariantIndex: -1,
-          outOfFridgeStock: parseFloat(p.fridge_quantity) <= 0,
-        }));
+      const q = (this.searchQuery || '').toLowerCase();
+      return (this.liveFridgeProducts || [])
+        .filter((p) => !q || (p.name || '').toLowerCase().includes(q));
     },
     displayProducts() {
       return this.showFridgeView ? this.filteredFridgeProducts : this.filteredProducts;
@@ -687,11 +683,101 @@ export default {
             quantityToAdd: 1,
         }));
     },
+    initializeFridgeProducts() {
+      const previous = Object.fromEntries(
+        (this.liveFridgeProducts || []).map((p) => [p.product_id, p])
+      );
+      const grouped = {};
+      const sizeOrder = ['small', 'medium', 'large', 'extra_large'];
+
+      for (const entry of this.fridgeProducts || []) {
+        const productId = entry.product_id;
+        if (!grouped[productId]) {
+          grouped[productId] = {
+            id: productId,
+            product_id: productId,
+            category_id: entry.category_id,
+            name: entry.name,
+            image: entry.image,
+            from_fridge: true,
+            cartKey: `fridge-${productId}`,
+            size_variants: [],
+            price: null,
+            fridge_quantity: 0,
+            size: null,
+            quantityToAdd: previous[productId]?.quantityToAdd || 1,
+            selectedVariantIndex: previous[productId]?.selectedVariantIndex ?? 0,
+          };
+        }
+
+        if (entry.size) {
+          grouped[productId].size_variants.push({
+            size: entry.size,
+            price: entry.price,
+            fridge_quantity: entry.fridge_quantity,
+            config_id: entry.config_id,
+          });
+        } else {
+          grouped[productId].price = entry.price;
+          grouped[productId].fridge_quantity = entry.fridge_quantity;
+          grouped[productId].config_id = entry.config_id;
+          grouped[productId].size = null;
+        }
+      }
+
+      this.liveFridgeProducts = Object.values(grouped).map((product) => {
+        if (product.size_variants.length > 1) {
+          product.size_variants.sort((a, b) => {
+            const ai = sizeOrder.indexOf(a.size);
+            const bi = sizeOrder.indexOf(b.size);
+            if (ai === -1 && bi === -1) return String(a.size).localeCompare(String(b.size));
+            if (ai === -1) return 1;
+            if (bi === -1) return -1;
+            return ai - bi;
+          });
+        }
+
+        if (product.size_variants.length === 0) {
+          product.selectedVariantIndex = -1;
+        } else if (
+          product.selectedVariantIndex == null
+          || product.selectedVariantIndex < 0
+          || product.selectedVariantIndex >= product.size_variants.length
+        ) {
+          const withStock = product.size_variants.findIndex((v) => parseFloat(v.fridge_quantity) > 0);
+          product.selectedVariantIndex = withStock >= 0 ? withStock : 0;
+        }
+
+        return product;
+      });
+    },
     hasVariants(product) {
         return product.size_variants && product.size_variants.length > 0;
     },
+    getSelectedFridgeVariant(product) {
+      if (!product?.from_fridge || !this.hasVariants(product)) {
+        return null;
+      }
+      const idx = Number(product.selectedVariantIndex);
+      if (idx < 0) return null;
+      return product.size_variants[idx] || null;
+    },
+    getFridgeQuantity(product) {
+      const variant = this.getSelectedFridgeVariant(product);
+      if (variant) {
+        return parseFloat(variant.fridge_quantity) || 0;
+      }
+      return parseFloat(product.fridge_quantity) || 0;
+    },
+    isFridgeOutOfStock(product) {
+      return this.getFridgeQuantity(product) <= 0;
+    },
     getProductPrice(product) {
         if (product.from_fridge) {
+            const variant = this.getSelectedFridgeVariant(product);
+            if (variant) {
+              return `${variant.price} جنيه`;
+            }
             return `${product.price} جنيه`;
         }
         if (this.hasVariants(product) && Number(product.selectedVariantIndex) !== -1) {
@@ -759,7 +845,12 @@ export default {
     },
     addFridgeToCart(product) {
       const quantity = product.quantityToAdd || 1;
-      const cartItemId = `fridge-${product.product_id}-${product.size || ''}`;
+      const variant = this.getSelectedFridgeVariant(product);
+      const size = variant ? (variant.size ?? null) : (product.size ?? null);
+      const price = variant
+        ? (parseFloat(variant.price) || 0)
+        : (parseFloat(product.price) || 0);
+      const cartItemId = `fridge-${product.product_id}-${size || ''}`;
       const found = this.rawCart.find(item => item.cartItemId === cartItemId);
       if (found) {
         found.quantity += quantity;
@@ -769,8 +860,8 @@ export default {
           product_id: product.product_id,
           category_id: product.category_id ?? this.findProductCategoryId(product.product_id),
           name: product.name,
-          size: product.size,
-          price: parseFloat(product.price) || 0,
+          size,
+          price,
           quantity,
           from_fridge: true,
         });
@@ -1287,6 +1378,7 @@ export default {
   },
   mounted() {
     this.initializeProducts();
+    this.initializeFridgeProducts();
     document.addEventListener('keydown', this.handleEscape);
     window.addEventListener('message', this.handleIframeMessage);
     
@@ -1305,6 +1397,12 @@ export default {
   watch: {
       products() {
           this.initializeProducts();
+      },
+      fridgeProducts: {
+          handler() {
+              this.initializeFridgeProducts();
+          },
+          deep: true,
       },
       refundSearchQuery() {
           if (this.showRefundModal) {
