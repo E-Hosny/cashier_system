@@ -57,8 +57,14 @@ class EmployeeDiscount extends Model
 
     public function isAutomatic(): bool
     {
-        return $this->source === 'late_rule';
+        return in_array($this->source, ['late_rule', 'absence_vacation'], true);
     }
+
+    public const SOURCE_LATE_RULE = 'late_rule';
+
+    public const SOURCE_ABSENCE_VACATION = 'absence_vacation';
+
+    public const SOURCE_MANUAL = 'manual';
 
     protected static function booted()
     {

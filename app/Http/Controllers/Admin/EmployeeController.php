@@ -159,6 +159,7 @@ class EmployeeController extends Controller
             'salary_type' => ['nullable', Rule::in([Employee::SALARY_TYPE_HOURLY, Employee::SALARY_TYPE_FIXED])],
             'hourly_rate' => 'nullable|numeric|min:0',
             'fixed_salary' => 'nullable|numeric|min:0',
+            'allowed_vacation_days' => 'nullable|integer|min:0|max:31',
             'phone' => 'nullable|string|max:20',
             'position' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
@@ -183,9 +184,10 @@ class EmployeeController extends Controller
 
         if (! (auth()->user()?->hasAnyRole(['admin', 'super admin']) ?? false)) {
             unset($validated['expected_checkin_time'], $validated['expected_checkout_time'], $validated['grace_minutes'], $validated['late_deductions_enabled'], $validated['use_weekly_schedule'], $validated['work_schedules']);
-            unset($validated['salary_type'], $validated['fixed_salary']);
+            unset($validated['salary_type'], $validated['fixed_salary'], $validated['allowed_vacation_days']);
             $validated['salary_type'] = Employee::SALARY_TYPE_HOURLY;
             $validated['fixed_salary'] = null;
+            $validated['allowed_vacation_days'] = 0;
         }
 
         if (! (auth()->user()?->hasRole('super admin') ?? false)) {
@@ -246,6 +248,7 @@ class EmployeeController extends Controller
             'salary_type' => ['nullable', Rule::in([Employee::SALARY_TYPE_HOURLY, Employee::SALARY_TYPE_FIXED])],
             'hourly_rate' => 'nullable|numeric|min:0',
             'fixed_salary' => 'nullable|numeric|min:0',
+            'allowed_vacation_days' => 'nullable|integer|min:0|max:31',
             'phone' => 'nullable|string|max:20',
             'position' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
@@ -271,7 +274,7 @@ class EmployeeController extends Controller
         if ($canManageSalaryType) {
             $validated = $this->normalizeSalaryFields($validated, $request);
         } else {
-            unset($validated['salary_type'], $validated['fixed_salary'], $validated['hourly_rate']);
+            unset($validated['salary_type'], $validated['fixed_salary'], $validated['hourly_rate'], $validated['allowed_vacation_days']);
         }
 
         if (! $canManageSalaryType) {
@@ -1152,6 +1155,7 @@ class EmployeeController extends Controller
             ->where('salary_type', Employee::SALARY_TYPE_FIXED)
             ->where('is_active', true)
             ->when($request->filled('employee_id'), fn ($q) => $q->where('id', $request->integer('employee_id')))
+            ->with('workSchedules')
             ->orderBy('name')
             ->get();
 
@@ -1193,6 +1197,7 @@ class EmployeeController extends Controller
                 'name' => $employee->name,
                 'position' => $employee->position,
                 'fixed_salary' => $summary['fixed_salary'],
+                'allowed_vacation_days' => $attendanceSummary['allowed_vacation_days'],
                 'withdrawals_total' => $summary['withdrawals_total'],
                 'discounts_total' => $summary['discounts_total'],
                 'remaining' => $summary['remaining'],
@@ -1200,6 +1205,9 @@ class EmployeeController extends Controller
                 'withdrawals' => $withdrawals,
                 'discounts' => $discounts,
                 'absence_days_count' => $attendanceSummary['absence_days_count'],
+                'excess_absence_days' => $attendanceSummary['excess_absence_days'],
+                'daily_salary_rate' => $attendanceSummary['daily_salary_rate'],
+                'absence_deduction_amount' => $attendanceSummary['absence_deduction_amount'],
                 'absence_dates' => $attendanceSummary['absence_dates'],
                 'daily_log' => $attendanceSummary['daily_log'],
             ];
@@ -1322,6 +1330,7 @@ class EmployeeController extends Controller
             $validated['hourly_rate'] = $request->filled('hourly_rate')
                 ? (float) $request->input('hourly_rate')
                 : 0;
+            $validated['allowed_vacation_days'] = max(0, min(31, (int) ($request->input('allowed_vacation_days') ?? 0)));
         } else {
             if (! $request->filled('hourly_rate') || (float) $request->input('hourly_rate') < 0) {
                 throw ValidationException::withMessages([
@@ -1330,6 +1339,7 @@ class EmployeeController extends Controller
             }
             $validated['hourly_rate'] = (float) $request->input('hourly_rate');
             $validated['fixed_salary'] = null;
+            $validated['allowed_vacation_days'] = 0;
         }
 
         return $validated;

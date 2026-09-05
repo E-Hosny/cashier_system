@@ -22,6 +22,7 @@ class Employee extends Model
         'hourly_rate',
         'salary_type',
         'fixed_salary',
+        'allowed_vacation_days',
         'is_active',
         'phone',
         'position',
@@ -41,6 +42,7 @@ class Employee extends Model
     protected $casts = [
         'hourly_rate' => 'decimal:2',
         'fixed_salary' => 'decimal:2',
+        'allowed_vacation_days' => 'integer',
         'is_active' => 'boolean',
         'grace_minutes' => 'integer',
         'late_deductions_enabled' => 'boolean',
@@ -109,6 +111,11 @@ class Employee extends Model
     public function getFixedSalaryMonthSummary(?string $yearMonth = null): array
     {
         $yearMonth = $yearMonth ?: Carbon::now()->format('Y-m');
+
+        if ($this->isFixedSalary()) {
+            $this->syncAbsenceVacationDeduction($yearMonth);
+        }
+
         [$year, $month] = array_map('intval', explode('-', $yearMonth));
         $start = Carbon::create($year, $month, 1)->startOfDay();
         $end = $start->copy()->endOfMonth();
@@ -140,12 +147,16 @@ class Employee extends Model
     }
 
     /**
-     * سجل حضور شهري مع أيام الغياب (غياب = لا يوجد أي سجل حضور/انصراف لذلك اليوم).
+     * سجل حضور شهري مع أيام الغياب (غياب = يوم عمل متوقع بدون أي سجل حضور/انصراف).
      *
      * @return array{
      *   absence_days_count: int,
      *   absence_dates: array<int, array{date: string, date_arabic: string, day_name: string}>,
-     *   daily_log: array<int, array<string, mixed>>
+     *   daily_log: array<int, array<string, mixed>>,
+     *   allowed_vacation_days: int,
+     *   excess_absence_days: int,
+     *   daily_salary_rate: float,
+     *   absence_deduction_amount: float
      * }
      */
     public function getMonthlyAttendanceSummary(string $yearMonth): array
@@ -154,6 +165,8 @@ class Employee extends Model
         $start = Carbon::create($year, $month, 1)->startOfDay();
         $end = $start->copy()->endOfMonth();
         $todayAnchor = self::businessDayAnchorFromNow();
+
+        $this->loadMissing('workSchedules');
 
         $rangeStart = $start->copy()->setTime(7, 0, 0);
         $rangeEnd = $end->copy()->addDay()->setTime(7, 0, 0);
@@ -171,6 +184,7 @@ class Employee extends Model
             $dateString = $currentDate->toDateString();
             $isFuture = $dateString > $todayAnchor;
             $isToday = $dateString === $todayAnchor;
+            $isOffDay = ! $this->isExpectedWorkingDay($currentDate);
 
             [$dayStart, $dayEnd] = self::businessDayBoundsForAnchor($dateString);
 
@@ -196,7 +210,7 @@ class Employee extends Model
             })->values()->all();
 
             $hasRecords = count($records) > 0;
-            $isAbsent = ! $isFuture && ! $isToday && ! $hasRecords;
+            $isAbsent = ! $isOffDay && ! $isFuture && ! $isToday && ! $hasRecords;
 
             if ($isAbsent) {
                 $absenceDates[] = [
@@ -212,6 +226,7 @@ class Employee extends Model
                 'day_name' => $currentDate->locale('ar')->dayName,
                 'has_records' => $hasRecords,
                 'is_absent' => $isAbsent,
+                'is_off_day' => $isOffDay,
                 'is_today' => $isToday,
                 'is_future' => $isFuture,
                 'records' => $records,
@@ -220,11 +235,107 @@ class Employee extends Model
             $currentDate->addDay();
         }
 
+        $absenceDaysCount = count($absenceDates);
+        $allowedVacationDays = $this->isFixedSalary()
+            ? max(0, (int) ($this->allowed_vacation_days ?? 0))
+            : 0;
+        $excessAbsenceDays = $this->isFixedSalary()
+            ? max(0, $absenceDaysCount - $allowedVacationDays)
+            : 0;
+        $dailySalaryRate = $this->isFixedSalary()
+            ? round(((float) ($this->fixed_salary ?? 0)) / 30, 2)
+            : 0.0;
+        $absenceDeductionAmount = round($excessAbsenceDays * $dailySalaryRate, 2);
+
         return [
-            'absence_days_count' => count($absenceDates),
+            'absence_days_count' => $absenceDaysCount,
             'absence_dates' => $absenceDates,
             'daily_log' => $dailyLog,
+            'allowed_vacation_days' => $allowedVacationDays,
+            'excess_absence_days' => $excessAbsenceDays,
+            'daily_salary_rate' => $dailySalaryRate,
+            'absence_deduction_amount' => $absenceDeductionAmount,
         ];
+    }
+
+    /**
+     * هل اليوم ضمن أيام العمل المتوقعة للموظف؟
+     * بدون جدول أسبوعي يُعتبر كل يوم يوم عمل.
+     */
+    public function isExpectedWorkingDay(Carbon $date): bool
+    {
+        if (! $this->usesWeeklySchedule()) {
+            return true;
+        }
+
+        $this->loadMissing('workSchedules');
+        $weekly = $this->workSchedules->firstWhere('day_of_week', (int) $date->dayOfWeek);
+
+        return $weekly && $weekly->is_working;
+    }
+
+    /**
+     * مزامنة خصم الغياب الزائد عن الإجازة المسموحة (راتب ثابت ÷ 30 × الأيام الزائدة).
+     */
+    public function syncAbsenceVacationDeduction(string $yearMonth): void
+    {
+        if (! $this->isFixedSalary()) {
+            return;
+        }
+
+        [$year, $month] = array_map('intval', explode('-', $yearMonth));
+        $start = Carbon::create($year, $month, 1)->startOfDay();
+        $end = $start->copy()->endOfMonth();
+        $discountDate = $end->toDateString();
+
+        $attendance = $this->getMonthlyAttendanceSummary($yearMonth);
+        $amount = (float) ($attendance['absence_deduction_amount'] ?? 0);
+        $excess = (int) ($attendance['excess_absence_days'] ?? 0);
+        $absence = (int) ($attendance['absence_days_count'] ?? 0);
+        $allowed = (int) ($attendance['allowed_vacation_days'] ?? 0);
+        $dailyRate = (float) ($attendance['daily_salary_rate'] ?? 0);
+
+        $existing = $this->discounts()
+            ->where('source', EmployeeDiscount::SOURCE_ABSENCE_VACATION)
+            ->whereDate('discount_date', '>=', $start->toDateString())
+            ->whereDate('discount_date', '<=', $end->toDateString())
+            ->first();
+
+        if ($amount <= 0) {
+            if ($existing) {
+                $existing->delete();
+            }
+
+            return;
+        }
+
+        $reason = sprintf(
+            'خصم غياب زائد عن الإجازة: غياب %d يوم / مسموح %d — الزائد %d × %s جنيه',
+            $absence,
+            $allowed,
+            $excess,
+            number_format($dailyRate, 2)
+        );
+
+        if ($existing) {
+            $existing->update([
+                'amount' => $amount,
+                'reason' => $reason,
+                'discount_date' => $discountDate,
+            ]);
+
+            return;
+        }
+
+        EmployeeDiscount::create([
+            'employee_id' => $this->id,
+            'discount_date' => $discountDate,
+            'amount' => $amount,
+            'reason' => $reason,
+            'source' => EmployeeDiscount::SOURCE_ABSENCE_VACATION,
+            'created_by' => auth()->id(),
+            'tenant_id' => $this->tenant_id,
+        ]);
     }
 
     /**

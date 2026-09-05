@@ -81,6 +81,7 @@
               </div>
               <div class="flex flex-wrap gap-3 text-sm">
                 <span class="bg-white px-3 py-1 rounded border">الراتب: <strong>{{ formatPrice(employee.fixed_salary) }}</strong></span>
+                <span class="bg-sky-100 text-sky-900 px-3 py-1 rounded">إجازة مسموحة: <strong>{{ employee.allowed_vacation_days }}</strong></span>
                 <span class="bg-amber-100 text-amber-900 px-3 py-1 rounded">مسحوب: <strong>{{ formatPrice(employee.withdrawals_total) }}</strong></span>
                 <span v-if="employee.discounts_total > 0" class="bg-red-100 text-red-900 px-3 py-1 rounded">خصم: <strong>{{ formatPrice(employee.discounts_total) }}</strong></span>
                 <span class="bg-green-100 text-green-900 px-3 py-1 rounded">متبقي: <strong>{{ formatPrice(employee.remaining) }}</strong></span>
@@ -92,7 +93,10 @@
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
                   @click.stop="openAttendance(employee.id)"
                 >
-                  غياب: <strong>{{ employee.absence_days_count }}</strong> {{ employee.absence_days_count === 1 ? 'يوم' : 'أيام' }}
+                  غياب: <strong>{{ employee.absence_days_count }}</strong>
+                  <span v-if="employee.excess_absence_days > 0" class="text-red-700">
+                    (زائد {{ employee.excess_absence_days }} / خصم {{ formatPrice(employee.absence_deduction_amount) }})
+                  </span>
                 </button>
                 <span class="text-gray-500">{{ expanded[employee.id] ? '▲' : '▼' }}</span>
               </div>
@@ -143,6 +147,7 @@
                       {{ d.discount_date }}
                       <span v-if="d.reason" class="text-gray-500">— {{ d.reason }}</span>
                       <span v-if="d.source === 'late_rule'" class="text-[10px] bg-amber-100 text-amber-800 px-1 rounded mr-1">تأخير</span>
+                      <span v-else-if="d.source === 'absence_vacation'" class="text-[10px] bg-orange-100 text-orange-800 px-1 rounded mr-1">غياب زائد</span>
                     </span>
                     <span class="text-red-600 font-medium">-{{ formatPrice(d.amount) }}</span>
                   </li>
@@ -156,9 +161,24 @@
               >
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <h4 class="font-semibold text-gray-800">الحضور والغياب — {{ monthLabel }}</h4>
-                  <span class="text-sm text-orange-800">
-                    {{ employee.absence_days_count }} {{ employee.absence_days_count === 1 ? 'يوم غياب' : 'أيام غياب' }}
-                  </span>
+                  <div class="flex flex-wrap gap-2 text-sm">
+                    <span class="bg-sky-100 text-sky-900 px-2 py-1 rounded">
+                      إجازة مسموحة: <strong>{{ employee.allowed_vacation_days }}</strong>
+                    </span>
+                    <span class="bg-orange-100 text-orange-900 px-2 py-1 rounded">
+                      غياب: <strong>{{ employee.absence_days_count }}</strong>
+                    </span>
+                    <span
+                      v-if="employee.excess_absence_days > 0"
+                      class="bg-red-100 text-red-900 px-2 py-1 rounded"
+                    >
+                      زائد {{ employee.excess_absence_days }} يوم × {{ formatPrice(employee.daily_salary_rate) }}
+                      = خصم <strong>{{ formatPrice(employee.absence_deduction_amount) }}</strong>
+                    </span>
+                    <span v-else class="bg-green-100 text-green-800 px-2 py-1 rounded">
+                      ضمن الحد المسموح — بدون خصم غياب
+                    </span>
+                  </div>
                 </div>
 
                 <div v-if="employee.absence_dates.length > 0">
@@ -196,6 +216,7 @@
                           :class="{
                             'bg-orange-50': day.is_absent,
                             'bg-blue-50': day.is_today,
+                            'bg-gray-50': day.is_off_day && !day.has_records,
                           }"
                         >
                           <td class="p-2 whitespace-nowrap">{{ day.date_arabic }}</td>
@@ -205,6 +226,10 @@
                               v-if="day.is_future"
                               class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded"
                             >لم يحن بعد</span>
+                            <span
+                              v-else-if="day.is_off_day && !day.has_records"
+                              class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded"
+                            >يوم راحة</span>
                             <span
                               v-else-if="day.is_today && !day.has_records"
                               class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded"

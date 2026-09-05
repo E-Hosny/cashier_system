@@ -85,6 +85,26 @@
               <div v-if="errors.fixed_salary" class="text-red-500 text-sm mt-1">{{ errors.fixed_salary }}</div>
             </div>
 
+            <!-- أيام الأجازة المسموحة -->
+            <div v-if="form.salary_type === 'fixed'" class="mb-4">
+              <label class="block text-gray-700 text-sm font-bold mb-2">
+                أيام الأجازة المسموحة شهرياً
+              </label>
+              <input
+                v-model.number="form.allowed_vacation_days"
+                type="number"
+                min="0"
+                max="31"
+                step="1"
+                class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="مثال: 2"
+              />
+              <p class="text-xs text-gray-500 mt-1">
+                الغياب ضمن هذا الحد لا يُخصم. أي يوم زيادة يُخصم بقيمة الراتب ÷ 30 من صفحة مسحوبات الرواتب.
+              </p>
+              <div v-if="errors.allowed_vacation_days" class="text-red-500 text-sm mt-1">{{ errors.allowed_vacation_days }}</div>
+            </div>
+
             <!-- رقم الهاتف -->
             <div class="mb-4">
               <label class="block text-gray-700 text-sm font-bold mb-2">
@@ -259,6 +279,7 @@ export default {
       salary_type: props.employee.salary_type || 'hourly',
       hourly_rate: props.employee.hourly_rate,
       fixed_salary: props.employee.fixed_salary || '',
+      allowed_vacation_days: props.employee.allowed_vacation_days ?? 0,
       phone: props.employee.phone || '',
       position: props.employee.position || '',
       notes: props.employee.notes || '',
