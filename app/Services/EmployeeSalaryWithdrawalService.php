@@ -39,9 +39,8 @@ class EmployeeSalaryWithdrawalService
         if ($amount > $summary['remaining'] + 0.0001) {
             throw ValidationException::withMessages([
                 'amount' => sprintf(
-                    'المبلغ المطلوب (%.2f) أكبر من المتبقي من الراتب هذا الشهر (%.2f).',
-                    $amount,
-                    $summary['remaining']
+                    'المبلغ المطلوب (%.2f) أكبر من المتبقي من الراتب هذا الشهر.',
+                    $amount
                 ),
             ]);
         }

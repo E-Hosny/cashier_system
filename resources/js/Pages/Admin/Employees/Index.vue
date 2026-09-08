@@ -905,7 +905,7 @@ export default {
       if (this.canViewSalaryAmounts) {
         const remaining = Number(this.selectedEmployee.fixed_salary_month?.remaining || 0);
         if (amount > remaining) {
-          alert(`المبلغ أكبر من المتبقي (${this.formatPrice(remaining)})`);
+          alert(`المبلغ المطلوب (${amount.toFixed(2)}) أكبر من المتبقي من الراتب هذا الشهر`);
           return;
         }
       }
