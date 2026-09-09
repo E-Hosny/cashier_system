@@ -58,6 +58,17 @@ class EmployeeController extends Controller
             $employee->today_discounts = $employee->getDiscountsForBusinessDayAnchor($selectedAnchor);
             $employee->today_discount_total = $employee->getDiscountTotalForBusinessDayAnchor($selectedAnchor);
 
+            $pendingDiscounts = $employee->isHourlySalary()
+                ? $employee->getPendingManualDiscounts()
+                : collect();
+            $employee->pending_discounts = $pendingDiscounts->map(fn (EmployeeDiscount $d) => [
+                'id' => $d->id,
+                'amount' => (float) $d->amount,
+                'reason' => $d->reason,
+                'source' => $d->source,
+            ])->values();
+            $employee->pending_discount_total = round((float) $pendingDiscounts->sum('amount'), 2);
+
             $employee->today_delivery_status = $employee->getSalaryDeliveryForDate($selectedAnchor);
             $employee->is_salary_delivered = $employee->today_delivery_status && $employee->today_delivery_status->isDelivered();
             $employee->delivery_status_text = $employee->today_delivery_status ? $employee->today_delivery_status->status_text : 'غير محدد';
@@ -362,6 +373,18 @@ class EmployeeController extends Controller
         $employee->load('workSchedules');
         $lateResult = $this->lateDeductionService->applyOnCheckin($employee, $attendance);
 
+        $pendingAppliedCount = 0;
+        $pendingAppliedAmount = 0.0;
+        if ($employee->isHourlySalary()) {
+            $pending = $employee->getPendingManualDiscounts();
+            $pendingAppliedCount = $pending->count();
+            $pendingAppliedAmount = (float) $pending->sum('amount');
+            $employee->applyPendingManualDiscountsToBusinessDay(
+                Employee::businessDayAnchorFromNow(),
+                $attendance->id
+            );
+        }
+
         // إعادة تحميل الموظف مع السجلات الجديدة
         $employee->refresh();
 
@@ -391,6 +414,12 @@ class EmployeeController extends Controller
                 'reason' => $lateResult['discount']->reason,
             ];
             $response['message'] .= " — تم خصم {$lateResult['discount']->amount} جنيه تلقائياً";
+        }
+
+        if ($pendingAppliedCount > 0) {
+            $response['pending_discounts_applied'] = $pendingAppliedCount;
+            $response['pending_discounts_amount'] = $pendingAppliedAmount;
+            $response['message'] .= ' — تم تطبيق '.($pendingAppliedCount === 1 ? 'خصم معلّق' : "{$pendingAppliedCount} خصومات معلّقة");
         }
 
         return response()->json($response);
@@ -1044,12 +1073,23 @@ class EmployeeController extends Controller
                 }
             }
 
+            $isPending = false;
+            $discountDate = $targetDate;
+            if ($employee->isHourlySalary()) {
+                $hasAttendance = $employee->getAttendanceRecordsForBusinessDayAnchor($targetDate)->isNotEmpty();
+                if (! $hasAttendance) {
+                    $discountDate = null;
+                    $isPending = true;
+                }
+            }
+
             // إنشاء سجل الخصم
             $discount = EmployeeDiscount::create([
                 'employee_id' => $employee->id,
-                'discount_date' => $targetDate,
+                'discount_date' => $discountDate,
                 'amount' => $request->amount,
                 'reason' => $request->reason,
+                'source' => EmployeeDiscount::SOURCE_MANUAL,
                 'created_by' => auth()->id(),
             ]);
 
@@ -1063,9 +1103,14 @@ class EmployeeController extends Controller
                 ? $employee->getFixedSalaryMonthSummary(Carbon::parse($targetDate)->format('Y-m'))
                 : null;
 
+            $message = $isPending
+                ? 'تم حفظ الخصم معلّقاً. سيُطبَّق مع أول سجل حضور قادم.'
+                : 'تم إضافة الخصم بنجاح';
+
             return response()->json([
                 'success' => true,
-                'message' => 'تم إضافة الخصم بنجاح',
+                'message' => $message,
+                'is_pending' => $isPending,
                 'discount' => [
                     'id' => $discount->id,
                     'amount' => $discount->amount,
@@ -1277,7 +1322,9 @@ class EmployeeController extends Controller
         }
 
         try {
-            $discountDate = Carbon::parse($discount->discount_date)->toDateString();
+            $discountDate = $discount->discount_date
+                ? Carbon::parse($discount->discount_date)->toDateString()
+                : Employee::businessDayAnchorFromNow();
             $discount->delete();
 
             $employee->refresh();

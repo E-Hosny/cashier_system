@@ -728,6 +728,42 @@ class Employee extends Model
     }
 
     /**
+     * خصومات يدوية لم تُربط بعد بيوم حضور (راتب الساعة فقط).
+     */
+    public function getPendingManualDiscounts()
+    {
+        return $this->discounts()
+            ->whereNull('discount_date')
+            ->where(function ($q) {
+                $q->whereNull('source')->orWhere('source', EmployeeDiscount::SOURCE_MANUAL);
+            })
+            ->orderBy('created_at')
+            ->get();
+    }
+
+    /**
+     * ربط الخصومات المعلّقة بيوم العمل عند أول حضور.
+     */
+    public function applyPendingManualDiscountsToBusinessDay(string $anchorDate, ?int $attendanceId = null): int
+    {
+        if ($this->isFixedSalary()) {
+            return 0;
+        }
+
+        $pending = $this->getPendingManualDiscounts();
+        $appliedDate = Carbon::parse($anchorDate)->toDateString();
+
+        foreach ($pending as $discount) {
+            $discount->update([
+                'discount_date' => $appliedDate,
+                'employee_attendance_id' => $attendanceId ?? $discount->employee_attendance_id,
+            ]);
+        }
+
+        return $pending->count();
+    }
+
+    /**
      * الحصول على الفترة الزمنية الحالية للعرض
      */
     public function getCurrentPeriodText()

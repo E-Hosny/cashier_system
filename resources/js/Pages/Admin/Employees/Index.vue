@@ -237,6 +237,27 @@
                         </div>
                       </div>
                     </div>
+                    <div v-if="employee.pending_discounts && employee.pending_discounts.length > 0" class="text-xs text-amber-800 mt-1 space-y-1">
+                      <div class="font-medium">خصم معلّق (يُطبَّق مع أول حضور)</div>
+                      <div v-for="discount in employee.pending_discounts" :key="'pending-' + discount.id" class="border-r-2 border-amber-400 pr-2">
+                        <div class="font-medium flex items-center gap-2 flex-wrap">
+                          <span>-{{ formatPrice(discount.amount) }}</span>
+                          <button
+                            v-if="isSuperAdmin"
+                            type="button"
+                            @click="removeDiscount(employee, discount)"
+                            :disabled="loading"
+                            class="text-[10px] bg-amber-100 hover:bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded font-semibold disabled:opacity-50"
+                            title="إزالة هذا الخصم المعلّق (سوبر أدمن فقط)"
+                          >
+                            إزالة
+                          </button>
+                        </div>
+                        <div v-if="discount.reason" class="text-gray-600 text-xs mt-0.5">
+                          {{ discount.reason }}
+                        </div>
+                      </div>
+                    </div>
                   </td>
                   <td class="p-4">
                     <div class="flex flex-col gap-2">
@@ -420,6 +441,10 @@
                       placeholder="أدخل سبب الخصم..."
                     ></textarea>
                   </div>
+
+                  <p v-if="shouldShowPendingDiscountHint(selectedEmployee)" class="mb-4 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                    إذا لم يكن للموظف حضور في هذا اليوم، سيُحفظ الخصم معلّقاً ويُطبَّق مع أول سجل حضور قادم.
+                  </p>
                   
                   <div class="flex gap-2 justify-end">
                     <button
@@ -617,6 +642,15 @@ export default {
     },
     isFixedSalary(employee) {
       return employee?.salary_type === 'fixed';
+    },
+    shouldShowPendingDiscountHint(employee) {
+      if (!employee || this.isFixedSalary(employee)) {
+        return false;
+      }
+      if (employee.is_present) {
+        return false;
+      }
+      return !(employee.today_attendance_records && employee.today_attendance_records.length > 0);
     },
     handedOutDeliveries(employee) {
       return Array.isArray(employee?.handed_out_today_deliveries)
@@ -974,15 +1008,15 @@ export default {
         const data = await response.json();
 
         if (data.success) {
-          // تحديث المبلغ اليومي للموظف
           this.selectedEmployee.today_amount = data.employee.today_amount;
-          
-          alert(`تم إضافة الخصم بنجاح!\n\nالمبلغ الأصلي: ${this.formatPrice(parseFloat(this.discountForm.amount) + data.employee.today_amount)}\nمبلغ الخصم: ${this.formatPrice(this.discountForm.amount)}\nالمبلغ النهائي: ${this.formatPrice(data.employee.today_amount)}`);
-          
-          // إغلاق الـ modal
+
+          if (data.is_pending) {
+            alert(data.message || 'تم حفظ الخصم معلّقاً. سيُطبَّق مع أول سجل حضور قادم.');
+          } else {
+            alert(`تم إضافة الخصم بنجاح!\n\nالمبلغ الأصلي: ${this.formatPrice(parseFloat(this.discountForm.amount) + data.employee.today_amount)}\nمبلغ الخصم: ${this.formatPrice(this.discountForm.amount)}\nالمبلغ النهائي: ${this.formatPrice(data.employee.today_amount)}`);
+          }
+
           this.closeDiscountModal();
-          
-          // إعادة تحميل الصفحة لتحديث البيانات
           window.location.reload();
         } else {
           alert(data.message || 'حدث خطأ أثناء إضافة الخصم');

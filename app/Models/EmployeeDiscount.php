@@ -60,6 +60,11 @@ class EmployeeDiscount extends Model
         return in_array($this->source, ['late_rule', 'absence_vacation'], true);
     }
 
+    public function isPending(): bool
+    {
+        return $this->discount_date === null;
+    }
+
     public const SOURCE_LATE_RULE = 'late_rule';
 
     public const SOURCE_ABSENCE_VACATION = 'absence_vacation';
