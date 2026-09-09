@@ -335,7 +335,7 @@
                     <div class="flex gap-2 flex-wrap">
                       <!-- زر الحضور -->
                       <button
-                        v-if="isViewingTodayBusinessDay && !employee.is_present"
+                        v-if="canRecordAttendance && isViewingTodayBusinessDay && !employee.is_present"
                         @click="checkinEmployee(employee)"
                         :disabled="loading"
                         class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm font-medium disabled:opacity-50"
@@ -345,7 +345,7 @@
                       
                       <!-- زر الانصراف -->
                       <button
-                        v-if="isViewingTodayBusinessDay && employee.is_present"
+                        v-if="canRecordAttendance && isViewingTodayBusinessDay && employee.is_present"
                         @click="checkoutEmployee(employee)"
                         :disabled="loading"
                         class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm font-medium disabled:opacity-50"
@@ -606,6 +606,12 @@ export default {
       const roles = this.$page.props.auth.user?.roles;
       return Array.isArray(roles) && roles.includes('hr');
     },
+    isHrOnly() {
+      return this.isHr && !this.isAdmin && !this.isSuperAdmin && !this.isCashier;
+    },
+    canRecordAttendance() {
+      return !this.isHrOnly;
+    },
     isCashier() {
       const roles = this.$page.props.auth.user?.roles;
       return Array.isArray(roles) && roles.includes('cashier');
@@ -625,8 +631,8 @@ export default {
       }
       if (this.isHr) {
         return this.seesAllBranches
-          ? 'متابعة حضور موظفي كل الفروع وإضافة الخصومات'
-          : 'متابعة حضور الموظفين وإضافة الخصومات';
+          ? 'متابعة موظفي كل الفروع وإضافة الخصومات'
+          : 'متابعة الموظفين وإضافة الخصومات';
       }
       return 'تسجيل حضور وانصراف الموظفين';
     },

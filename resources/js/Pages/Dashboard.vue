@@ -235,7 +235,7 @@ function clearBranch() {
                             <div class="flex flex-col items-stretch w-full text-center min-w-0">
                                 <div class="text-orange-500 text-4xl mb-4">👥</div>
                                 <h3 class="text-lg font-semibold text-gray-700 break-words leading-snug">موظفين جميع الفروع</h3>
-                                <p class="text-sm text-gray-500 break-words leading-relaxed">حضور وخصومات كل الفروع مع التصفية حسب الفرع</p>
+                                <p class="text-sm text-gray-500 break-words leading-relaxed">{{ isHrOnly ? 'متابعة الموظفين وإضافة الخصومات مع التصفية حسب الفرع' : 'حضور وخصومات كل الفروع مع التصفية حسب الفرع' }}</p>
                             </div>
                         </a>
 

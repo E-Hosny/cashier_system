@@ -390,6 +390,8 @@ class EmployeeController extends Controller
      */
     public function checkin(Employee $employee)
     {
+        $this->abortUnlessCanRecordAttendance();
+
         // التحقق من عدم وجود سجل حضور مفتوح لليوم الحالي
         if ($employee->isCurrentlyPresent()) {
             return response()->json([
@@ -480,6 +482,8 @@ class EmployeeController extends Controller
      */
     public function checkout(Employee $employee)
     {
+        $this->abortUnlessCanRecordAttendance();
+
         // البحث عن سجل الحضور المفتوح
         $attendance = $employee->getCurrentAttendance();
         
@@ -1427,6 +1431,15 @@ class EmployeeController extends Controller
     private function abortUnlessCanPayEmployeeSalary(): void
     {
         abort_unless(auth()->user()?->hasAnyRole(['admin', 'super admin', 'cashier']), 403);
+    }
+
+    private function abortUnlessCanRecordAttendance(): void
+    {
+        abort_if(
+            auth()->user()?->isHrOnly(),
+            403,
+            'مسؤول الموظفين يمكنه إضافة خصم فقط، بدون تسجيل حضور أو انصراف.'
+        );
     }
 
     /**
