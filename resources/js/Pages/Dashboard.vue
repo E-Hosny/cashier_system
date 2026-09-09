@@ -19,6 +19,9 @@ const canUseBarista = computed(() => {
 const isBaristaOnly = computed(() => {
   return roles.value.includes('barista') && !roles.value.includes('admin') && !roles.value.includes('super admin');
 });
+const isHrOnly = computed(() => {
+  return roles.value.includes('hr') && !roles.value.includes('admin') && !roles.value.includes('super admin') && !roles.value.includes('cashier');
+});
 
 const branches = computed(() => branchContext.value.branches || []);
 
@@ -141,6 +144,16 @@ function clearBranch() {
                                     <p class="text-sm text-gray-500 break-words leading-relaxed">إضافة أو تعديل الفروع</p>
                                 </div>
                             </a>
+                            <a
+                                :href="route('admin.employees.index', { view: 'all' })"
+                                class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl ring-2 ring-orange-100 min-w-0"
+                            >
+                                <div class="flex flex-col items-stretch w-full text-center min-w-0">
+                                    <div class="text-orange-500 text-4xl mb-4">👥</div>
+                                    <h3 class="text-lg font-semibold text-gray-700 break-words leading-snug">موظفين جميع الفروع</h3>
+                                    <p class="text-sm text-gray-500 break-words leading-relaxed">حضور وخصومات كل الفروع مع التصفية حسب الفرع</p>
+                                </div>
+                            </a>
                         </div>
                     </div>
 
@@ -171,7 +184,7 @@ function clearBranch() {
                 <template v-else>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 min-w-0">
                         <a
-                            v-if="!isBaristaOnly"
+                            v-if="!isBaristaOnly && !isHrOnly"
                             :href="route('admin.raw-materials.branch-pull')"
                             class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl ring-2 ring-amber-100 min-w-0"
                         >
@@ -182,7 +195,7 @@ function clearBranch() {
                             </div>
                         </a>
 
-                        <a v-if="!isBaristaOnly" href="/cashier" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl min-w-0">
+                        <a v-if="!isBaristaOnly && !isHrOnly" href="/cashier" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl min-w-0">
                             <div class="flex flex-col items-stretch w-full text-center min-w-0">
                                 <div class="text-blue-500 text-4xl mb-4">🏪</div>
                                 <h3 class="text-lg font-semibold text-gray-700 break-words leading-snug">الكاشير</h3>
@@ -190,7 +203,7 @@ function clearBranch() {
                             </div>
                         </a>
 
-                        <a v-if="!isBaristaOnly" href="/products" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl min-w-0">
+                        <a v-if="!isBaristaOnly && !isHrOnly" href="/products" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl min-w-0">
                             <div class="flex flex-col items-stretch w-full text-center min-w-0">
                                 <div class="text-green-500 text-4xl mb-4">📦</div>
                                 <h3 class="text-lg font-semibold text-gray-700 break-words leading-snug">المنتجات</h3>
@@ -198,7 +211,7 @@ function clearBranch() {
                             </div>
                         </a>
 
-                        <a v-if="!isBaristaOnly && canViewReports" href="/sales-report" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl min-w-0">
+                        <a v-if="!isBaristaOnly && !isHrOnly && canViewReports" href="/sales-report" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl min-w-0">
                             <div class="flex flex-col items-stretch w-full text-center min-w-0">
                                 <div class="text-red-500 text-4xl mb-4">📊</div>
                                 <h3 class="text-lg font-semibold text-gray-700 break-words leading-snug">تقارير المبيعات</h3>
@@ -206,7 +219,7 @@ function clearBranch() {
                             </div>
                         </a>
 
-                        <a v-if="!isBaristaOnly" href="/expenses" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl min-w-0">
+                        <a v-if="!isBaristaOnly && !isHrOnly" href="/expenses" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl min-w-0">
                             <div class="flex flex-col items-stretch w-full text-center min-w-0">
                                 <div class="text-purple-500 text-4xl mb-4">💸</div>
                                 <h3 class="text-lg font-semibold text-gray-700 break-words leading-snug">المصروفات</h3>
@@ -214,7 +227,19 @@ function clearBranch() {
                             </div>
                         </a>
 
-                        <a v-if="!isBaristaOnly && canManageAttendance" href="/employees" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl min-w-0">
+                        <a
+                            v-if="isSuperAdmin || isHrOnly"
+                            :href="route('admin.employees.index', { view: 'all' })"
+                            class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl ring-2 ring-orange-100 min-w-0"
+                        >
+                            <div class="flex flex-col items-stretch w-full text-center min-w-0">
+                                <div class="text-orange-500 text-4xl mb-4">👥</div>
+                                <h3 class="text-lg font-semibold text-gray-700 break-words leading-snug">موظفين جميع الفروع</h3>
+                                <p class="text-sm text-gray-500 break-words leading-relaxed">حضور وخصومات كل الفروع مع التصفية حسب الفرع</p>
+                            </div>
+                        </a>
+
+                        <a v-if="!isBaristaOnly && !isHrOnly && canManageAttendance" href="/employees" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl min-w-0">
                             <div class="flex flex-col items-stretch w-full text-center min-w-0">
                                 <div class="text-orange-500 text-4xl mb-4">👥</div>
                                 <h3 class="text-lg font-semibold text-gray-700 break-words leading-snug">الموظفين</h3>
@@ -222,7 +247,7 @@ function clearBranch() {
                             </div>
                         </a>
 
-                        <a v-if="!isBaristaOnly" href="/invoices" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl min-w-0">
+                        <a v-if="!isBaristaOnly && !isHrOnly" href="/invoices" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl min-w-0">
                             <div class="flex flex-col items-stretch w-full text-center min-w-0">
                                 <div class="text-indigo-500 text-4xl mb-4">🧾</div>
                                 <h3 class="text-lg font-semibold text-gray-700 break-words leading-snug">الفواتير</h3>
@@ -231,7 +256,7 @@ function clearBranch() {
                         </a>
 
                         <a
-                            v-if="!isBaristaOnly && canManageFeedback"
+                            v-if="!isBaristaOnly && !isHrOnly && canManageFeedback"
                             href="/admin/feedback"
                             class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl min-w-0"
                         >

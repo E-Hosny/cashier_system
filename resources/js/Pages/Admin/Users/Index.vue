@@ -60,8 +60,29 @@ const getRoleBadgeClass = (role) => {
             return 'bg-red-100 text-red-800';
         case 'cashier':
             return 'bg-blue-100 text-blue-800';
+        case 'super admin':
+            return 'bg-purple-100 text-purple-800';
+        case 'hr':
+            return 'bg-amber-100 text-amber-800';
         default:
             return 'bg-gray-100 text-gray-800';
+    }
+};
+
+const roleDisplayName = (role) => {
+    switch (role) {
+        case 'admin':
+            return 'مدير';
+        case 'cashier':
+            return 'كاشير';
+        case 'super admin':
+            return 'سوبر أدمن';
+        case 'barista':
+            return 'باريستا';
+        case 'hr':
+            return 'مسؤول الموظفين';
+        default:
+            return role;
     }
 };
 </script>
@@ -169,7 +190,7 @@ const getRoleBadgeClass = (role) => {
                                                         getRoleBadgeClass(role)
                                                     ]"
                                                 >
-                                                    {{ role === 'admin' ? 'مدير' : role === 'cashier' ? 'كاشير' : role }}
+                                                    {{ roleDisplayName(role) }}
                                                 </span>
                                             </div>
                                         </td>

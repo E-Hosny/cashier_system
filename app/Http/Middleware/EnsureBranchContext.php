@@ -19,6 +19,10 @@ class EnsureBranchContext
             return $next($request);
         }
 
+        if ($user->canViewEmployeesAcrossBranches() && $request->routeIs('admin.employees.*')) {
+            return $next($request);
+        }
+
         if (! $user->hasRole('super admin')) {
             if (! $user->branch_id) {
                 return redirect()->route('dashboard')

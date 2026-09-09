@@ -60,7 +60,9 @@ class UserController extends Controller
             $request->merge(['branch_id' => null]);
         }
 
-        $isSuperTarget = collect($request->roles)->contains(fn ($r) => $r === 'super admin');
+        if (User::rolesSkipBranchAssignment($request->input('roles', []))) {
+            $request->merge(['branch_id' => null]);
+        }
 
         $request->validate([
             'name' => 'required|string|max:255',
@@ -69,7 +71,7 @@ class UserController extends Controller
             'roles' => 'required|array|min:1',
             'roles.*' => 'exists:roles,name',
             'branch_id' => [
-                Rule::requiredIf(! $isSuperTarget),
+                Rule::requiredIf(! User::rolesSkipBranchAssignment($request->input('roles', []))),
                 'nullable',
                 Rule::exists('branches', 'id')->where(fn ($q) => $q->where('tenant_id', $tenantId)),
             ],
@@ -124,7 +126,9 @@ class UserController extends Controller
             $request->merge(['branch_id' => null]);
         }
 
-        $isSuperTarget = collect($request->roles)->contains(fn ($r) => $r === 'super admin');
+        if (User::rolesSkipBranchAssignment($request->input('roles', []))) {
+            $request->merge(['branch_id' => null]);
+        }
 
         $request->validate([
             'name' => 'required|string|max:255',
@@ -133,7 +137,7 @@ class UserController extends Controller
             'roles.*' => 'exists:roles,name',
             'password' => 'nullable|confirmed|min:8',
             'branch_id' => [
-                Rule::requiredIf(! $isSuperTarget),
+                Rule::requiredIf(! User::rolesSkipBranchAssignment($request->input('roles', []))),
                 'nullable',
                 Rule::exists('branches', 'id')->where(fn ($q) => $q->where('tenant_id', $tenantId)),
             ],

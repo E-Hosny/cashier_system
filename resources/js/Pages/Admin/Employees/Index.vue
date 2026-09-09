@@ -2,7 +2,7 @@
   <AppLayout title="إدارة الموظفين">
     <template #header>
       <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-        👥 {{ (isAdmin || isSuperAdmin) ? 'إدارة الموظفين' : 'الحضور والانصراف' }}
+        👥 {{ pageTitle }}
       </h2>
     </template>
 
@@ -12,8 +12,8 @@
           <!-- رأس الصفحة -->
           <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-start">
             <div>
-              <h3 class="text-lg font-semibold text-gray-900">{{ (isAdmin || isSuperAdmin) ? 'قائمة الموظفين' : 'الحضور والانصراف' }}</h3>
-              <p class="text-sm text-gray-600">{{ (isAdmin || isSuperAdmin) ? 'إدارة حضور وانصراف الموظفين' : 'تسجيل حضور وانصراف الموظفين' }}</p>
+              <h3 class="text-lg font-semibold text-gray-900">{{ pageTitle }}</h3>
+              <p class="text-sm text-gray-600">{{ pageSubtitle }}</p>
               <p class="text-xs text-gray-500 mt-2 max-w-xl leading-relaxed">{{ currentPeriodText }}</p>
             </div>
             <div class="flex flex-col gap-1 shrink-0">
@@ -27,7 +27,19 @@
                 @change="onBusinessDayChange"
               />
             </div>
-            <div v-if="isAdmin || isSuperAdmin" class="flex gap-2 flex-wrap">
+            <div v-if="canFilterBranches" class="flex flex-col gap-1 shrink-0">
+              <label for="employee-branch-filter" class="text-sm font-medium text-gray-700">الفرع</label>
+              <select
+                id="employee-branch-filter"
+                class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-[180px]"
+                :value="selectedBranchId || ''"
+                @change="onBranchFilterChange"
+              >
+                <option value="">كل الفروع</option>
+                <option v-for="branch in branches" :key="branch.id" :value="branch.id">{{ branch.name }}</option>
+              </select>
+            </div>
+            <div v-if="(isAdmin || isSuperAdmin) && !seesAllBranches" class="flex gap-2 flex-wrap">
               <Link
                 :href="route('admin.employees.create')"
                 class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition duration-200"
@@ -129,6 +141,9 @@
                     <div class="font-semibold">{{ employee.name }}</div>
                     <div v-if="employee.expected_checkin_display" class="text-xs text-gray-500 font-normal">
                       موعد: {{ employee.expected_checkin_display }}
+                    </div>
+                    <div v-if="canFilterBranches && employee.branch_name" class="text-xs text-slate-600 mt-1">
+                      الفرع: {{ employee.branch_name }}
                     </div>
                     <div class="text-sm text-gray-500">{{ employee.phone || 'لا يوجد رقم' }}</div>
                     <div v-if="employee.attendance_dependency_employee_name" class="text-xs text-amber-700 mt-1">
@@ -340,7 +355,7 @@
 
                       <!-- زر تسليم الراتب (يظهر فقط بعد الانصراف) — للراتب بالساعة فقط -->
                       <button
-                        v-if="isViewingTodayBusinessDay && canManageEmployees && !isFixedSalary(employee) && employee.today_amount > 0 && !employee.is_salary_delivered && !employee.is_present"
+                        v-if="isViewingTodayBusinessDay && canPaySalary && !isFixedSalary(employee) && employee.today_amount > 0 && !employee.is_salary_delivered && !employee.is_present"
                         @click="deliverSalary(employee)"
                         :disabled="loading"
                         class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm font-medium disabled:opacity-50"
@@ -362,7 +377,7 @@
 
                       <!-- زر سحب من الراتب الثابت (كاشير / مدير / سوبر أدمن) -->
                       <button
-                        v-if="canManageEmployees && isFixedSalary(employee)"
+                        v-if="canPaySalary && isFixedSalary(employee)"
                         @click="openWithdrawModal(employee)"
                         :disabled="loading || !canWithdrawFixed(employee)"
                         class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded text-sm font-medium disabled:opacity-50"
@@ -557,6 +572,10 @@ export default {
     selectedDate: String,
     maxSelectableDate: String,
     isViewingTodayBusinessDay: { type: Boolean, default: true },
+    seesAllBranches: { type: Boolean, default: false },
+    canFilterBranches: { type: Boolean, default: false },
+    branches: { type: Array, default: () => [] },
+    selectedBranchId: { type: Number, default: null },
   },
   data() {
     return {
@@ -583,6 +602,37 @@ export default {
       const roles = this.$page.props.auth.user?.roles;
       return Array.isArray(roles) && roles.includes('super admin');
     },
+    isHr() {
+      const roles = this.$page.props.auth.user?.roles;
+      return Array.isArray(roles) && roles.includes('hr');
+    },
+    isCashier() {
+      const roles = this.$page.props.auth.user?.roles;
+      return Array.isArray(roles) && roles.includes('cashier');
+    },
+    pageTitle() {
+      if (this.isAdmin || this.isSuperAdmin) {
+        return 'إدارة الموظفين';
+      }
+      if (this.isHr) {
+        return 'متابعة الموظفين';
+      }
+      return 'الحضور والانصراف';
+    },
+    pageSubtitle() {
+      if (this.isAdmin || this.isSuperAdmin) {
+        return 'إدارة حضور وانصراف الموظفين';
+      }
+      if (this.isHr) {
+        return this.seesAllBranches
+          ? 'متابعة حضور موظفي كل الفروع وإضافة الخصومات'
+          : 'متابعة حضور الموظفين وإضافة الخصومات';
+      }
+      return 'تسجيل حضور وانصراف الموظفين';
+    },
+    canPaySalary() {
+      return this.isAdmin || this.isSuperAdmin || this.isCashier;
+    },
     /** أرقام الراتب لا تظهر في قائمة الموظفين؛ التفاصيل من صفحة المسحوبات فقط */
     canViewSalaryAmounts() {
       return false;
@@ -594,7 +644,8 @@ export default {
              (Array.isArray(roles) && (
                roles.includes('admin') ||
                roles.includes('cashier') ||
-               roles.includes('super admin')
+               roles.includes('super admin') ||
+               roles.includes('hr')
              ));
     },
     presentEmployees() {
@@ -635,7 +686,33 @@ export default {
   methods: {
     onBusinessDayChange(e) {
       const val = e.target.value;
-      router.get(route('admin.employees.index'), { date: val }, { preserveState: true, preserveScroll: true });
+      router.get(route('admin.employees.index'), this.employeesIndexQuery({ date: val }), { preserveState: true, preserveScroll: true });
+    },
+    onBranchFilterChange(e) {
+      const branchId = e.target.value;
+      router.get(
+        route('admin.employees.index'),
+        this.employeesIndexQuery({ branch_id: branchId || undefined }),
+        { preserveState: true, preserveScroll: true }
+      );
+    },
+    employeesIndexQuery(overrides = {}) {
+      const query = {
+        date: this.selectedDate,
+        ...overrides,
+      };
+      if (this.seesAllBranches) {
+        query.view = 'all';
+      }
+      const branchId = Object.prototype.hasOwnProperty.call(overrides, 'branch_id')
+        ? overrides.branch_id
+        : this.selectedBranchId;
+      if (this.canFilterBranches && branchId) {
+        query.branch_id = branchId;
+      } else {
+        delete query.branch_id;
+      }
+      return query;
     },
     formatPrice(price) {
       return price ? Number(price).toFixed(2) : "0.00";

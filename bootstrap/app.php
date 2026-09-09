@@ -22,6 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'super_admin' => \App\Http\Middleware\SuperAdminMiddleware::class,
             'employee.attendance' => \App\Http\Middleware\EmployeeAttendanceMiddleware::class,
             'branch.context' => \App\Http\Middleware\EnsureBranchContext::class,
+            'hr.employees_only' => \App\Http\Middleware\RestrictHrToEmployees::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

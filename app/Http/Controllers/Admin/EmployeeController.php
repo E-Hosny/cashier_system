@@ -9,8 +9,10 @@ use App\Models\SalaryDelivery;
 use App\Models\EmployeeDiscount;
 use App\Models\EmployeeSalaryWithdrawal;
 use App\Models\AttendanceGroup;
+use App\Models\Branch;
 use App\Services\AttendanceLateDeductionService;
 use App\Services\EmployeeSalaryWithdrawalService;
+use App\Support\BranchContext;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -30,11 +32,16 @@ class EmployeeController extends Controller
     {
         $maxAnchor = Employee::businessDayAnchorFromNow();
         $selectedAnchor = $maxAnchor;
+        $user = auth()->user();
+        $canFilterBranches = $user?->canViewEmployeesAcrossBranches() ?? false;
+
+        $request->validate([
+            'date' => 'nullable|date_format:Y-m-d',
+            'branch_id' => 'nullable|integer',
+            'view' => 'nullable|in:all',
+        ]);
 
         if ($request->filled('date')) {
-            $request->validate([
-                'date' => 'date_format:Y-m-d',
-            ]);
             $candidate = Carbon::parse($request->query('date'))->toDateString();
             if ($candidate <= $maxAnchor) {
                 $selectedAnchor = $candidate;
@@ -43,9 +50,33 @@ class EmployeeController extends Controller
 
         $isViewingTodayBusinessDay = $selectedAnchor === $maxAnchor;
 
-        $employees = Employee::where('is_active', true)
-            ->with(['attendanceDependencyEmployee:id,name', 'attendanceGroup:id,name,max_present', 'workSchedules'])
-            ->get();
+        $wantsAllBranches = $canFilterBranches && (
+            ($user?->isHrOnly() ?? false)
+            || $request->query('view') === 'all'
+            || BranchContext::id() === null
+        );
+
+        $branchOptions = $canFilterBranches
+            ? Branch::query()->where('is_active', true)->orderBy('name')->get(['id', 'name'])
+            : collect();
+
+        $selectedBranchId = $request->filled('branch_id') ? (int) $request->query('branch_id') : null;
+        if ($selectedBranchId && $branchOptions->every(fn ($branch) => (int) $branch->id !== $selectedBranchId)) {
+            $selectedBranchId = null;
+        }
+
+        $employeesQuery = Employee::query()
+            ->where('is_active', true)
+            ->with(['attendanceDependencyEmployee:id,name', 'attendanceGroup:id,name,max_present', 'workSchedules', 'branch:id,name']);
+
+        if ($wantsAllBranches) {
+            $employeesQuery->withoutGlobalScope('branch');
+            if ($selectedBranchId) {
+                $employeesQuery->where('employees.branch_id', $selectedBranchId);
+            }
+        }
+
+        $employees = $employeesQuery->get();
 
         // إضافة معلومات الحضور والرواتب ليوم العمل المحدد (7 ص → 7 ص)
         $employees->each(function ($employee) use ($selectedAnchor, $isViewingTodayBusinessDay) {
@@ -77,6 +108,7 @@ class EmployeeController extends Controller
             $employee->attendance_group_max_present = optional($employee->attendanceGroup)->max_present;
             $employee->expected_checkin_display = $employee->scheduleSummaryForDisplay();
             $employee->expected_checkout_display = $employee->formattedExpectedCheckoutTime();
+            $employee->branch_name = optional($employee->branch)->name;
 
             if ($employee->isFixedSalary()) {
                 $monthKey = Carbon::parse($selectedAnchor)->format('Y-m');
@@ -133,6 +165,12 @@ class EmployeeController extends Controller
 
         $totalDeliveredToday = round((float) $employees->sum('handed_out_today_amount'), 2);
 
+        if ($wantsAllBranches) {
+            $employees = $employees
+                ->sortBy(fn ($employee) => [optional($employee->branch)->name ?? '', $employee->name])
+                ->values();
+        }
+
         $currentPeriodText = Employee::periodTextForAnchorDate($selectedAnchor);
 
         return Inertia::render('Admin/Employees/Index', [
@@ -144,6 +182,10 @@ class EmployeeController extends Controller
             'selectedDate' => $selectedAnchor,
             'maxSelectableDate' => $maxAnchor,
             'isViewingTodayBusinessDay' => $isViewingTodayBusinessDay,
+            'seesAllBranches' => $wantsAllBranches,
+            'canFilterBranches' => $canFilterBranches && $wantsAllBranches,
+            'branches' => $branchOptions->values(),
+            'selectedBranchId' => $selectedBranchId,
         ]);
     }
 
@@ -152,6 +194,8 @@ class EmployeeController extends Controller
      */
     public function create()
     {
+        $this->abortUnlessCanAdministerEmployees();
+
         return Inertia::render('Admin/Employees/Create', [
             'employees' => Employee::where('is_active', true)->select('id', 'name')->orderBy('name')->get(),
             'attendanceGroups' => AttendanceGroup::select('id', 'name', 'max_present')->orderBy('name')->get(),
@@ -165,6 +209,8 @@ class EmployeeController extends Controller
      */
     public function store(Request $request)
     {
+        $this->abortUnlessCanAdministerEmployees();
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'salary_type' => ['nullable', Rule::in([Employee::SALARY_TYPE_HOURLY, Employee::SALARY_TYPE_FIXED])],
@@ -229,6 +275,8 @@ class EmployeeController extends Controller
      */
     public function edit(Employee $employee)
     {
+        $this->abortUnlessCanAdministerEmployees();
+
         $employee->load('workSchedules');
 
         return Inertia::render('Admin/Employees/Edit', [
@@ -254,6 +302,8 @@ class EmployeeController extends Controller
      */
     public function update(Request $request, Employee $employee)
     {
+        $this->abortUnlessCanAdministerEmployees();
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'salary_type' => ['nullable', Rule::in([Employee::SALARY_TYPE_HOURLY, Employee::SALARY_TYPE_FIXED])],
@@ -503,6 +553,8 @@ class EmployeeController extends Controller
      */
     public function salaryCalculator()
     {
+        $this->abortUnlessCanPayEmployeeSalary();
+
         $employees = Employee::where('is_active', true)->get();
 
         return Inertia::render('Admin/Employees/SalaryCalculator', [
@@ -515,6 +567,8 @@ class EmployeeController extends Controller
      */
     public function calculateSalary(Employee $employee, Request $request)
     {
+        $this->abortUnlessCanPayEmployeeSalary();
+
         $request->validate([
             'date_from' => 'required|date',
             'date_to' => 'required|date|after_or_equal:date_from',
@@ -739,6 +793,8 @@ class EmployeeController extends Controller
      */
     public function deliverSalary(Employee $employee)
     {
+        $this->abortUnlessCanPayEmployeeSalary();
+
         try {
             // التأكد من وجود ساعات عمل لليوم
             $todayHours = $employee->getTodayHours();
@@ -791,6 +847,8 @@ class EmployeeController extends Controller
      */
     public function undoSalaryDelivery(Employee $employee)
     {
+        $this->abortUnlessCanPayEmployeeSalary();
+
         try {
             $delivery = $employee->getTodayDeliveryStatus();
 
@@ -840,6 +898,8 @@ class EmployeeController extends Controller
      */
     public function deliverSalaryForDate(Employee $employee, Request $request)
     {
+        $this->abortUnlessCanPayEmployeeSalary();
+
         $request->validate([
             'date' => 'required|date',
         ]);
@@ -904,6 +964,8 @@ class EmployeeController extends Controller
      */
     public function undoSalaryDeliveryForDate(Employee $employee, Request $request)
     {
+        $this->abortUnlessCanPayEmployeeSalary();
+
         $request->validate([
             'date' => 'required|date',
         ]);
@@ -959,6 +1021,8 @@ class EmployeeController extends Controller
      */
     public function deliverSalaryForPeriod(Employee $employee, Request $request)
     {
+        $this->abortUnlessCanPayEmployeeSalary();
+
         $request->validate([
             'date_from' => 'required|date',
             'date_to' => 'required|date|after_or_equal:date_from',
@@ -1138,6 +1202,8 @@ class EmployeeController extends Controller
      */
     public function withdrawSalary(Employee $employee, Request $request)
     {
+        $this->abortUnlessCanPayEmployeeSalary();
+
         $validated = $request->validate([
             'amount' => 'required|numeric|min:0.01',
             'notes' => 'nullable|string|max:1000',
@@ -1345,6 +1411,22 @@ class EmployeeController extends Controller
                 'message' => 'حدث خطأ أثناء إزالة الخصم: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * إضافة/تعديل/حذف بيانات الموظفين للمدير والسوبر أدمن فقط.
+     */
+    private function abortUnlessCanAdministerEmployees(): void
+    {
+        abort_unless(auth()->user()?->hasAnyRole(['admin', 'super admin']), 403);
+    }
+
+    /**
+     * تسليم الراتب والمسحوبات ليست من مهام مسؤول الموظفين.
+     */
+    private function abortUnlessCanPayEmployeeSalary(): void
+    {
+        abort_unless(auth()->user()?->hasAnyRole(['admin', 'super admin', 'cashier']), 403);
     }
 
     /**

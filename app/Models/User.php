@@ -99,6 +99,32 @@ class User extends Authenticatable
         return $this->hasMany(CashierShift::class);
     }
 
+    public const ROLE_HR = 'hr';
+
+    /**
+     * مسؤول الموظفين فقط: متابعة الحضور والخصم على كل الفروع، بدون باقي النظام.
+     */
+    public function isHrOnly(): bool
+    {
+        return $this->hasRole(self::ROLE_HR)
+            && ! $this->hasAnyRole(['admin', 'super admin', 'cashier']);
+    }
+
+    public static function rolesSkipBranchAssignment(iterable $roles): bool
+    {
+        $roles = collect($roles);
+        if ($roles->contains('super admin')) {
+            return true;
+        }
+
+        return $roles->contains(self::ROLE_HR) && $roles->diff([self::ROLE_HR])->isEmpty();
+    }
+
+    public function canViewEmployeesAcrossBranches(): bool
+    {
+        return $this->hasRole('super admin') || $this->isHrOnly();
+    }
+
     /**
      * الحصول على الوردية النشطة للمستخدم
      */

@@ -46,6 +46,7 @@ Route::middleware([
     'auth:sanctum',
     config('jetstream.auth_session'),
     'verified',
+    'hr.employees_only',
 ])->group(function () {
     Route::get('/dashboard', function () {
         return Inertia::render('Dashboard', [

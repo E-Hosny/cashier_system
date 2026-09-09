@@ -52,6 +52,8 @@ const getRoleDisplayName = (role) => {
             return 'سوبر أدمن';
         case 'barista':
             return 'باريستا';
+        case 'hr':
+            return 'مسؤول الموظفين';
         default:
             return role;
     }
@@ -132,7 +134,7 @@ const getRoleDisplayName = (role) => {
 
                             <!-- الفرع -->
                             <div class="mb-6">
-                                <InputLabel for="branch_id" value="الفرع (إجباري لجميع الأدوار ماعدا سوبر أدمن)" />
+                                <InputLabel for="branch_id" value="الفرع (إجباري لجميع الأدوار ماعدا سوبر أدمن ومسؤول الموظفين)" />
                                 <select
                                     id="branch_id"
                                     v-model="form.branch_id"

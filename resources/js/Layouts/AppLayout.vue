@@ -17,18 +17,28 @@ const branchContext = computed(() => page.props.branchContext || {});
 const hideBranchScopedNav = computed(() => branchContext.value?.isSuperAdminHub === true);
 const userRoles = computed(() => page.props.auth?.user?.roles || []);
 const isSuperAdmin = computed(() => userRoles.value.includes('super admin'));
+const isHrOnly = computed(() =>
+    userRoles.value.includes('hr') &&
+    !userRoles.value.includes('admin') &&
+    !userRoles.value.includes('super admin') &&
+    !userRoles.value.includes('cashier')
+);
 const tenantBranding = computed(() => page.props.tenantBranding || { name: null, logoUrl: null });
 const isBaristaOnly = computed(() =>
     userRoles.value.includes('barista') &&
     !userRoles.value.includes('admin') &&
     !userRoles.value.includes('super admin')
 );
+const hideOperationalNav = computed(() => isBaristaOnly.value || isHrOnly.value);
+const canManageAttendance = computed(() =>
+    (page.props.auth?.user?.permissions || []).includes('manage employee attendance')
+);
 /** المشتريات مركزية فقط: لا تُعرض عند وجود فرع نشط (سوبر أدمن داخل فرع أو مستخدم مرتبط بفرع). */
 const showPurchasesNav = computed(
-    () => !isBaristaOnly.value && (branchContext.value.activeBranchId == null)
+    () => !hideOperationalNav.value && (branchContext.value.activeBranchId == null)
 );
 const showRawMaterialsNav = computed(
-    () => !isBaristaOnly.value && branchContext.value.isSuperAdminHub === true
+    () => !isBaristaOnly.value && !isHrOnly.value && branchContext.value.isSuperAdminHub === true
 );
 const canUseBarista = computed(() =>
     userRoles.value.includes('barista') ||
@@ -38,6 +48,16 @@ const canUseBarista = computed(() =>
 const canManageJobApplications = computed(() =>
     userRoles.value.includes('admin') ||
     userRoles.value.includes('super admin')
+);
+const showEmployeesNav = computed(() =>
+    canManageAttendance.value && !isBaristaOnly.value && (
+        isHrOnly.value || isSuperAdmin.value || !hideBranchScopedNav.value
+    )
+);
+const employeesNavHref = computed(() =>
+    (isHrOnly.value || (isSuperAdmin.value && hideBranchScopedNav.value))
+        ? route('admin.employees.index', { view: 'all' })
+        : route('admin.employees.index')
 );
 
 const switchToTeam = (team) => {
@@ -102,7 +122,14 @@ const logout = () => {
                                 <NavLink v-if="!isBaristaOnly" :href="route('dashboard')" :active="route().current('dashboard')">
                                     لوحة التحكم
                                 </NavLink>
-                                <NavLink v-if="!isBaristaOnly" :href="route('admin.products.index')" :active="route().current('admin.products.index')">
+                                <NavLink
+                                    v-if="showEmployeesNav"
+                                    :href="employeesNavHref"
+                                    :active="route().current('admin.employees.*')"
+                                >
+                                    الموظفين
+                                </NavLink>
+                                <NavLink v-if="!hideOperationalNav" :href="route('admin.products.index')" :active="route().current('admin.products.index')">
                                     المنتجات النهائية
                                 </NavLink>
                                 <NavLink
@@ -136,14 +163,14 @@ const logout = () => {
                                 >
                                     مجموعات الحضور
                                 </NavLink>
-                                <NavLink v-if="!isBaristaOnly && !hideBranchScopedNav" :href="route('cashier.index')" :active="route().current('cashier.index')">
+                                <NavLink v-if="!hideOperationalNav && !hideBranchScopedNav" :href="route('cashier.index')" :active="route().current('cashier.index')">
                                     الكاشير
                                 </NavLink>
 
                                 <NavLink v-if="showPurchasesNav" :href="route('purchases.index')" :active="route().current('purchases.index')">
                                     المشتريات
                                 </NavLink>
-                                <NavLink v-if="!isBaristaOnly" :href="route('expenses.index')" :active="route().current('expenses.index')">
+                                <NavLink v-if="!hideOperationalNav" :href="route('expenses.index')" :active="route().current('expenses.index')">
                                     المصروفات
                                 </NavLink>
                                 <NavLink 
@@ -355,7 +382,15 @@ const logout = () => {
                             <ResponsiveNavLink v-if="!isBaristaOnly" :href="route('dashboard')" :active="route().current('dashboard')" @click="showingSidebar = false">
                                 لوحة التحكم
                             </ResponsiveNavLink>
-                            <ResponsiveNavLink v-if="!isBaristaOnly" :href="route('admin.products.index')" :active="route().current('admin.products.index')" @click="showingSidebar = false">
+                            <ResponsiveNavLink
+                                v-if="showEmployeesNav"
+                                :href="employeesNavHref"
+                                :active="route().current('admin.employees.*')"
+                                @click="showingSidebar = false"
+                            >
+                                الموظفين
+                            </ResponsiveNavLink>
+                            <ResponsiveNavLink v-if="!hideOperationalNav" :href="route('admin.products.index')" :active="route().current('admin.products.index')" @click="showingSidebar = false">
                                 المنتجات النهائية
                             </ResponsiveNavLink>
                             <ResponsiveNavLink
@@ -393,13 +428,13 @@ const logout = () => {
                             >
                                 مجموعات الحضور
                             </ResponsiveNavLink>
-                            <ResponsiveNavLink v-if="!isBaristaOnly && !hideBranchScopedNav" :href="route('cashier.index')" :active="route().current('cashier.index')" @click="showingSidebar = false">
+                            <ResponsiveNavLink v-if="!hideOperationalNav && !hideBranchScopedNav" :href="route('cashier.index')" :active="route().current('cashier.index')" @click="showingSidebar = false">
                                 الكاشير
                             </ResponsiveNavLink>
                             <ResponsiveNavLink v-if="showPurchasesNav" :href="route('purchases.index')" :active="route().current('purchases.index')" @click="showingSidebar = false">
                                 المشتريات
                             </ResponsiveNavLink>
-                            <ResponsiveNavLink v-if="!isBaristaOnly" :href="route('expenses.index')" :active="route().current('expenses.index')" @click="showingSidebar = false">
+                            <ResponsiveNavLink v-if="!hideOperationalNav" :href="route('expenses.index')" :active="route().current('expenses.index')" @click="showingSidebar = false">
                                 المصروفات
                             </ResponsiveNavLink>
                             <ResponsiveNavLink
