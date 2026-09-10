@@ -1127,17 +1127,16 @@ class EmployeeController extends Controller
                 ], 422);
             }
 
+            $carriedOver = false;
+            $carryAmount = 0.0;
             if ($employee->isFixedSalary()) {
                 $monthKey = Carbon::parse($targetDate)->format('Y-m');
-                $summary = $employee->getFixedSalaryMonthSummary($monthKey);
-                if ((float) $request->amount > $summary['remaining'] + 0.0001) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => sprintf(
-                            'مبلغ الخصم أكبر من المتبقي من الراتب الثابت هذا الشهر (%.2f).',
-                            $summary['remaining']
-                        ),
-                    ], 422);
+                $summaryBefore = $employee->getFixedSalaryMonthSummary($monthKey);
+                $remainingBefore = (float) $summaryBefore['remaining'];
+                $amount = (float) $request->amount;
+                if ($amount > $remainingBefore + 0.0001) {
+                    $carriedOver = true;
+                    $carryAmount = round($amount - $remainingBefore, 2);
                 }
             }
 
@@ -1171,14 +1170,24 @@ class EmployeeController extends Controller
                 ? $employee->getFixedSalaryMonthSummary(Carbon::parse($targetDate)->format('Y-m'))
                 : null;
 
-            $message = $isPending
-                ? 'تم حفظ الخصم معلّقاً. سيُطبَّق مع أول سجل حضور قادم.'
-                : 'تم إضافة الخصم بنجاح';
+            if ($isPending) {
+                $message = 'تم حفظ الخصم معلّقاً. سيُطبَّق مع أول سجل حضور قادم.';
+            } elseif ($carriedOver) {
+                $message = sprintf(
+                    'تم إضافة الخصم بنجاح. المتبقي هذا الشهر كان %.2f والجاري ترحيل %.2f للشهر التالي.',
+                    max(0, (float) $request->amount - $carryAmount),
+                    $carryAmount
+                );
+            } else {
+                $message = 'تم إضافة الخصم بنجاح';
+            }
 
             return response()->json([
                 'success' => true,
                 'message' => $message,
                 'is_pending' => $isPending,
+                'carried_over' => $carriedOver,
+                'carry_amount' => $carryAmount,
                 'discount' => [
                     'id' => $discount->id,
                     'amount' => $discount->amount,
@@ -1315,6 +1324,8 @@ class EmployeeController extends Controller
                 'allowed_vacation_days' => $attendanceSummary['allowed_vacation_days'],
                 'withdrawals_total' => $summary['withdrawals_total'],
                 'discounts_total' => $summary['discounts_total'],
+                'opening_debt' => $summary['opening_debt'],
+                'closing_debt' => $summary['closing_debt'],
                 'remaining' => $summary['remaining'],
                 'withdrawals_count' => $summary['withdrawals_count'],
                 'withdrawals' => $withdrawals,
@@ -1335,6 +1346,8 @@ class EmployeeController extends Controller
                 'fixed_salary' => round($rows->sum('fixed_salary'), 2),
                 'withdrawals_total' => round($rows->sum('withdrawals_total'), 2),
                 'discounts_total' => round($rows->sum('discounts_total'), 2),
+                'opening_debt' => round($rows->sum('opening_debt'), 2),
+                'closing_debt' => round($rows->sum('closing_debt'), 2),
                 'remaining' => round($rows->sum('remaining'), 2),
             ],
             'employeeFilterOptions' => Employee::where('salary_type', Employee::SALARY_TYPE_FIXED)

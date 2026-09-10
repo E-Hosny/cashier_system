@@ -460,6 +460,9 @@
                   <p v-if="shouldShowPendingDiscountHint(selectedEmployee)" class="mb-4 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
                     إذا لم يكن للموظف حضور في هذا اليوم، سيُحفظ الخصم معلّقاً ويُطبَّق مع أول سجل حضور قادم.
                   </p>
+                  <p v-else-if="selectedEmployee && isFixedSalary(selectedEmployee)" class="mb-4 text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded-md px-3 py-2">
+                    إذا زاد الخصم عن المتبقي هذا الشهر، يُسمح به ويُرحَّل العجز تلقائياً للشهر التالي.
+                  </p>
                   
                   <div class="flex gap-2 justify-end">
                     <button
@@ -1095,6 +1098,10 @@ export default {
 
           if (data.is_pending) {
             alert(data.message || 'تم حفظ الخصم معلّقاً. سيُطبَّق مع أول سجل حضور قادم.');
+          } else if (data.carried_over) {
+            alert(data.message || 'تم إضافة الخصم مع ترحيل الزيادة للشهر التالي.');
+          } else if (this.isFixedSalary(this.selectedEmployee)) {
+            alert(data.message || 'تم إضافة الخصم بنجاح');
           } else {
             alert(`تم إضافة الخصم بنجاح!\n\nالمبلغ الأصلي: ${this.formatPrice(parseFloat(this.discountForm.amount) + data.employee.today_amount)}\nمبلغ الخصم: ${this.formatPrice(this.discountForm.amount)}\nالمبلغ النهائي: ${this.formatPrice(data.employee.today_amount)}`);
           }

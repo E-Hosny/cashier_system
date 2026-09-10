@@ -98,12 +98,15 @@ class Employee extends Model
 
     /**
      * ملخص راتب الشهر للموظفين ذوي الراتب الثابت.
+     * أي عجز (خصومات/مسحوبات أكبر من الراتب + مرحّل سابق) يُرحَّل كدين للشهر التالي.
      *
      * @return array{
      *   year_month: string,
      *   fixed_salary: float,
      *   withdrawals_total: float,
      *   discounts_total: float,
+     *   opening_debt: float,
+     *   closing_debt: float,
      *   remaining: float,
      *   withdrawals_count: int
      * }
@@ -134,16 +137,97 @@ class Employee extends Model
             ->sum('amount');
 
         $fixedSalary = (float) ($this->fixed_salary ?? 0);
-        $remaining = max(0, $fixedSalary - $discountsTotal - $withdrawalsTotal);
+        $openingDebt = $this->getFixedSalaryOpeningDebt($yearMonth);
+        $rawRemaining = $fixedSalary - $openingDebt - $discountsTotal - $withdrawalsTotal;
+        $remaining = max(0, $rawRemaining);
+        $closingDebt = max(0, -$rawRemaining);
 
         return [
             'year_month' => $yearMonth,
             'fixed_salary' => round($fixedSalary, 2),
             'withdrawals_total' => round($withdrawalsTotal, 2),
             'discounts_total' => round($discountsTotal, 2),
+            'opening_debt' => round($openingDebt, 2),
+            'closing_debt' => round($closingDebt, 2),
             'remaining' => round($remaining, 2),
             'withdrawals_count' => $withdrawalsCount,
         ];
+    }
+
+    /**
+     * دين مرحّل من الشهور السابقة (عجز الخصومات/المسحوبات عن الراتب).
+     */
+    public function getFixedSalaryOpeningDebt(string $yearMonth): float
+    {
+        if (! $this->isFixedSalary()) {
+            return 0;
+        }
+
+        $targetStart = Carbon::parse($yearMonth.'-01')->startOfMonth();
+        $ledgerStart = $this->fixedSalaryLedgerStartMonth();
+        if ($ledgerStart->gte($targetStart)) {
+            return 0;
+        }
+
+        $prevEnd = $targetStart->copy()->subDay();
+
+        $discountsByMonth = $this->discounts()
+            ->whereNotNull('discount_date')
+            ->whereDate('discount_date', '>=', $ledgerStart->toDateString())
+            ->whereDate('discount_date', '<=', $prevEnd->toDateString())
+            ->get(['discount_date', 'amount'])
+            ->groupBy(fn ($d) => Carbon::parse($d->discount_date)->format('Y-m'));
+
+        $withdrawalsByMonth = $this->salaryWithdrawals()
+            ->where('year_month', '>=', $ledgerStart->format('Y-m'))
+            ->where('year_month', '<', $yearMonth)
+            ->get(['year_month', 'amount'])
+            ->groupBy('year_month');
+
+        $salary = (float) ($this->fixed_salary ?? 0);
+        $debt = 0.0;
+        $cursor = $ledgerStart->copy();
+
+        while ($cursor->lt($targetStart)) {
+            $ym = $cursor->format('Y-m');
+            $monthDiscounts = (float) ($discountsByMonth->get($ym)?->sum('amount') ?? 0);
+            $monthWithdrawals = (float) ($withdrawalsByMonth->get($ym)?->sum('amount') ?? 0);
+            $raw = $salary - $debt - $monthDiscounts - $monthWithdrawals;
+            $debt = max(0, -$raw);
+            $cursor->addMonth();
+        }
+
+        return round($debt, 2);
+    }
+
+    private function fixedSalaryLedgerStartMonth(): Carbon
+    {
+        $candidates = [];
+
+        if ($this->created_at) {
+            $candidates[] = $this->created_at->copy()->startOfMonth();
+        }
+
+        $firstDiscountDate = $this->discounts()
+            ->whereNotNull('discount_date')
+            ->orderBy('discount_date')
+            ->value('discount_date');
+        if ($firstDiscountDate) {
+            $candidates[] = Carbon::parse($firstDiscountDate)->startOfMonth();
+        }
+
+        $firstWithdrawalMonth = $this->salaryWithdrawals()
+            ->orderBy('year_month')
+            ->value('year_month');
+        if ($firstWithdrawalMonth) {
+            $candidates[] = Carbon::parse($firstWithdrawalMonth.'-01')->startOfMonth();
+        }
+
+        if ($candidates === []) {
+            return Carbon::now()->startOfMonth();
+        }
+
+        return collect($candidates)->sortBy(fn (Carbon $d) => $d->timestamp)->first()->copy();
     }
 
     /**

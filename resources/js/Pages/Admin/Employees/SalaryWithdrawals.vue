@@ -59,9 +59,17 @@
               <div class="text-red-600 text-2xl font-bold">{{ formatPrice(totals.discounts_total) }}</div>
               <div class="text-red-800 text-sm">إجمالي الخصومات</div>
             </div>
+            <div v-if="Number(totals.opening_debt || 0) > 0" class="bg-rose-50 p-4 rounded-lg">
+              <div class="text-rose-700 text-2xl font-bold">{{ formatPrice(totals.opening_debt) }}</div>
+              <div class="text-rose-900 text-sm">مرحّل من شهور سابقة</div>
+            </div>
             <div class="bg-green-50 p-4 rounded-lg">
               <div class="text-green-600 text-2xl font-bold">{{ formatPrice(totals.remaining) }}</div>
               <div class="text-green-800 text-sm">إجمالي المتبقي</div>
+            </div>
+            <div v-if="Number(totals.closing_debt || 0) > 0" class="bg-fuchsia-50 p-4 rounded-lg">
+              <div class="text-fuchsia-700 text-2xl font-bold">{{ formatPrice(totals.closing_debt) }}</div>
+              <div class="text-fuchsia-900 text-sm">سيُرحَّل للشهر التالي</div>
             </div>
           </div>
 
@@ -84,7 +92,9 @@
                 <span class="bg-sky-100 text-sky-900 px-3 py-1 rounded">إجازة مسموحة: <strong>{{ employee.allowed_vacation_days }}</strong></span>
                 <span class="bg-amber-100 text-amber-900 px-3 py-1 rounded">مسحوب: <strong>{{ formatPrice(employee.withdrawals_total) }}</strong></span>
                 <span v-if="employee.discounts_total > 0" class="bg-red-100 text-red-900 px-3 py-1 rounded">خصم: <strong>{{ formatPrice(employee.discounts_total) }}</strong></span>
+                <span v-if="Number(employee.opening_debt || 0) > 0" class="bg-rose-100 text-rose-900 px-3 py-1 rounded">مرحّل سابق: <strong>{{ formatPrice(employee.opening_debt) }}</strong></span>
                 <span class="bg-green-100 text-green-900 px-3 py-1 rounded">متبقي: <strong>{{ formatPrice(employee.remaining) }}</strong></span>
+                <span v-if="Number(employee.closing_debt || 0) > 0" class="bg-fuchsia-100 text-fuchsia-900 px-3 py-1 rounded">ترحيل لاحق: <strong>{{ formatPrice(employee.closing_debt) }}</strong></span>
                 <button
                   type="button"
                   class="px-3 py-1 rounded font-medium transition-colors"
