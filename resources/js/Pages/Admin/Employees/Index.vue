@@ -39,7 +39,7 @@
                 <option v-for="branch in branches" :key="branch.id" :value="branch.id">{{ branch.name }}</option>
               </select>
             </div>
-            <div v-if="(isAdmin || isSuperAdmin) && !seesAllBranches" class="flex gap-2 flex-wrap">
+            <div v-if="showEmployeeAdminActions" class="flex gap-2 flex-wrap">
               <Link
                 :href="route('admin.employees.create')"
                 class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition duration-200"
@@ -642,6 +642,16 @@ export default {
     canPaySalary() {
       return this.isAdmin || this.isSuperAdmin || this.isCashier;
     },
+    showEmployeeAdminActions() {
+      if (!this.isAdmin && !this.isSuperAdmin) {
+        return false;
+      }
+      // من عرض كل الفروع: الأزرار تظهر بعد اختيار فرع محدد
+      if (this.seesAllBranches) {
+        return !!this.selectedBranchId;
+      }
+      return true;
+    },
     /** أرقام الراتب لا تظهر في قائمة الموظفين؛ التفاصيل من صفحة المسحوبات فقط */
     canViewSalaryAmounts() {
       return false;
@@ -698,12 +708,25 @@ export default {
       router.get(route('admin.employees.index'), this.employeesIndexQuery({ date: val }), { preserveState: true, preserveScroll: true });
     },
     onBranchFilterChange(e) {
-      const branchId = e.target.value;
-      router.get(
-        route('admin.employees.index'),
-        this.employeesIndexQuery({ branch_id: branchId || undefined }),
-        { preserveState: true, preserveScroll: true }
-      );
+      const branchId = e.target.value || null;
+      const query = this.employeesIndexQuery({ branch_id: branchId || undefined });
+      const redirectPath = route('admin.employees.index', query);
+
+      if (this.isSuperAdmin && this.seesAllBranches) {
+        if (branchId) {
+          router.post(route('branch-context.select', branchId), { redirect: redirectPath }, {
+            preserveScroll: true,
+          });
+          return;
+        }
+
+        router.post(route('branch-context.clear'), { redirect: redirectPath }, {
+          preserveScroll: true,
+        });
+        return;
+      }
+
+      router.get(route('admin.employees.index'), query, { preserveState: true, preserveScroll: true });
     },
     employeesIndexQuery(overrides = {}) {
       const query = {

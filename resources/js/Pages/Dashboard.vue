@@ -228,7 +228,7 @@ function clearBranch() {
                         </a>
 
                         <a
-                            v-if="isSuperAdmin || isHrOnly"
+                            v-if="isHrOnly"
                             :href="route('admin.employees.index', { view: 'all' })"
                             class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl ring-2 ring-orange-100 min-w-0"
                         >
