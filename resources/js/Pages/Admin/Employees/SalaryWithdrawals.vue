@@ -93,8 +93,20 @@
                 <span class="bg-amber-100 text-amber-900 px-3 py-1 rounded">مسحوب: <strong>{{ formatPrice(employee.withdrawals_total) }}</strong></span>
                 <span v-if="employee.discounts_total > 0" class="bg-red-100 text-red-900 px-3 py-1 rounded">خصم: <strong>{{ formatPrice(employee.discounts_total) }}</strong></span>
                 <span v-if="Number(employee.opening_debt || 0) > 0" class="bg-rose-100 text-rose-900 px-3 py-1 rounded">مرحّل سابق: <strong>{{ formatPrice(employee.opening_debt) }}</strong></span>
+                <span
+                  v-else-if="employee.opening_debt_waived && Number(employee.opening_debt_raw || 0) > 0"
+                  class="bg-rose-50 text-rose-800 px-3 py-1 rounded line-through decoration-rose-400"
+                >
+                  مرحّل سابق (أُزيل): {{ formatPrice(employee.opening_debt_raw) }}
+                </span>
                 <span class="bg-green-100 text-green-900 px-3 py-1 rounded">متبقي: <strong>{{ formatPrice(employee.remaining) }}</strong></span>
                 <span v-if="Number(employee.closing_debt || 0) > 0" class="bg-fuchsia-100 text-fuchsia-900 px-3 py-1 rounded">ترحيل لاحق: <strong>{{ formatPrice(employee.closing_debt) }}</strong></span>
+                <span
+                  v-else-if="employee.closing_debt_waived && Number(employee.closing_debt_raw || 0) > 0"
+                  class="bg-fuchsia-50 text-fuchsia-800 px-3 py-1 rounded line-through decoration-fuchsia-400"
+                >
+                  ترحيل لاحق (أُزيل): {{ formatPrice(employee.closing_debt_raw) }}
+                </span>
                 <button
                   type="button"
                   class="px-3 py-1 rounded font-medium transition-colors"
@@ -113,6 +125,49 @@
             </button>
 
             <div v-if="expanded[employee.id]" class="p-4 space-y-4">
+              <div
+                v-if="canClearDebtCarryover && canManageDebtFor(employee)"
+                class="flex flex-wrap gap-2 p-3 rounded-lg border border-slate-200 bg-slate-50"
+              >
+                <span class="text-xs text-slate-600 w-full sm:w-auto self-center">إدارة الترحيل (سوبر أدمن):</span>
+                <button
+                  v-if="Number(employee.opening_debt || 0) > 0"
+                  type="button"
+                  class="text-xs px-3 py-1.5 rounded bg-rose-600 hover:bg-rose-700 text-white disabled:opacity-50"
+                  :disabled="loading"
+                  @click="manageDebtCarryover(employee, 'opening', 'clear')"
+                >
+                  إزالة المرحّل السابق ({{ formatPrice(employee.opening_debt) }})
+                </button>
+                <button
+                  v-else-if="employee.opening_debt_waived && Number(employee.opening_debt_raw || 0) > 0"
+                  type="button"
+                  class="text-xs px-3 py-1.5 rounded border border-rose-400 text-rose-800 hover:bg-rose-50 disabled:opacity-50"
+                  :disabled="loading"
+                  @click="manageDebtCarryover(employee, 'opening', 'restore')"
+                >
+                  استعادة المرحّل السابق
+                </button>
+                <button
+                  v-if="Number(employee.closing_debt || 0) > 0"
+                  type="button"
+                  class="text-xs px-3 py-1.5 rounded bg-fuchsia-700 hover:bg-fuchsia-800 text-white disabled:opacity-50"
+                  :disabled="loading"
+                  @click="manageDebtCarryover(employee, 'closing', 'clear')"
+                >
+                  إزالة الترحيل اللاحق ({{ formatPrice(employee.closing_debt) }})
+                </button>
+                <button
+                  v-else-if="employee.closing_debt_waived && Number(employee.closing_debt_raw || 0) > 0"
+                  type="button"
+                  class="text-xs px-3 py-1.5 rounded border border-fuchsia-400 text-fuchsia-900 hover:bg-fuchsia-50 disabled:opacity-50"
+                  :disabled="loading"
+                  @click="manageDebtCarryover(employee, 'closing', 'restore')"
+                >
+                  استعادة الترحيل اللاحق
+                </button>
+              </div>
+
               <div>
                 <h4 class="font-semibold text-gray-800 mb-2">تفاصيل المسحوبات ({{ employee.withdrawals_count }})</h4>
                 <div v-if="employee.withdrawals.length === 0" class="text-sm text-gray-500">لا توجد مسحوبات في هذا الشهر</div>
@@ -308,6 +363,7 @@ export default {
     totals: { type: Object, required: true },
     employeeFilterOptions: { type: Array, default: () => [] },
     selectedEmployeeId: { type: Number, default: null },
+    canClearDebtCarryover: { type: Boolean, default: false },
   },
   data() {
     return {
@@ -330,6 +386,13 @@ export default {
   methods: {
     formatPrice(price) {
       return price != null ? Number(price).toFixed(2) : '0.00';
+    },
+    canManageDebtFor(employee) {
+      const hasOpening = Number(employee.opening_debt || 0) > 0
+        || (employee.opening_debt_waived && Number(employee.opening_debt_raw || 0) > 0);
+      const hasClosing = Number(employee.closing_debt || 0) > 0
+        || (employee.closing_debt_waived && Number(employee.closing_debt_raw || 0) > 0);
+      return hasOpening || hasClosing;
     },
     applyFilters() {
       const params = { month: this.filters.month };
@@ -354,6 +417,48 @@ export default {
         const node = Array.isArray(el) ? el[0] : el;
         node?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
       });
+    },
+    async manageDebtCarryover(employee, kind, action) {
+      const label = kind === 'opening' ? 'المرحّل السابق' : 'الترحيل اللاحق';
+      const confirmMsg = action === 'clear'
+        ? `إزالة ${label} لـ ${employee.name} لهذا الشهر؟\nلن يُحسب في المتبقي ولن يُرحَّل للشهر التالي إن كان ترحيلاً لاحقاً.`
+        : `استعادة ${label} لـ ${employee.name}؟`;
+
+      if (!confirm(confirmMsg)) {
+        return;
+      }
+
+      this.loading = true;
+      try {
+        const response = await fetch(
+          route('admin.employees.fixed-salary-debt-carryover', employee.id),
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+              Accept: 'application/json',
+            },
+            body: JSON.stringify({
+              year_month: this.filters.month || this.month,
+              kind,
+              action,
+            }),
+          }
+        );
+        const data = await response.json();
+        if (data.success) {
+          alert(data.message || 'تم بنجاح');
+          router.reload({ preserveScroll: true });
+        } else {
+          alert(data.message || 'تعذر تنفيذ العملية');
+        }
+      } catch (e) {
+        console.error(e);
+        alert('حدث خطأ في الاتصال بالخادم');
+      } finally {
+        this.loading = false;
+      }
     },
     async cancelWithdrawal(employee, withdrawal) {
       if (!confirm(`إلغاء مسحوب بقيمة ${this.formatPrice(withdrawal.amount)} لـ ${employee.name}؟\nسيتم حذف المصروف المرتبط أيضاً.`)) {

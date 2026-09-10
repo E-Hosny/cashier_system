@@ -6,6 +6,7 @@ use App\Models\Concerns\BelongsToBranch;
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 
 class Employee extends Model
@@ -86,6 +87,11 @@ class Employee extends Model
         return $this->hasMany(EmployeeSalaryWithdrawal::class);
     }
 
+    public function fixedSalaryDebtWaivers()
+    {
+        return $this->hasMany(EmployeeFixedSalaryDebtWaiver::class);
+    }
+
     public function isFixedSalary(): bool
     {
         return ($this->salary_type ?? self::SALARY_TYPE_HOURLY) === self::SALARY_TYPE_FIXED;
@@ -106,7 +112,11 @@ class Employee extends Model
      *   withdrawals_total: float,
      *   discounts_total: float,
      *   opening_debt: float,
+     *   opening_debt_raw: float,
+     *   opening_debt_waived: bool,
      *   closing_debt: float,
+     *   closing_debt_raw: float,
+     *   closing_debt_waived: bool,
      *   remaining: float,
      *   withdrawals_count: int
      * }
@@ -137,10 +147,15 @@ class Employee extends Model
             ->sum('amount');
 
         $fixedSalary = (float) ($this->fixed_salary ?? 0);
-        $openingDebt = $this->getFixedSalaryOpeningDebt($yearMonth);
+        $openingDebtRaw = $this->getFixedSalaryOpeningDebt($yearMonth);
+        $openingDebtWaived = $this->hasFixedSalaryDebtWaiver($yearMonth, EmployeeFixedSalaryDebtWaiver::KIND_OPENING);
+        $openingDebt = $openingDebtWaived ? 0.0 : $openingDebtRaw;
+
         $rawRemaining = $fixedSalary - $openingDebt - $discountsTotal - $withdrawalsTotal;
         $remaining = max(0, $rawRemaining);
-        $closingDebt = max(0, -$rawRemaining);
+        $closingDebtRaw = max(0, -$rawRemaining);
+        $closingDebtWaived = $this->hasFixedSalaryDebtWaiver($yearMonth, EmployeeFixedSalaryDebtWaiver::KIND_CLOSING);
+        $closingDebt = $closingDebtWaived ? 0.0 : $closingDebtRaw;
 
         return [
             'year_month' => $yearMonth,
@@ -148,7 +163,11 @@ class Employee extends Model
             'withdrawals_total' => round($withdrawalsTotal, 2),
             'discounts_total' => round($discountsTotal, 2),
             'opening_debt' => round($openingDebt, 2),
+            'opening_debt_raw' => round($openingDebtRaw, 2),
+            'opening_debt_waived' => $openingDebtWaived,
             'closing_debt' => round($closingDebt, 2),
+            'closing_debt_raw' => round($closingDebtRaw, 2),
+            'closing_debt_waived' => $closingDebtWaived,
             'remaining' => round($remaining, 2),
             'withdrawals_count' => $withdrawalsCount,
         ];
@@ -184,6 +203,12 @@ class Employee extends Model
             ->get(['year_month', 'amount'])
             ->groupBy('year_month');
 
+        $waiversByMonth = $this->fixedSalaryDebtWaivers()
+            ->where('year_month', '>=', $ledgerStart->format('Y-m'))
+            ->where('year_month', '<', $yearMonth)
+            ->get(['year_month', 'kind'])
+            ->groupBy('year_month');
+
         $salary = (float) ($this->fixed_salary ?? 0);
         $debt = 0.0;
         $cursor = $ledgerStart->copy();
@@ -192,12 +217,70 @@ class Employee extends Model
             $ym = $cursor->format('Y-m');
             $monthDiscounts = (float) ($discountsByMonth->get($ym)?->sum('amount') ?? 0);
             $monthWithdrawals = (float) ($withdrawalsByMonth->get($ym)?->sum('amount') ?? 0);
-            $raw = $salary - $debt - $monthDiscounts - $monthWithdrawals;
+            $monthWaivers = $waiversByMonth->get($ym) ?? collect();
+            $openingWaived = $monthWaivers->contains('kind', EmployeeFixedSalaryDebtWaiver::KIND_OPENING);
+            $closingWaived = $monthWaivers->contains('kind', EmployeeFixedSalaryDebtWaiver::KIND_CLOSING);
+
+            $effectiveOpening = $openingWaived ? 0.0 : $debt;
+            $raw = $salary - $effectiveOpening - $monthDiscounts - $monthWithdrawals;
             $debt = max(0, -$raw);
+            if ($closingWaived) {
+                $debt = 0.0;
+            }
             $cursor->addMonth();
         }
 
         return round($debt, 2);
+    }
+
+    public function hasFixedSalaryDebtWaiver(string $yearMonth, string $kind): bool
+    {
+        return $this->fixedSalaryDebtWaivers()
+            ->where('year_month', $yearMonth)
+            ->where('kind', $kind)
+            ->exists();
+    }
+
+    public function waiveFixedSalaryDebt(string $yearMonth, string $kind, ?string $notes = null, ?int $createdBy = null): EmployeeFixedSalaryDebtWaiver
+    {
+        if (! in_array($kind, [EmployeeFixedSalaryDebtWaiver::KIND_OPENING, EmployeeFixedSalaryDebtWaiver::KIND_CLOSING], true)) {
+            throw ValidationException::withMessages([
+                'kind' => 'نوع الترحيل غير صالح.',
+            ]);
+        }
+
+        $summary = $this->getFixedSalaryMonthSummary($yearMonth);
+        $rawKey = $kind === EmployeeFixedSalaryDebtWaiver::KIND_OPENING ? 'opening_debt_raw' : 'closing_debt_raw';
+        $amount = (float) $summary[$rawKey];
+
+        if ($amount <= 0.0001) {
+            throw ValidationException::withMessages([
+                'kind' => $kind === EmployeeFixedSalaryDebtWaiver::KIND_OPENING
+                    ? 'لا يوجد مرحّل سابق لإزالته.'
+                    : 'لا يوجد ترحيل لاحق لإزالته.',
+            ]);
+        }
+
+        return $this->fixedSalaryDebtWaivers()->updateOrCreate(
+            [
+                'employee_id' => $this->id,
+                'year_month' => $yearMonth,
+                'kind' => $kind,
+            ],
+            [
+                'amount' => $amount,
+                'notes' => $notes,
+                'created_by' => $createdBy,
+            ]
+        );
+    }
+
+    public function restoreFixedSalaryDebt(string $yearMonth, string $kind): bool
+    {
+        return (bool) $this->fixedSalaryDebtWaivers()
+            ->where('year_month', $yearMonth)
+            ->where('kind', $kind)
+            ->delete();
     }
 
     private function fixedSalaryLedgerStartMonth(): Carbon

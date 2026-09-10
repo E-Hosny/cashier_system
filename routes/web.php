@@ -207,6 +207,7 @@ Route::middleware([
             Route::delete('/employees/{employee}/discounts/{discount}', [EmployeeController::class, 'removeDiscount'])->name('admin.employees.remove-discount');
             Route::post('/employees/{employee}/withdraw-salary', [EmployeeController::class, 'withdrawSalary'])->name('admin.employees.withdraw-salary');
             Route::delete('/employees/{employee}/salary-withdrawals/{withdrawal}', [EmployeeController::class, 'cancelSalaryWithdrawal'])->name('admin.employees.salary-withdrawals.cancel');
+            Route::post('/employees/{employee}/fixed-salary-debt-carryover', [EmployeeController::class, 'manageFixedSalaryDebtCarryover'])->name('admin.employees.fixed-salary-debt-carryover');
         });
 
         Route::middleware(['super_admin'])->prefix('employees/attendance-groups')->name('admin.employees.attendance-groups.')->group(function () {

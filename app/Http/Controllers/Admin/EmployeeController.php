@@ -1325,7 +1325,11 @@ class EmployeeController extends Controller
                 'withdrawals_total' => $summary['withdrawals_total'],
                 'discounts_total' => $summary['discounts_total'],
                 'opening_debt' => $summary['opening_debt'],
+                'opening_debt_raw' => $summary['opening_debt_raw'],
+                'opening_debt_waived' => $summary['opening_debt_waived'],
                 'closing_debt' => $summary['closing_debt'],
+                'closing_debt_raw' => $summary['closing_debt_raw'],
+                'closing_debt_waived' => $summary['closing_debt_waived'],
                 'remaining' => $summary['remaining'],
                 'withdrawals_count' => $summary['withdrawals_count'],
                 'withdrawals' => $withdrawals,
@@ -1355,7 +1359,68 @@ class EmployeeController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'name']),
             'selectedEmployeeId' => $request->integer('employee_id') ?: null,
+            'canClearDebtCarryover' => auth()->user()?->hasRole('super admin') ?? false,
         ]);
+    }
+
+    /**
+     * إزالة/استعادة ترحيل دين الراتب الثابت (سوبر أدمن فقط).
+     */
+    public function manageFixedSalaryDebtCarryover(Employee $employee, Request $request)
+    {
+        abort_unless(auth()->user()?->hasRole('super admin'), 403);
+        abort_unless($employee->isFixedSalary(), 422, 'متاح فقط لموظفي الراتب الثابت.');
+
+        $validated = $request->validate([
+            'year_month' => 'required|date_format:Y-m',
+            'kind' => ['required', Rule::in(['opening', 'closing'])],
+            'action' => ['required', Rule::in(['clear', 'restore'])],
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        try {
+            if ($validated['action'] === 'clear') {
+                $employee->waiveFixedSalaryDebt(
+                    $validated['year_month'],
+                    $validated['kind'],
+                    $validated['notes'] ?? null,
+                    auth()->id()
+                );
+                $message = $validated['kind'] === 'opening'
+                    ? 'تم إزالة المرحّل السابق لهذا الشهر'
+                    : 'تم إزالة الترحيل اللاحق لهذا الشهر';
+            } else {
+                $deleted = $employee->restoreFixedSalaryDebt($validated['year_month'], $validated['kind']);
+                if (! $deleted) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'لا توجد إزالة ترحيل مسجّلة لاستعادتها.',
+                    ], 422);
+                }
+                $message = $validated['kind'] === 'opening'
+                    ? 'تم استعادة المرحّل السابق'
+                    : 'تم استعادة الترحيل اللاحق';
+            }
+
+            $summary = $employee->getFixedSalaryMonthSummary($validated['year_month']);
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'fixed_salary_month' => $summary,
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => collect($e->errors())->flatten()->first() ?: 'تعذر تنفيذ العملية',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'حدث خطأ: '.$e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
