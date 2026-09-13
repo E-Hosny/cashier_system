@@ -67,7 +67,27 @@ class EmployeeController extends Controller
 
         $employeesQuery = Employee::query()
             ->where('is_active', true)
-            ->with(['attendanceDependencyEmployee:id,name', 'attendanceGroup:id,name,max_present', 'workSchedules', 'branch:id,name']);
+            ->with([
+                'attendanceDependencyEmployee:id,name',
+                'attendanceGroup:id,name,max_present',
+                'workSchedules',
+                'branch:id,name',
+            ])
+            ->select([
+                'id',
+                'name',
+                'phone',
+                'position',
+                'salary_type',
+                'hourly_rate',
+                'fixed_salary',
+                'is_active',
+                'branch_id',
+                'attendance_dependency_employee_id',
+                'attendance_group_id',
+                'expected_checkin_time',
+                'expected_checkout_time',
+            ]);
 
         if ($wantsAllBranches) {
             $employeesQuery->withoutGlobalScope('branch');
@@ -77,107 +97,193 @@ class EmployeeController extends Controller
         }
 
         $employees = $employeesQuery->get();
+        $employeeIds = $employees->pluck('id');
 
-        // إضافة معلومات الحضور والرواتب ليوم العمل المحدد (7 ص → 7 ص)
-        $employees->each(function ($employee) use ($selectedAnchor, $isViewingTodayBusinessDay) {
-            $employee->current_attendance = $employee->getCurrentAttendance();
-            $employee->is_present = $isViewingTodayBusinessDay && $employee->isCurrentlyPresent();
-            $employee->today_hours = $employee->getHoursForBusinessDayAnchor($selectedAnchor);
-            $employee->today_amount = $employee->getAmountForBusinessDayAnchor($selectedAnchor);
-            $employee->today_attendance_records = $employee->getAttendanceRecordsForBusinessDayAnchor($selectedAnchor);
+        [$dayStart, $dayEnd] = Employee::businessDayBoundsForAnchor($selectedAnchor);
 
-            $employee->today_discounts = $employee->getDiscountsForBusinessDayAnchor($selectedAnchor);
-            $employee->today_discount_total = $employee->getDiscountTotalForBusinessDayAnchor($selectedAnchor);
+        // استعلامات مجمّعة بدل N+1 لكل موظف
+        $openAttendances = EmployeeAttendance::query()
+            ->whereIn('employee_id', $employeeIds)
+            ->whereNull('checkout_time')
+            ->orderByDesc('checkin_time')
+            ->get(['id', 'employee_id', 'checkin_time', 'checkout_time', 'late_minutes'])
+            ->unique('employee_id')
+            ->keyBy('employee_id');
 
-            $pendingDiscounts = $employee->isHourlySalary()
-                ? $employee->getPendingManualDiscounts()
-                : collect();
-            $employee->pending_discounts = $pendingDiscounts->map(fn (EmployeeDiscount $d) => [
-                'id' => $d->id,
-                'amount' => (float) $d->amount,
-                'reason' => $d->reason,
-                'source' => $d->source,
-            ])->values();
-            $employee->pending_discount_total = round((float) $pendingDiscounts->sum('amount'), 2);
+        $dayAttendances = EmployeeAttendance::query()
+            ->whereIn('employee_id', $employeeIds)
+            ->whereBetween('checkin_time', [$dayStart, $dayEnd])
+            ->orderByDesc('checkin_time')
+            ->get(['id', 'employee_id', 'checkin_time', 'checkout_time', 'late_minutes'])
+            ->groupBy('employee_id');
 
-            $employee->today_delivery_status = $employee->getSalaryDeliveryForDate($selectedAnchor);
-            $employee->is_salary_delivered = $employee->today_delivery_status && $employee->today_delivery_status->isDelivered();
-            $employee->delivery_status_text = $employee->today_delivery_status ? $employee->today_delivery_status->status_text : 'غير محدد';
-            $employee->attendance_dependency_employee_name = optional($employee->attendanceDependencyEmployee)->name;
-            $employee->attendance_group_name = optional($employee->attendanceGroup)->name;
-            $employee->attendance_group_max_present = optional($employee->attendanceGroup)->max_present;
-            $employee->expected_checkin_display = $employee->scheduleSummaryForDisplay();
-            $employee->expected_checkout_display = $employee->formattedExpectedCheckoutTime();
-            $employee->branch_name = optional($employee->branch)->name;
+        $dayDiscounts = EmployeeDiscount::query()
+            ->whereIn('employee_id', $employeeIds)
+            ->whereDate('discount_date', $selectedAnchor)
+            ->orderByDesc('created_at')
+            ->get(['id', 'employee_id', 'amount', 'reason', 'source', 'discount_date', 'created_at'])
+            ->groupBy('employee_id');
 
-            if ($employee->isFixedSalary()) {
-                $monthKey = Carbon::parse($selectedAnchor)->format('Y-m');
-                $summary = $employee->getFixedSalaryMonthSummary($monthKey);
-                $canViewSalaryAmounts = $this->viewerCanSeeSalaryAmountsOnIndex();
+        $pendingDiscounts = EmployeeDiscount::query()
+            ->whereIn('employee_id', $employeeIds)
+            ->whereNull('discount_date')
+            ->where(function ($q) {
+                $q->whereNull('source')->orWhere('source', EmployeeDiscount::SOURCE_MANUAL);
+            })
+            ->orderBy('created_at')
+            ->get(['id', 'employee_id', 'amount', 'reason', 'source'])
+            ->groupBy('employee_id');
 
-                if ($canViewSalaryAmounts) {
-                    $employee->fixed_salary_month = $summary;
-                } else {
-                    // لا نُظهر أرقام الراتب للكاشير/السوبر أدمن في القائمة؛ التفاصيل من صفحة المسحوبات
-                    $employee->fixed_salary = null;
-                    $employee->hourly_rate = null;
-                    $employee->fixed_salary_month = [
-                        'can_withdraw' => $summary['remaining'] > 0,
-                    ];
-                }
-            } else {
-                $employee->fixed_salary_month = null;
-                if (! $this->viewerCanSeeSalaryAmountsOnIndex()) {
-                    $employee->hourly_rate = null;
-                    $employee->fixed_salary = null;
-                }
-            }
-        });
-
-        $totalTodayAmount = $employees->sum('today_amount');
-        $totalTodayHours = $employees->sum('today_hours');
+        $dayDeliveries = SalaryDelivery::query()
+            ->whereIn('employee_id', $employeeIds)
+            ->whereDate('salary_date', $selectedAnchor)
+            ->get()
+            ->keyBy('employee_id');
 
         $handedOutToday = SalaryDelivery::query()
             ->deliveredDuringBusinessDay($selectedAnchor)
-            ->whereIn('employee_id', $employees->pluck('id'))
+            ->whereIn('employee_id', $employeeIds)
             ->orderBy('salary_date')
             ->orderBy('id')
             ->get()
             ->groupBy('employee_id');
 
-        $employees->each(function ($employee) use ($handedOutToday, $selectedAnchor) {
-            $items = collect($handedOutToday->get($employee->id, []));
-            $employee->handed_out_today_amount = round((float) $items->sum('total_amount'), 2);
-            $employee->handed_out_today_deliveries = $items->map(function (SalaryDelivery $delivery) use ($selectedAnchor) {
-                $salaryDate = $delivery->salary_date?->toDateString();
+        $canViewSalaryAmounts = $this->viewerCanSeeSalaryAmountsOnIndex();
+        $now = Carbon::now();
 
-                return [
+        $rows = $employees->map(function (Employee $employee) use (
+            $selectedAnchor,
+            $isViewingTodayBusinessDay,
+            $openAttendances,
+            $dayAttendances,
+            $dayDiscounts,
+            $pendingDiscounts,
+            $dayDeliveries,
+            $handedOutToday,
+            $canViewSalaryAmounts,
+            $dayEnd,
+            $now
+        ) {
+            $isFixed = $employee->isFixedSalary();
+            $currentAttendance = $openAttendances->get($employee->id);
+            $records = collect($dayAttendances->get($employee->id, []));
+            $discounts = collect($dayDiscounts->get($employee->id, []));
+            $pending = $isFixed ? collect() : collect($pendingDiscounts->get($employee->id, []));
+            $delivery = $dayDeliveries->get($employee->id);
+            $handedItems = collect($handedOutToday->get($employee->id, []));
+
+            $todayHours = 0.0;
+            foreach ($records as $attendance) {
+                $checkinTime = Carbon::parse($attendance->checkin_time);
+                $checkoutTime = $attendance->checkout_time
+                    ? Carbon::parse($attendance->checkout_time)
+                    : $now->copy();
+
+                if ($checkoutTime->gt($dayEnd)) {
+                    $checkoutTime = $dayEnd->copy();
+                }
+
+                $todayHours += $checkinTime->diffInHours($checkoutTime, true);
+            }
+            $todayHours = round($todayHours, 2);
+
+            $discountTotal = round((float) $discounts->sum('amount'), 2);
+            $todayAmount = 0.0;
+            if (! $isFixed) {
+                $todayAmount = max(0, round(($todayHours * (float) $employee->hourly_rate) - $discountTotal, 2));
+            }
+
+            $pendingMapped = $pending->map(fn (EmployeeDiscount $d) => [
+                'id' => $d->id,
+                'amount' => (float) $d->amount,
+                'reason' => $d->reason,
+                'source' => $d->source,
+            ])->values()->all();
+
+            $isDelivered = $delivery && $delivery->isDelivered();
+
+            return [
+                'id' => $employee->id,
+                'name' => $employee->name,
+                'phone' => $employee->phone,
+                'position' => $employee->position,
+                'salary_type' => $employee->salary_type ?? Employee::SALARY_TYPE_HOURLY,
+                'hourly_rate' => $canViewSalaryAmounts && ! $isFixed ? (float) $employee->hourly_rate : null,
+                'fixed_salary' => $canViewSalaryAmounts && $isFixed ? (float) $employee->fixed_salary : null,
+                'branch_id' => $employee->branch_id,
+                'branch_name' => optional($employee->branch)->name,
+                'attendance_dependency_employee_name' => optional($employee->attendanceDependencyEmployee)->name,
+                'attendance_group_name' => optional($employee->attendanceGroup)->name,
+                'attendance_group_max_present' => optional($employee->attendanceGroup)->max_present,
+                'expected_checkin_display' => $employee->scheduleSummaryForDisplay(),
+                'expected_checkout_display' => $employee->formattedExpectedCheckoutTime(),
+                'current_attendance' => $currentAttendance ? [
+                    'id' => $currentAttendance->id,
+                    'checkin_time' => optional($currentAttendance->checkin_time)?->toDateTimeString(),
+                    'checkout_time' => optional($currentAttendance->checkout_time)?->toDateTimeString(),
+                    'late_minutes' => (int) ($currentAttendance->late_minutes ?? 0),
+                ] : null,
+                'is_present' => $isViewingTodayBusinessDay && $currentAttendance !== null,
+                'today_hours' => $todayHours,
+                'today_amount' => $todayAmount,
+                'today_attendance_records' => $records->map(fn ($record) => [
+                    'id' => $record->id,
+                    'checkin_time' => optional($record->checkin_time)?->toDateTimeString(),
+                    'checkout_time' => optional($record->checkout_time)?->toDateTimeString(),
+                    'late_minutes' => (int) ($record->late_minutes ?? 0),
+                ])->values()->all(),
+                'today_discounts' => $discounts->map(fn ($d) => [
+                    'id' => $d->id,
+                    'amount' => (float) $d->amount,
+                    'reason' => $d->reason,
+                    'source' => $d->source,
+                ])->values()->all(),
+                'today_discount_total' => $discountTotal,
+                'pending_discounts' => $pendingMapped,
+                'pending_discount_total' => round((float) $pending->sum('amount'), 2),
+                'today_delivery_status' => $delivery ? [
                     'id' => $delivery->id,
-                    'salary_date' => $salaryDate,
-                    'salary_date_arabic' => $delivery->salary_date?->format('d/m/Y'),
-                    'is_selected_day' => $salaryDate === $selectedAnchor,
-                    'hours_worked' => round((float) $delivery->hours_worked, 2),
-                    'total_amount' => round((float) $delivery->total_amount, 2),
-                    'delivered_at' => optional($delivery->delivered_at)?->format('Y-m-d H:i:s'),
-                ];
-            })->values();
+                    'status' => $delivery->status,
+                    'total_amount' => (float) $delivery->total_amount,
+                    'delivered_at' => optional($delivery->delivered_at)?->toDateTimeString(),
+                    'status_text' => $delivery->status_text,
+                ] : null,
+                'is_salary_delivered' => $isDelivered,
+                'delivery_status_text' => $delivery ? $delivery->status_text : 'غير محدد',
+                // بدون حساب دفتر الدين الكامل هنا — التحقق النهائي عند السحب
+                'fixed_salary_month' => $isFixed ? ['can_withdraw' => true] : null,
+                'handed_out_today_amount' => round((float) $handedItems->sum('total_amount'), 2),
+                'handed_out_today_deliveries' => $handedItems->map(function (SalaryDelivery $delivery) use ($selectedAnchor) {
+                    $salaryDate = $delivery->salary_date?->toDateString();
+
+                    return [
+                        'id' => $delivery->id,
+                        'salary_date' => $salaryDate,
+                        'salary_date_arabic' => $delivery->salary_date?->format('d/m/Y'),
+                        'is_selected_day' => $salaryDate === $selectedAnchor,
+                        'hours_worked' => round((float) $delivery->hours_worked, 2),
+                        'total_amount' => round((float) $delivery->total_amount, 2),
+                        'delivered_at' => optional($delivery->delivered_at)?->format('Y-m-d H:i:s'),
+                    ];
+                })->values()->all(),
+            ];
         });
 
-        $totalDeliveredToday = round((float) $employees->sum('handed_out_today_amount'), 2);
-
         if ($wantsAllBranches) {
-            $employees = $employees
-                ->sortBy(fn ($employee) => [optional($employee->branch)->name ?? '', $employee->name])
+            $rows = $rows
+                ->sortBy(fn ($row) => [$row['branch_name'] ?? '', $row['name'] ?? ''])
                 ->values();
+        } else {
+            $rows = $rows->values();
         }
 
         $currentPeriodText = Employee::periodTextForAnchorDate($selectedAnchor);
 
         return Inertia::render('Admin/Employees/Index', [
-            'employees' => $employees,
-            'totalTodayAmount' => $totalTodayAmount,
-            'totalTodayHours' => $totalTodayHours,
-            'totalDeliveredToday' => round($totalDeliveredToday, 2),
+            'employees' => $rows,
+            'totalTodayAmount' => round((float) $rows->sum('today_amount'), 2),
+            'totalTodayHours' => round((float) $rows->sum('today_hours'), 2),
+            'totalDeliveredToday' => round((float) $rows->sum('handed_out_today_amount'), 2),
             'currentPeriodText' => $currentPeriodText,
             'selectedDate' => $selectedAnchor,
             'maxSelectableDate' => $maxAnchor,
