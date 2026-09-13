@@ -119,7 +119,7 @@
               :disabled="uploading"
               @click="triggerCamera"
             >
-              <span v-if="uploading">جاري الضغط والرفع...</span>
+              <span v-if="uploading">جاري الرفع...</span>
               <span v-else-if="activeItem.photo">إعادة التصوير</span>
               <span v-else>تصوير الآن</span>
             </button>
