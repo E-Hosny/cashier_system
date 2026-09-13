@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CashierShift;
 use App\Models\Order;
+use App\Services\ClosingPhotoReportService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
@@ -11,6 +12,10 @@ use Inertia\Inertia;
 
 class CashierShiftController extends Controller
 {
+    public function __construct(private ClosingPhotoReportService $closingPhotoReports)
+    {
+    }
+
     /**
      * بدء وردية جديدة
      */
@@ -69,14 +74,32 @@ class CashierShiftController extends Controller
         // إغلاق الوردية
         $shift->closeShift($request->cash_amount, $request->notes);
 
-        // الحصول على تفاصيل المبيعات
-        $salesDetails = $shift->getSalesDetails();
+        $salesHidden = $this->closingPhotoReports->shouldHideShiftSales($user);
+        $fresh = $shift->fresh();
+
+        if ($salesHidden) {
+            return response()->json([
+                'success' => true,
+                'message' => 'تم إغلاق الوردية بنجاح',
+                'shift' => $this->redactShiftSales($fresh),
+                'sales_details' => [],
+                'sales_hidden' => true,
+                'sales_hidden_reason' => $salesHidden['reason'] ?? null,
+                'closing_photo_submit_url' => ($user->hasRole('admin') || $user->hasRole('super admin'))
+                    ? route('admin.closing-photo-reports.submit', array_filter([
+                        'closing_type' => $salesHidden['requirement']['closing_type'] ?? null,
+                        'business_date' => $salesHidden['requirement']['business_date'] ?? null,
+                    ]))
+                    : null,
+            ]);
+        }
 
         return response()->json([
             'success' => true,
             'message' => 'تم إغلاق الوردية بنجاح',
-            'shift' => $shift->fresh(),
-            'sales_details' => $salesDetails
+            'shift' => $fresh,
+            'sales_details' => $shift->getSalesDetails(),
+            'sales_hidden' => false,
         ]);
     }
 
@@ -160,6 +183,18 @@ class CashierShiftController extends Controller
         }
 
         // حساب المبيعات الحالية
+        $salesHidden = $this->closingPhotoReports->shouldHideShiftSales($user);
+        if ($salesHidden) {
+            return response()->json([
+                'success' => true,
+                'shift' => $shift,
+                'current_sales' => null,
+                'expected_amount' => null,
+                'sales_hidden' => true,
+                'sales_hidden_reason' => $salesHidden['reason'] ?? null,
+            ]);
+        }
+
         $currentSales = $shift->calculateTotalSales();
         $expectedAmount = $shift->calculateExpectedAmount();
 
@@ -167,7 +202,8 @@ class CashierShiftController extends Controller
             'success' => true,
             'shift' => $shift,
             'current_sales' => $currentSales,
-            'expected_amount' => $expectedAmount
+            'expected_amount' => $expectedAmount,
+            'sales_hidden' => false,
         ]);
     }
 
@@ -183,11 +219,23 @@ class CashierShiftController extends Controller
         $shift = CashierShift::with('user')->findOrFail($request->shift_id);
         
         // التحقق من أن المستخدم يمكنه الوصول لهذه الوردية
-        if ($shift->user_id !== Auth::id() && !Auth::user()->hasRole('admin')) {
+        if ($shift->user_id !== Auth::id() && !Auth::user()->hasRole('admin') && !Auth::user()->hasRole('super admin')) {
             return response()->json([
                 'success' => false,
                 'message' => 'غير مصرح لك بالوصول لهذه الوردية'
             ], 403);
+        }
+
+        $salesHidden = $this->closingPhotoReports->shouldHideShiftSales(Auth::user());
+        if ($salesHidden) {
+            return response()->json([
+                'success' => true,
+                'shift' => $this->redactShiftSales($shift),
+                'sales_details' => [],
+                'sales_summary' => [],
+                'sales_hidden' => true,
+                'sales_hidden_reason' => $salesHidden['reason'] ?? null,
+            ]);
         }
 
         $salesDetails = $shift->getSalesDetails();
@@ -197,7 +245,8 @@ class CashierShiftController extends Controller
             'success' => true,
             'shift' => $shift,
             'sales_details' => $salesDetails,
-            'sales_summary' => $salesSummary
+            'sales_summary' => $salesSummary,
+            'sales_hidden' => false,
         ]);
     }
 
@@ -247,8 +296,34 @@ class CashierShiftController extends Controller
         $totalMonthExpected = $monthShifts->sum('expected_amount');
         $totalMonthDifference = $monthShifts->sum('difference');
 
+        $salesHidden = $this->closingPhotoReports->shouldHideShiftSales($user);
+        if ($salesHidden) {
+            return response()->json([
+                'success' => true,
+                'sales_hidden' => true,
+                'sales_hidden_reason' => $salesHidden['reason'] ?? null,
+                'stats' => [
+                    'today' => [
+                        'shifts_count' => $todayShifts->count(),
+                        'total_sales' => null,
+                        'total_cash' => $totalTodayCash,
+                        'total_expected' => null,
+                        'total_difference' => null,
+                    ],
+                    'month' => [
+                        'shifts_count' => $monthShifts->count(),
+                        'total_sales' => null,
+                        'total_cash' => $totalMonthCash,
+                        'total_expected' => null,
+                        'total_difference' => null,
+                    ],
+                ],
+            ]);
+        }
+
         return response()->json([
             'success' => true,
+            'sales_hidden' => false,
             'stats' => [
                 'today' => [
                     'shifts_count' => $todayShifts->count(),
@@ -266,5 +341,15 @@ class CashierShiftController extends Controller
                 ]
             ]
         ]);
+    }
+
+    private function redactShiftSales(CashierShift $shift): array
+    {
+        $data = $shift->toArray();
+        $data['total_sales'] = null;
+        $data['expected_amount'] = null;
+        $data['difference'] = null;
+
+        return $data;
     }
 } 

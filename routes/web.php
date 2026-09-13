@@ -30,6 +30,8 @@ use App\Http\Controllers\Admin\AttendanceGroupController;
 use App\Http\Controllers\Admin\EmployeeAttendanceSettingsController;
 use App\Http\Controllers\Admin\BranchController;
 use App\Http\Controllers\Admin\TenantSettingsController;
+use App\Http\Controllers\Admin\SpacesLabController;
+use App\Http\Controllers\Admin\ClosingPhotoReportController;
 use App\Http\Controllers\BranchContextController;
 use App\Http\Controllers\QzTrayController;
 
@@ -49,10 +51,17 @@ Route::middleware([
     'hr.employees_only',
 ])->group(function () {
     Route::get('/dashboard', function () {
+        $user = Auth::user();
+        $closingGate = null;
+        if ($user) {
+            $closingGate = app(\App\Services\ClosingPhotoReportService::class)->gateForUser($user);
+        }
+
         return Inertia::render('Dashboard', [
-            'canViewReports' => Auth::user()->can('view sales reports'),
-            'canManageAttendance' => Auth::user()->can('manage employee attendance'),
-            'canManageFeedback' => Auth::user()->hasRole('admin') || Auth::user()->hasRole('super admin'),
+            'canViewReports' => $user->can('view sales reports'),
+            'canManageAttendance' => $user->can('manage employee attendance'),
+            'canManageFeedback' => $user->hasRole('admin') || $user->hasRole('super admin'),
+            'closingPhotoReportGate' => $closingGate,
         ]);
     })->name('dashboard');
 
@@ -182,6 +191,31 @@ Route::middleware([
         Route::post('/qz-keys', [TenantSettingsController::class, 'uploadQzKeys'])->name('qz-keys.upload');
         Route::get('/qz-trust-package', [QzTrayController::class, 'downloadTrustPackage'])->name('qz-trust-package.download');
     });
+
+    // معمل DigitalOcean Spaces (سوبر أدمن فقط)
+    Route::middleware(['super_admin'])->prefix('admin/spaces-lab')->name('admin.spaces-lab.')->group(function () {
+        Route::get('/', [SpacesLabController::class, 'index'])->name('index');
+        Route::post('/', [SpacesLabController::class, 'store'])->name('store');
+        Route::put('/', [SpacesLabController::class, 'update'])->name('update');
+        Route::delete('/', [SpacesLabController::class, 'destroy'])->name('destroy');
+    });
+
+    // تقارير صور التقفيلة
+    Route::middleware(['super_admin'])->prefix('admin/closing-photo-reports')->name('admin.closing-photo-reports.')->group(function () {
+        Route::get('/settings', [ClosingPhotoReportController::class, 'settings'])->name('settings');
+        Route::put('/settings', [ClosingPhotoReportController::class, 'updateSettings'])->name('settings.update');
+        Route::post('/items', [ClosingPhotoReportController::class, 'storeItem'])->name('items.store');
+        Route::put('/items/{item}', [ClosingPhotoReportController::class, 'updateItem'])->name('items.update');
+        Route::delete('/items/{item}', [ClosingPhotoReportController::class, 'destroyItem'])->name('items.destroy');
+    });
+
+    Route::middleware(['admin'])->prefix('admin/closing-photo-reports')->name('admin.closing-photo-reports.')->group(function () {
+        Route::get('/submit', [ClosingPhotoReportController::class, 'submitForm'])->name('submit');
+        Route::post('/upload', [ClosingPhotoReportController::class, 'upload'])->name('upload');
+    });
+
+    Route::get('/admin/closing-photo-reports/browse', [ClosingPhotoReportController::class, 'browse'])
+        ->name('admin.closing-photo-reports.browse');
 
     Route::middleware(['branch.context'])->group(function () {
         Route::get('/raw-materials/branch-pull', [RawMaterialController::class, 'branchPullForm'])->name('admin.raw-materials.branch-pull');

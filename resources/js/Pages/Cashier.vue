@@ -341,7 +341,7 @@
         
         <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
           <p class="text-sm text-yellow-800">
-            هل أنت متأكد من رغبتك في تقفيل الوردية؟ سيتم حساب إجمالي المبيعات وعرضها للمراجعة.
+            هل أنت متأكد من رغبتك في تقفيل الوردية؟
           </p>
         </div>
         
@@ -370,11 +370,30 @@
       @click.self="showSalesModal = false"
     >
       <div class="bg-white rounded-lg shadow-lg p-6 w-[600px] max-h-[80vh] overflow-y-auto">
-        <h3 class="text-lg font-bold text-gray-800 mb-4 text-center">تفاصيل المبيعات - {{ closedShift?.shift_type === 'morning' ? 'وردية صباحية' : 'وردية مسائية' }}</h3>
+        <h3 class="text-lg font-bold text-gray-800 mb-4 text-center">
+          {{ salesHidden ? 'تقفيل الوردية' : 'تفاصيل المبيعات' }}
+          - {{ closedShift?.shift_type === 'morning' ? 'وردية صباحية' : 'وردية مسائية' }}
+        </h3>
         
         <div v-if="closedShift" class="space-y-4">
+          <div v-if="salesHidden" class="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-3">
+            <p class="text-sm text-amber-900 font-medium">
+              {{ salesHiddenReason || 'المبيعات مخفية حتى يتم رفع صور التقفيلة المطلوبة.' }}
+            </p>
+            <a
+              v-if="closingPhotoSubmitUrl"
+              :href="closingPhotoSubmitUrl"
+              class="inline-flex bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg text-sm"
+            >
+              رفع صور التقفيلة الآن
+            </a>
+            <p v-else class="text-xs text-amber-800">
+              يجب على المدير رفع صور التقفيلة أولاً حتى تظهر المبيعات.
+            </p>
+          </div>
+
           <!-- ملخص المبيعات -->
-          <div class="grid grid-cols-2 gap-4">
+          <div v-else class="grid grid-cols-2 gap-4">
             <div class="bg-blue-50 p-4 rounded-lg">
               <h4 class="font-semibold text-blue-800">إجمالي المبيعات</h4>
               <p class="text-2xl font-bold text-blue-600">{{ closedShift.total_sales }} جنيه</p>
@@ -395,7 +414,7 @@
               class="w-full p-3 border border-yellow-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
               placeholder="أدخل المبلغ النقدي"
             />
-            <div v-if="cashAmount > 0" class="mt-2">
+            <div v-if="!salesHidden && cashAmount > 0" class="mt-2">
               <p class="text-sm">
                 <span class="font-semibold">الفرق:</span> 
                 <span :class="getDifferenceClass()">{{ getDifference() }} جنيه</span>
@@ -415,7 +434,7 @@
           </div>
 
           <!-- تفاصيل المبيعات -->
-          <div v-if="salesDetails.length > 0">
+          <div v-if="!salesHidden && salesDetails.length > 0">
             <h4 class="font-semibold text-gray-800 mb-2">تفاصيل المبيعات</h4>
             <div class="max-h-60 overflow-y-auto border border-gray-200 rounded-lg">
               <div v-for="order in salesDetails" :key="order.id" class="p-3 border-b border-gray-100">
@@ -646,6 +665,9 @@ export default {
       cashAmount: 0,
       shiftNotes: '',
       salesDetails: [],
+      salesHidden: false,
+      salesHiddenReason: null,
+      closingPhotoSubmitUrl: null,
       showRefundModal: false,
       refundSearchQuery: '',
       refundRecentOrders: [],
@@ -1313,6 +1335,9 @@ export default {
         if (response.data.success) {
           this.closedShift = response.data.shift;
           this.salesDetails = response.data.sales_details || [];
+          this.salesHidden = !!response.data.sales_hidden;
+          this.salesHiddenReason = response.data.sales_hidden_reason || null;
+          this.closingPhotoSubmitUrl = response.data.closing_photo_submit_url || null;
           this.showCloseShiftModal = false;
           this.showSalesModal = true;
           this.currentShift = null;
@@ -1350,6 +1375,9 @@ export default {
           this.cashAmount = 0;
           this.shiftNotes = '';
           this.salesDetails = [];
+          this.salesHidden = false;
+          this.salesHiddenReason = null;
+          this.closingPhotoSubmitUrl = null;
           alert('تم تسليم الوردية بنجاح!');
         }
       } catch (error) {
@@ -1376,6 +1404,7 @@ export default {
     // حساب الفرق بين النقدي والمتوقع
     getDifference() {
       if (!this.closedShift || !this.cashAmount) return 0;
+      if (this.salesHidden || this.closedShift.expected_amount == null) return 0;
       return (this.cashAmount - this.closedShift.expected_amount).toFixed(2);
     },
 

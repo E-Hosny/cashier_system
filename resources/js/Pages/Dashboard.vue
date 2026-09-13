@@ -7,6 +7,8 @@ const page = usePage();
 const canViewReports = computed(() => page.props.canViewReports);
 const canManageAttendance = computed(() => !!page.props.canManageAttendance);
 const canManageFeedback = computed(() => !!page.props.canManageFeedback);
+const closingPhotoReportGate = computed(() => page.props.closingPhotoReportGate || null);
+const closingPhotoBlocked = computed(() => !!closingPhotoReportGate.value?.blocked);
 const branchContext = computed(() => page.props.branchContext || {});
 
 const roles = computed(() => page.props?.auth?.user?.roles || []);
@@ -219,6 +221,21 @@ function clearBranch() {
                             </div>
                         </a>
 
+                        <a
+                            v-if="!isBaristaOnly && !isHrOnly && (closingPhotoBlocked || isSuperAdmin)"
+                            :href="route('admin.closing-photo-reports.submit')"
+                            class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl min-w-0"
+                            :class="closingPhotoBlocked ? 'ring-2 ring-amber-300' : ''"
+                        >
+                            <div class="flex flex-col items-stretch w-full text-center min-w-0">
+                                <div class="text-amber-500 text-4xl mb-4">📷</div>
+                                <h3 class="text-lg font-semibold text-gray-700 break-words leading-snug">صور التقفيلة</h3>
+                                <p class="text-sm text-gray-500 break-words leading-relaxed">
+                                    {{ closingPhotoBlocked ? (closingPhotoReportGate.reason || 'مطلوب رفع صور التقفيلة قبل تقارير المبيعات') : 'رفع/مراجعة صور التقفيلة' }}
+                                </p>
+                            </div>
+                        </a>
+
                         <a v-if="!isBaristaOnly && !isHrOnly" href="/expenses" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl min-w-0">
                             <div class="flex flex-col items-stretch w-full text-center min-w-0">
                                 <div class="text-purple-500 text-4xl mb-4">💸</div>
@@ -236,6 +253,18 @@ function clearBranch() {
                                 <div class="text-orange-500 text-4xl mb-4">👥</div>
                                 <h3 class="text-lg font-semibold text-gray-700 break-words leading-snug">موظفين جميع الفروع</h3>
                                 <p class="text-sm text-gray-500 break-words leading-relaxed">{{ isHrOnly ? 'متابعة الموظفين وإضافة الخصومات مع التصفية حسب الفرع' : 'حضور وخصومات كل الفروع مع التصفية حسب الفرع' }}</p>
+                            </div>
+                        </a>
+
+                        <a
+                            v-if="isHrOnly"
+                            :href="route('admin.closing-photo-reports.browse')"
+                            class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl ring-2 ring-amber-100 min-w-0"
+                        >
+                            <div class="flex flex-col items-stretch w-full text-center min-w-0">
+                                <div class="text-amber-500 text-4xl mb-4">📷</div>
+                                <h3 class="text-lg font-semibold text-gray-700 break-words leading-snug">صور التقفيلة</h3>
+                                <p class="text-sm text-gray-500 break-words leading-relaxed">عرض صور التقفيلة لكل الفروع (بدون رفع)</p>
                             </div>
                         </a>
 

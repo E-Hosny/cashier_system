@@ -60,6 +60,25 @@ return [
             'report' => false,
         ],
 
+        /*
+        | DigitalOcean Spaces (S3-compatible).
+        | Endpoint must be the region host (e.g. https://sfo3.digitaloceanspaces.com),
+        | while url is the public bucket/CDN base.
+        */
+        'spaces' => [
+            'driver' => 's3',
+            'key' => env('DO_SPACES_KEY'),
+            'secret' => env('DO_SPACES_SECRET'),
+            'region' => env('DO_SPACES_REGION', 'sfo3'),
+            'bucket' => env('DO_SPACES_BUCKET'),
+            'endpoint' => env('DO_SPACES_ENDPOINT', 'https://sfo3.digitaloceanspaces.com'),
+            'url' => env('DO_SPACES_URL'),
+            'visibility' => 'public',
+            'use_path_style_endpoint' => env('DO_SPACES_USE_PATH_STYLE_ENDPOINT', false),
+            'throw' => false,
+            'report' => false,
+        ],
+
     ],
 
     /*

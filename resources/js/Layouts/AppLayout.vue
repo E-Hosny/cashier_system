@@ -59,6 +59,9 @@ const employeesNavHref = computed(() =>
         ? route('admin.employees.index', { view: 'all' })
         : route('admin.employees.index')
 );
+const showClosingPhotosBrowseNav = computed(() =>
+    isHrOnly.value || isSuperAdmin.value || userRoles.value.includes('admin')
+);
 
 const switchToTeam = (team) => {
     router.put(route('current-team.update'), {
@@ -128,6 +131,13 @@ const logout = () => {
                                     :active="route().current('admin.employees.*')"
                                 >
                                     الموظفين
+                                </NavLink>
+                                <NavLink
+                                    v-if="showClosingPhotosBrowseNav"
+                                    :href="route('admin.closing-photo-reports.browse')"
+                                    :active="route().current('admin.closing-photo-reports.browse')"
+                                >
+                                    صور التقفيلة
                                 </NavLink>
                                 <NavLink v-if="!hideOperationalNav" :href="route('admin.products.index')" :active="route().current('admin.products.index')">
                                     المنتجات النهائية
@@ -285,6 +295,14 @@ const logout = () => {
                                             الإعدادات
                                         </DropdownLink>
 
+                                        <DropdownLink v-if="isSuperAdmin" :href="route('admin.spaces-lab.index')">
+                                            اختبار Spaces
+                                        </DropdownLink>
+
+                                        <DropdownLink v-if="isSuperAdmin" :href="route('admin.closing-photo-reports.settings')">
+                                            تقارير صور التقفيلة
+                                        </DropdownLink>
+
                                         <DropdownLink v-if="$page.props.jetstream.hasApiFeatures" :href="route('api-tokens.index')">
                                             API Tokens
                                         </DropdownLink>
@@ -390,6 +408,14 @@ const logout = () => {
                             >
                                 الموظفين
                             </ResponsiveNavLink>
+                            <ResponsiveNavLink
+                                v-if="showClosingPhotosBrowseNav"
+                                :href="route('admin.closing-photo-reports.browse')"
+                                :active="route().current('admin.closing-photo-reports.browse')"
+                                @click="showingSidebar = false"
+                            >
+                                صور التقفيلة
+                            </ResponsiveNavLink>
                             <ResponsiveNavLink v-if="!hideOperationalNav" :href="route('admin.products.index')" :active="route().current('admin.products.index')" @click="showingSidebar = false">
                                 المنتجات النهائية
                             </ResponsiveNavLink>
@@ -474,6 +500,14 @@ const logout = () => {
 
                                 <ResponsiveNavLink v-if="isSuperAdmin" :href="route('admin.tenant-settings.index')" :active="route().current('admin.tenant-settings.*')" @click="showingSidebar = false">
                                     الإعدادات
+                                </ResponsiveNavLink>
+
+                                <ResponsiveNavLink v-if="isSuperAdmin" :href="route('admin.spaces-lab.index')" :active="route().current('admin.spaces-lab.*')" @click="showingSidebar = false">
+                                    اختبار Spaces
+                                </ResponsiveNavLink>
+
+                                <ResponsiveNavLink v-if="isSuperAdmin" :href="route('admin.closing-photo-reports.settings')" :active="route().current('admin.closing-photo-reports.settings')" @click="showingSidebar = false">
+                                    تقارير صور التقفيلة
                                 </ResponsiveNavLink>
 
                                 <ResponsiveNavLink v-if="$page.props.jetstream.hasApiFeatures" :href="route('api-tokens.index')" :active="route().current('api-tokens.index')" @click="showingSidebar = false">

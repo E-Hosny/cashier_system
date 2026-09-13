@@ -11,6 +11,7 @@ use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\SalaryDelivery;
 use App\Support\BranchContext;
+use App\Services\ClosingPhotoReportService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -19,8 +20,23 @@ use Inertia\Inertia;
 
 class SalesReportController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request, ClosingPhotoReportService $closingPhotoReports)
     {
+        $gate = $closingPhotoReports->gateForUser(Auth::user());
+        if ($gate && ($gate['blocked'] ?? false)) {
+            $params = [];
+            if (! empty($gate['requirement']['closing_type'])) {
+                $params['closing_type'] = $gate['requirement']['closing_type'];
+            }
+            if (! empty($gate['requirement']['business_date'])) {
+                $params['business_date'] = $gate['requirement']['business_date'];
+            }
+
+            return redirect()
+                ->route('admin.closing-photo-reports.submit', $params)
+                ->with('error', $gate['reason'] ?? 'يجب إكمال تقرير صور التقفيلة أولاً.');
+        }
+
         $now = Carbon::now();
         $currentHour = $now->hour;
 

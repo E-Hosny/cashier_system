@@ -8,7 +8,20 @@ use Illuminate\Support\Facades\Storage;
 
 class Tenant extends Model
 {
-    protected $fillable = ['name', 'slug', 'logo_path'];
+    protected $fillable = [
+        'name',
+        'slug',
+        'logo_path',
+        'closing_photo_reports_enabled',
+        'closing_evening_starts_at',
+        'closing_evening_ends_at',
+        'closing_dawn_starts_at',
+        'closing_dawn_ends_at',
+    ];
+
+    protected $casts = [
+        'closing_photo_reports_enabled' => 'boolean',
+    ];
 
     /**
      * المستخدمون التابعون لهذا الـ tenant
@@ -21,6 +34,11 @@ class Tenant extends Model
     public function branches(): HasMany
     {
         return $this->hasMany(Branch::class);
+    }
+
+    public function closingPhotoReportItems(): HasMany
+    {
+        return $this->hasMany(ClosingPhotoReportItem::class);
     }
 
     /**

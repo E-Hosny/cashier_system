@@ -21,6 +21,7 @@ class RestrictHrToEmployees
         if ($request->routeIs([
             'dashboard',
             'admin.employees.*',
+            'admin.closing-photo-reports.browse',
             'profile.show',
             'user-profile-information.update',
             'user-password.update',
