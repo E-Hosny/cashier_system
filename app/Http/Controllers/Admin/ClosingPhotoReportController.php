@@ -197,52 +197,122 @@ class ClosingPhotoReportController extends Controller
             $branchId = $ownBranchId ? (int) $ownBranchId : null;
         }
 
-        $query = ClosingPhotoReportSubmission::withoutGlobalScopes()
+        if ($branchId) {
+            $branches = $branches->where('id', $branchId)->values();
+        }
+
+        $types = [];
+        if ($closingType && in_array($closingType, [ClosingPhotoReportItem::TYPE_EVENING, ClosingPhotoReportItem::TYPE_DAWN], true)) {
+            $types = [$closingType];
+        } else {
+            $types = [ClosingPhotoReportItem::TYPE_EVENING, ClosingPhotoReportItem::TYPE_DAWN];
+        }
+
+        $itemsByType = ClosingPhotoReportItem::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)
+            ->whereIn('closing_type', $types)
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get(['id', 'closing_type', 'title', 'description', 'sort_order', 'is_required'])
+            ->groupBy('closing_type');
+
+        $submissions = ClosingPhotoReportSubmission::withoutGlobalScopes()
             ->where('tenant_id', $tenant->id)
             ->whereDate('business_date', $businessDate)
+            ->whereIn('closing_type', $types)
+            ->when($branches->isNotEmpty(), fn ($q) => $q->whereIn('branch_id', $branches->pluck('id')))
             ->with([
                 'branch:id,name',
                 'submittedBy:id,name',
-                'photos.item:id,title,sort_order,is_required',
+                'photos',
             ])
-            ->orderByDesc('id');
+            ->get()
+            ->keyBy(fn (ClosingPhotoReportSubmission $s) => $s->branch_id.'|'.$s->closing_type);
 
-        if ($branchId) {
-            $query->where('branch_id', $branchId);
-        } elseif ($branches->isNotEmpty() && $user->hasRole('admin') && ! $user->hasRole('super admin') && ! $user->isHrOnly()) {
-            $query->whereIn('branch_id', $branches->pluck('id'));
-        }
+        $rows = collect();
 
-        if ($closingType && in_array($closingType, [ClosingPhotoReportItem::TYPE_EVENING, ClosingPhotoReportItem::TYPE_DAWN], true)) {
-            $query->where('closing_type', $closingType);
-        }
+        foreach ($branches as $branch) {
+            foreach ($types as $type) {
+                $items = collect($itemsByType->get($type, []));
+                if ($items->isEmpty()) {
+                    continue;
+                }
 
-        $submissions = $query->get()->map(function (ClosingPhotoReportSubmission $s) {
-            $photos = $s->photos
-                ->sortBy(fn ($p) => $p->item?->sort_order ?? 9999)
-                ->values()
-                ->map(fn ($p) => [
-                    'id' => $p->id,
-                    'item_title' => $p->item?->title,
-                    'is_required' => (bool) ($p->item?->is_required ?? true),
-                    'url' => $p->url,
-                    'uploaded_at' => optional($p->updated_at)?->toDateTimeString(),
+                $submission = $submissions->get($branch->id.'|'.$type);
+                $photosByItem = collect($submission?->photos ?? [])->keyBy('item_id');
+
+                $checklist = $items->map(function (ClosingPhotoReportItem $item) use ($photosByItem) {
+                    $photo = $photosByItem->get($item->id);
+
+                    return [
+                        'id' => $item->id,
+                        'title' => $item->title,
+                        'description' => $item->description,
+                        'is_required' => (bool) $item->is_required,
+                        'is_uploaded' => $photo !== null,
+                        'photo' => $photo ? [
+                            'id' => $photo->id,
+                            'url' => $photo->url,
+                            'original_name' => $photo->original_name,
+                            'uploaded_at' => optional($photo->updated_at)?->toDateTimeString(),
+                        ] : null,
+                    ];
+                })->values();
+
+                $requiredItems = $checklist->where('is_required', true);
+                $requiredTotal = $requiredItems->count();
+                $requiredUploaded = $requiredItems->where('is_uploaded', true)->count();
+                $requiredRemaining = max(0, $requiredTotal - $requiredUploaded);
+                $optionalUploaded = $checklist->where('is_required', false)->where('is_uploaded', true)->count();
+                $uploadedTotal = $checklist->where('is_uploaded', true)->count();
+                $isComplete = $requiredTotal > 0 && $requiredRemaining === 0;
+
+                if ($isComplete) {
+                    $statusLabel = 'مكتمل';
+                    $statusDetail = "تم إرسال كل البنود الإجبارية ({$requiredUploaded}/{$requiredTotal})";
+                } elseif ($uploadedTotal === 0) {
+                    $statusLabel = 'لم يبدأ';
+                    $statusDetail = "لم يُرسل أي بند بعد — متبقي {$requiredRemaining} إجباري";
+                } else {
+                    $statusLabel = 'جارٍ الاستكمال';
+                    $statusDetail = "تم إرسال {$requiredUploaded} من {$requiredTotal} إجباري — متبقي {$requiredRemaining}";
+                }
+
+                if ($optionalUploaded > 0) {
+                    $statusDetail .= " · اختياري مرفوع: {$optionalUploaded}";
+                }
+
+                $rows->push([
+                    'id' => $submission?->id ?: ('pending-'.$branch->id.'-'.$type),
+                    'submission_id' => $submission?->id,
+                    'branch_id' => $branch->id,
+                    'branch_name' => $branch->name,
+                    'closing_type' => $type,
+                    'closing_type_label' => ClosingPhotoReportItem::typeLabel($type),
+                    'business_date' => $businessDate,
+                    'is_complete' => $isComplete,
+                    'completed_at' => optional($submission?->completed_at)?->toDateTimeString(),
+                    'submitted_by_name' => $submission?->submittedBy?->name,
+                    'status_label' => $statusLabel,
+                    'status_detail' => $statusDetail,
+                    'required_total' => $requiredTotal,
+                    'required_uploaded' => $requiredUploaded,
+                    'required_remaining' => $requiredRemaining,
+                    'uploaded_total' => $uploadedTotal,
+                    'items' => $checklist->all(),
                 ]);
+            }
+        }
 
-            return [
-                'id' => $s->id,
-                'branch_id' => $s->branch_id,
-                'branch_name' => $s->branch?->name,
-                'closing_type' => $s->closing_type,
-                'closing_type_label' => ClosingPhotoReportItem::typeLabel($s->closing_type),
-                'business_date' => optional($s->business_date)?->toDateString(),
-                'is_complete' => $s->isComplete(),
-                'completed_at' => optional($s->completed_at)?->toDateTimeString(),
-                'submitted_by_name' => $s->submittedBy?->name,
-                'photos_count' => $photos->count(),
-                'photos' => $photos->all(),
-            ];
-        })->values();
+        // المكتمل أولاً؟ لا — الأهم للمتابعة: غير المكتمل أولاً
+        $rows = $rows
+            ->sortBy([
+                fn ($row) => $row['is_complete'] ? 1 : 0,
+                fn ($row) => $row['branch_name'] ?? '',
+                fn ($row) => $row['closing_type'] === ClosingPhotoReportItem::TYPE_EVENING ? 0 : 1,
+            ])
+            ->values();
 
         return Inertia::render('Admin/ClosingPhotoReports/Browse', [
             'filters' => [
@@ -251,7 +321,7 @@ class ClosingPhotoReportController extends Controller
                 'branch_id' => $branchId ? (string) $branchId : '',
             ],
             'branches' => $branches->values(),
-            'submissions' => $submissions,
+            'submissions' => $rows,
             'typeLabels' => [
                 'evening' => ClosingPhotoReportItem::typeLabel(ClosingPhotoReportItem::TYPE_EVENING),
                 'dawn' => ClosingPhotoReportItem::typeLabel(ClosingPhotoReportItem::TYPE_DAWN),
@@ -308,7 +378,7 @@ class ClosingPhotoReportController extends Controller
         ]);
     }
 
-    public function upload(Request $request): RedirectResponse
+    public function upload(Request $request)
     {
         $user = Auth::user();
         abort_unless($user?->hasRole('admin') || $user?->hasRole('super admin'), 403);
@@ -341,13 +411,31 @@ class ClosingPhotoReportController extends Controller
             $user->id
         );
 
-        $this->service->uploadPhoto($submission, $item, $request->file('file'), $user);
+        $photo = $this->service->uploadPhoto($submission, $item, $request->file('file'), $user);
         $this->service->refreshCompletion($submission);
         $submission->save();
 
+        $payload = $this->service->formPayload($tenant, (int) $branchId, $data['closing_type'], $data['business_date']);
         $message = $submission->isComplete()
             ? 'تم رفع الصورة واكتملت كل البنود المطلوبة. يمكنك فتح تقارير المبيعات الآن.'
             : 'تم رفع الصورة.';
+
+        if ($request->expectsJson() || $request->wantsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'item_id' => $item->id,
+                'photo' => [
+                    'id' => $photo->id,
+                    'url' => $photo->url,
+                    'original_name' => $photo->original_name,
+                    'uploaded_at' => optional($photo->updated_at)?->toDateTimeString(),
+                ],
+                'submission' => $payload['submission'],
+                'items' => $payload['items'],
+                'is_complete' => (bool) ($payload['submission']['is_complete'] ?? false),
+            ]);
+        }
 
         return back()->with('success', $message);
     }
