@@ -94,15 +94,14 @@
               class="border rounded-xl overflow-hidden"
               :class="item.is_uploaded ? 'border-green-200 bg-green-50/40' : 'border-amber-200 bg-amber-50/30'"
             >
-              <a
+              <button
                 v-if="item.photo"
-                :href="item.photo.url"
-                target="_blank"
-                rel="noopener"
-                class="block"
+                type="button"
+                class="block w-full text-right"
+                @click="openLightbox(row, item.id)"
               >
                 <img :src="item.photo.url" :alt="item.title" class="w-full h-36 object-cover" />
-              </a>
+              </button>
               <div
                 v-else
                 class="h-36 flex items-center justify-center text-amber-800 text-sm font-medium bg-amber-50"
@@ -133,6 +132,66 @@
         </div>
       </div>
     </div>
+
+    <!-- عارض الصور مع اسم البند والتنقل -->
+    <div
+      v-if="lightboxOpen && currentLightboxPhoto"
+      class="fixed inset-0 z-[80] bg-black/90 flex items-center justify-center p-3 sm:p-6"
+      dir="rtl"
+      @click.self="closeLightbox"
+      @touchstart.passive="onLightboxTouchStart"
+      @touchend.passive="onLightboxTouchEnd"
+    >
+      <button
+        type="button"
+        class="absolute top-4 left-4 z-10 text-white/90 hover:text-white bg-white/10 hover:bg-white/20 rounded-full w-10 h-10 text-2xl leading-none"
+        aria-label="إغلاق"
+        @click="closeLightbox"
+      >
+        ×
+      </button>
+
+      <button
+        v-if="lightboxPhotos.length > 1"
+        type="button"
+        class="absolute right-2 sm:right-4 z-10 text-white bg-white/10 hover:bg-white/20 rounded-full w-11 h-11 text-2xl leading-none"
+        aria-label="السابق"
+        @click.stop="prevLightboxPhoto"
+      >
+        ‹
+      </button>
+      <button
+        v-if="lightboxPhotos.length > 1"
+        type="button"
+        class="absolute left-2 sm:left-4 z-10 text-white bg-white/10 hover:bg-white/20 rounded-full w-11 h-11 text-2xl leading-none"
+        aria-label="التالي"
+        @click.stop="nextLightboxPhoto"
+      >
+        ›
+      </button>
+
+      <div class="relative w-full max-w-5xl max-h-[90vh] flex flex-col items-center gap-3">
+        <div class="relative w-full flex items-center justify-center overflow-hidden rounded-xl bg-black/40">
+          <img
+            :src="currentLightboxPhoto.url"
+            :alt="currentLightboxPhoto.title"
+            class="max-h-[78vh] w-auto max-w-full object-contain select-none"
+            draggable="false"
+          />
+          <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/45 to-transparent px-4 pt-10 pb-4">
+            <div class="text-white text-lg sm:text-xl font-bold drop-shadow">
+              {{ currentLightboxPhoto.title }}
+            </div>
+            <div v-if="currentLightboxPhoto.meta" class="text-white/80 text-xs sm:text-sm mt-1">
+              {{ currentLightboxPhoto.meta }}
+            </div>
+          </div>
+        </div>
+        <div class="text-white/70 text-sm">
+          {{ lightboxIndex + 1 }} / {{ lightboxPhotos.length }}
+        </div>
+      </div>
+    </div>
   </AppLayout>
 </template>
 
@@ -158,7 +217,19 @@ export default {
         closing_type: this.filters.closing_type || '',
         branch_id: this.filters.branch_id || '',
       },
+      lightboxOpen: false,
+      lightboxPhotos: [],
+      lightboxIndex: 0,
+      touchStartX: null,
     };
+  },
+  computed: {
+    currentLightboxPhoto() {
+      return this.lightboxPhotos[this.lightboxIndex] || null;
+    },
+  },
+  beforeUnmount() {
+    this.unbindLightboxKeys();
   },
   methods: {
     statusBadgeClass(row) {
@@ -180,6 +251,74 @@ export default {
         preserveState: true,
         preserveScroll: true,
       });
+    },
+    openLightbox(row, itemId) {
+      const photos = (row.items || [])
+        .filter((item) => item.photo?.url)
+        .map((item) => ({
+          id: item.id,
+          title: item.title,
+          url: item.photo.url,
+          meta: [
+            row.branch_name,
+            row.closing_type_label,
+            item.photo.uploaded_at || null,
+          ].filter(Boolean).join(' · '),
+        }));
+
+      if (!photos.length) {
+        return;
+      }
+
+      const index = Math.max(0, photos.findIndex((photo) => photo.id === itemId));
+      this.lightboxPhotos = photos;
+      this.lightboxIndex = index === -1 ? 0 : index;
+      this.lightboxOpen = true;
+      this.bindLightboxKeys();
+    },
+    closeLightbox() {
+      this.lightboxOpen = false;
+      this.lightboxPhotos = [];
+      this.lightboxIndex = 0;
+      this.touchStartX = null;
+      this.unbindLightboxKeys();
+    },
+    nextLightboxPhoto() {
+      if (this.lightboxPhotos.length < 2) return;
+      this.lightboxIndex = (this.lightboxIndex + 1) % this.lightboxPhotos.length;
+    },
+    prevLightboxPhoto() {
+      if (this.lightboxPhotos.length < 2) return;
+      this.lightboxIndex = (this.lightboxIndex - 1 + this.lightboxPhotos.length) % this.lightboxPhotos.length;
+    },
+    bindLightboxKeys() {
+      this.unbindLightboxKeys();
+      this._onLightboxKeydown = (event) => {
+        if (!this.lightboxOpen) return;
+        if (event.key === 'Escape') this.closeLightbox();
+        if (event.key === 'ArrowLeft') this.nextLightboxPhoto();
+        if (event.key === 'ArrowRight') this.prevLightboxPhoto();
+      };
+      window.addEventListener('keydown', this._onLightboxKeydown);
+    },
+    unbindLightboxKeys() {
+      if (this._onLightboxKeydown) {
+        window.removeEventListener('keydown', this._onLightboxKeydown);
+        this._onLightboxKeydown = null;
+      }
+    },
+    onLightboxTouchStart(event) {
+      this.touchStartX = event.changedTouches?.[0]?.clientX ?? null;
+    },
+    onLightboxTouchEnd(event) {
+      if (this.touchStartX == null) return;
+      const endX = event.changedTouches?.[0]?.clientX ?? this.touchStartX;
+      const delta = endX - this.touchStartX;
+      this.touchStartX = null;
+      if (Math.abs(delta) < 50) return;
+      // في RTL: السحب لليسار = التالي، لليمين = السابق
+      if (delta < 0) this.nextLightboxPhoto();
+      else this.prevLightboxPhoto();
     },
   },
 };
