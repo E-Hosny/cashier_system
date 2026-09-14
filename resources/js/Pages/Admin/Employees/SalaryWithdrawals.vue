@@ -100,6 +100,19 @@
                   مرحّل سابق (أُزيل): {{ formatPrice(employee.opening_debt_raw) }}
                 </span>
                 <span class="bg-green-100 text-green-900 px-3 py-1 rounded">متبقي: <strong>{{ formatPrice(employee.remaining) }}</strong></span>
+                <span
+                  v-if="employee.withdraw_limit_enabled && !employee.fully_unlocked"
+                  class="bg-amber-100 text-amber-900 px-3 py-1 rounded"
+                >
+                  متاح الآن: <strong>{{ formatPrice(employee.withdrawable_now) }}</strong>
+                  (حتى {{ employee.early_withdraw_percent }}% / فتح يوم {{ employee.full_unlock_day }})
+                </span>
+                <span
+                  v-else-if="employee.withdraw_limit_enabled && employee.fully_unlocked"
+                  class="bg-emerald-100 text-emerald-900 px-3 py-1 rounded"
+                >
+                  الراتب مفتوح بالكامل
+                </span>
                 <span v-if="Number(employee.closing_debt || 0) > 0" class="bg-fuchsia-100 text-fuchsia-900 px-3 py-1 rounded">ترحيل لاحق: <strong>{{ formatPrice(employee.closing_debt) }}</strong></span>
                 <span
                   v-else-if="employee.closing_debt_waived && Number(employee.closing_debt_raw || 0) > 0"

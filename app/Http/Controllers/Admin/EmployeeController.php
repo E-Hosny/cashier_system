@@ -1348,7 +1348,7 @@ class EmployeeController extends Controller
                     'notes' => $withdrawal->notes,
                     'expense_id' => $withdrawal->expense_id,
                 ],
-                'fixed_salary_month' => $summary,
+                'fixed_salary_month' => $this->salarySummaryForViewer($summary),
             ]);
         } catch (ValidationException $e) {
             return response()->json([
@@ -1362,6 +1362,28 @@ class EmployeeController extends Controller
                 'message' => 'حدث خطأ أثناء تسجيل المسحوب: '.$e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * ملخص راتب الشهر الثابت (للواجهة قبل السحب)
+     */
+    public function fixedSalaryMonthSummary(Employee $employee, Request $request)
+    {
+        $this->abortUnlessCanPayEmployeeSalary();
+        abort_unless($employee->isFixedSalary(), 422, 'متاح فقط لموظفي الراتب الثابت.');
+
+        $request->validate([
+            'month' => 'nullable|date_format:Y-m',
+        ]);
+
+        $yearMonth = $request->input('month') ?: Carbon::now()->format('Y-m');
+
+        $summary = $employee->getFixedSalaryMonthSummary($yearMonth);
+
+        return response()->json([
+            'success' => true,
+            'fixed_salary_month' => $this->salarySummaryForViewer($summary),
+        ]);
     }
 
     /**
@@ -1437,6 +1459,13 @@ class EmployeeController extends Controller
                 'closing_debt_raw' => $summary['closing_debt_raw'],
                 'closing_debt_waived' => $summary['closing_debt_waived'],
                 'remaining' => $summary['remaining'],
+                'withdrawable_now' => $summary['withdrawable_now'],
+                'withdraw_limit_enabled' => $summary['withdraw_limit_enabled'],
+                'early_withdraw_percent' => $summary['early_withdraw_percent'],
+                'early_withdraw_cap' => $summary['early_withdraw_cap'],
+                'early_withdraw_remaining' => $summary['early_withdraw_remaining'],
+                'full_unlock_day' => $summary['full_unlock_day'],
+                'fully_unlocked' => $summary['fully_unlocked'],
                 'withdrawals_count' => $summary['withdrawals_count'],
                 'withdrawals' => $withdrawals,
                 'discounts' => $discounts,
@@ -1633,6 +1662,41 @@ class EmployeeController extends Controller
     private function viewerCanSeeSalaryAmountsOnIndex(): bool
     {
         return false;
+    }
+
+    /**
+     * إخفاء أرقام الراتب المتبقية/المتاح عن الكاشير في استجابات السحب.
+     */
+    private function salarySummaryForViewer(array $summary): array
+    {
+        $user = auth()->user();
+        $hideAmounts = $user
+            && $user->hasRole('cashier')
+            && ! $user->hasAnyRole(['admin', 'super admin']);
+
+        if (! $hideAmounts) {
+            return $summary;
+        }
+
+        foreach ([
+            'fixed_salary',
+            'withdrawals_total',
+            'discounts_total',
+            'opening_debt',
+            'opening_debt_raw',
+            'closing_debt',
+            'closing_debt_raw',
+            'remaining',
+            'early_withdraw_cap',
+            'early_withdraw_remaining',
+            'withdrawable_now',
+        ] as $key) {
+            if (array_key_exists($key, $summary)) {
+                $summary[$key] = null;
+            }
+        }
+
+        return $summary;
     }
 
     /**

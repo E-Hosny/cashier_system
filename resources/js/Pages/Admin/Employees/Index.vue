@@ -496,8 +496,27 @@
                   <div v-if="selectedEmployee.fixed_salary_month.discounts_total > 0">
                     الخصومات: <strong class="text-red-600">{{ formatPrice(selectedEmployee.fixed_salary_month.discounts_total) }}</strong>
                   </div>
-                  <div class="text-green-700 font-bold">المتبقي: {{ formatPrice(selectedEmployee.fixed_salary_month.remaining) }}</div>
+                  <div class="text-green-700 font-bold">المتبقي محاسبياً: {{ formatPrice(selectedEmployee.fixed_salary_month.remaining) }}</div>
+                  <div
+                    v-if="selectedEmployee.fixed_salary_month.withdraw_limit_enabled && !selectedEmployee.fixed_salary_month.fully_unlocked"
+                    class="mt-2 p-2 rounded bg-amber-50 border border-amber-200 text-amber-900 space-y-0.5"
+                  >
+                    <div>
+                      حد السحب المبكر:
+                      <strong>{{ selectedEmployee.fixed_salary_month.early_withdraw_percent }}%</strong>
+                      (سقف {{ formatPrice(selectedEmployee.fixed_salary_month.early_withdraw_cap) }})
+                    </div>
+                    <div>يفتح الراتب الكامل يوم {{ selectedEmployee.fixed_salary_month.full_unlock_day }} من الشهر</div>
+                    <div class="font-bold">المتاح للسحب الآن: {{ formatPrice(selectedEmployee.fixed_salary_month.withdrawable_now) }}</div>
+                  </div>
+                  <div
+                    v-else-if="selectedEmployee.fixed_salary_month.withdraw_limit_enabled && selectedEmployee.fixed_salary_month.fully_unlocked"
+                    class="mt-2 text-emerald-800 font-semibold"
+                  >
+                    الراتب مفتوح بالكامل — المتاح: {{ formatPrice(selectedEmployee.fixed_salary_month.withdrawable_now) }}
+                  </div>
                 </div>
+                <div v-else-if="withdrawSummaryLoading" class="mb-4 text-sm text-gray-500">جاري تحميل ملخص الراتب...</div>
 
                 <form @submit.prevent="submitWithdraw">
                   <div class="mb-4">
@@ -509,7 +528,7 @@
                       v-model="withdrawForm.amount"
                       step="0.01"
                       min="0.01"
-                      :max="canViewSalaryAmounts ? (selectedEmployee?.fixed_salary_month?.remaining || undefined) : undefined"
+                      :max="canViewSalaryAmounts ? (selectedEmployee?.fixed_salary_month?.withdrawable_now ?? selectedEmployee?.fixed_salary_month?.remaining ?? undefined) : undefined"
                       required
                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       placeholder="0.00"
@@ -585,6 +604,7 @@ export default {
       loading: false,
       showDiscountModal: false,
       showWithdrawModal: false,
+      withdrawSummaryLoading: false,
       selectedEmployee: null,
       discountForm: {
         amount: '',
@@ -1018,17 +1038,39 @@ export default {
       };
     },
 
-    openWithdrawModal(employee) {
-      this.selectedEmployee = employee;
+    async openWithdrawModal(employee) {
+      this.selectedEmployee = { ...employee };
       this.withdrawForm = {
         amount: '',
         notes: '',
       };
       this.showWithdrawModal = true;
+      this.withdrawSummaryLoading = true;
+
+      try {
+        const response = await fetch(route('admin.employees.fixed-salary-month-summary', employee.id), {
+          headers: {
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+          },
+        });
+        const data = await response.json();
+        if (data.success && data.fixed_salary_month) {
+          this.selectedEmployee = {
+            ...this.selectedEmployee,
+            fixed_salary_month: data.fixed_salary_month,
+          };
+        }
+      } catch (error) {
+        console.error('Error:', error);
+      } finally {
+        this.withdrawSummaryLoading = false;
+      }
     },
 
     closeWithdrawModal() {
       this.showWithdrawModal = false;
+      this.withdrawSummaryLoading = false;
       this.selectedEmployee = null;
       this.withdrawForm = {
         amount: '',
@@ -1046,9 +1088,13 @@ export default {
       }
 
       if (this.canViewSalaryAmounts) {
-        const remaining = Number(this.selectedEmployee.fixed_salary_month?.remaining || 0);
-        if (amount > remaining) {
-          alert(`المبلغ المطلوب (${amount.toFixed(2)}) أكبر من المتبقي من الراتب هذا الشهر`);
+        const available = Number(
+          this.selectedEmployee.fixed_salary_month?.withdrawable_now
+          ?? this.selectedEmployee.fixed_salary_month?.remaining
+          ?? 0
+        );
+        if (amount > available) {
+          alert(`المبلغ المطلوب (${amount.toFixed(2)}) أكبر من المتاح للسحب الآن (${available.toFixed(2)})`);
           return;
         }
       }

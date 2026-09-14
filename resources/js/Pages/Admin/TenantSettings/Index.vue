@@ -7,6 +7,14 @@ const props = defineProps({
     tenantName: String,
     logoUrl: { type: String, default: null },
     qzKeysConfigured: { type: Boolean, default: false },
+    fixedSalaryWithdrawLimit: {
+        type: Object,
+        default: () => ({
+            enabled: false,
+            early_percent: 20,
+            full_unlock_day: 29,
+        }),
+    },
     categories: { type: Array, default: () => [] },
     branches: { type: Array, default: () => [] },
 });
@@ -26,6 +34,27 @@ const qzKeysForm = useForm({
     certificate: null,
     private_key: null,
 });
+
+const salaryLimitForm = useForm({
+    enabled: !!props.fixedSalaryWithdrawLimit?.enabled,
+    early_percent: Number(props.fixedSalaryWithdrawLimit?.early_percent ?? 20),
+    full_unlock_day: Number(props.fixedSalaryWithdrawLimit?.full_unlock_day ?? 29),
+});
+
+watch(() => props.fixedSalaryWithdrawLimit, (value) => {
+    if (!value || salaryLimitForm.processing) {
+        return;
+    }
+    salaryLimitForm.enabled = !!value.enabled;
+    salaryLimitForm.early_percent = Number(value.early_percent ?? 20);
+    salaryLimitForm.full_unlock_day = Number(value.full_unlock_day ?? 29);
+}, { deep: true });
+
+function submitSalaryWithdrawLimit() {
+    salaryLimitForm.put(route('admin.tenant-settings.fixed-salary-withdraw-limit.update'), {
+        preserveScroll: true,
+    });
+}
 
 function initBranchForms() {
     const next = {};
@@ -218,6 +247,64 @@ function saveBranchPrinters(branch) {
                                 </button>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- حد سحب الراتب الثابت خلال الشهر -->
+                <div class="bg-white shadow-xl sm:rounded-lg p-6 space-y-4">
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-900">حد سحب الراتب الثابت</h3>
+                        <p class="text-sm text-gray-600 mt-1">
+                            يمنع الموظفين ذوي الراتب الثابت من سحب أكثر من نسبة محددة من الراتب خلال الشهر،
+                            حتى يوم فتح الراتب الكامل الذي تحدده أنت.
+                        </p>
+                    </div>
+
+                    <label class="flex items-center gap-3 text-sm text-gray-800">
+                        <input v-model="salaryLimitForm.enabled" type="checkbox" class="rounded border-gray-300" />
+                        تفعيل حد السحب المبكر
+                    </label>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" :class="{ 'opacity-50 pointer-events-none': !salaryLimitForm.enabled }">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">أقصى نسبة سحب قبل الفتح (%)</label>
+                            <input
+                                v-model.number="salaryLimitForm.early_percent"
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.01"
+                                class="w-full border rounded-lg p-2.5"
+                            />
+                            <div v-if="salaryLimitForm.errors.early_percent" class="text-red-600 text-xs mt-1">
+                                {{ salaryLimitForm.errors.early_percent }}
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">يوم فتح الراتب الكامل (من الشهر)</label>
+                            <input
+                                v-model.number="salaryLimitForm.full_unlock_day"
+                                type="number"
+                                min="1"
+                                max="31"
+                                step="1"
+                                class="w-full border rounded-lg p-2.5"
+                            />
+                            <div v-if="salaryLimitForm.errors.full_unlock_day" class="text-red-600 text-xs mt-1">
+                                {{ salaryLimitForm.errors.full_unlock_day }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end">
+                        <button
+                            type="button"
+                            class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+                            :disabled="salaryLimitForm.processing"
+                            @click="submitSalaryWithdrawLimit"
+                        >
+                            {{ salaryLimitForm.processing ? 'جاري الحفظ...' : 'حفظ إعدادات حد السحب' }}
+                        </button>
                     </div>
                 </div>
 

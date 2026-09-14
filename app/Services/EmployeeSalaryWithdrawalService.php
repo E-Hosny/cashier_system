@@ -34,14 +34,39 @@ class EmployeeSalaryWithdrawalService
             : Employee::businessDayAnchorFromNow();
 
         $yearMonth = Carbon::parse($anchorDate)->format('Y-m');
-        $summary = $employee->getFixedSalaryMonthSummary($yearMonth);
+        $summary = $employee->getFixedSalaryMonthSummary($yearMonth, $anchorDate);
 
-        if ($amount > $summary['remaining'] + 0.0001) {
+        if ($amount > $summary['withdrawable_now'] + 0.0001) {
+            $hideAmounts = $this->shouldHideSalaryAmountsFromViewer();
+
+            if (! empty($summary['withdraw_limit_enabled']) && empty($summary['fully_unlocked'])) {
+                $message = $hideAmounts
+                    ? sprintf(
+                        'قبل يوم فتح الراتب (%d من الشهر) يُسمح بسحب حتى %.0f%% فقط من الراتب.',
+                        (int) ($summary['full_unlock_day'] ?? 29),
+                        (float) ($summary['early_withdraw_percent'] ?? 0)
+                    )
+                    : sprintf(
+                        'قبل يوم فتح الراتب (%d من الشهر) يُسمح بسحب حتى %.0f%% فقط من الراتب. المتاح الآن: %.2f (من أصل متبقي محاسبي %.2f).',
+                        (int) ($summary['full_unlock_day'] ?? 29),
+                        (float) ($summary['early_withdraw_percent'] ?? 0),
+                        (float) $summary['withdrawable_now'],
+                        (float) $summary['remaining']
+                    );
+
+                throw ValidationException::withMessages([
+                    'amount' => $message,
+                ]);
+            }
+
             throw ValidationException::withMessages([
-                'amount' => sprintf(
-                    'المبلغ المطلوب (%.2f) أكبر من المتبقي من الراتب هذا الشهر.',
-                    $amount
-                ),
+                'amount' => $hideAmounts
+                    ? 'المبلغ المطلوب أكبر من المتاح للسحب الآن.'
+                    : sprintf(
+                        'المبلغ المطلوب (%.2f) أكبر من المتاح للسحب الآن (%.2f).',
+                        $amount,
+                        (float) $summary['withdrawable_now']
+                    ),
             ]);
         }
 
@@ -83,5 +108,23 @@ class EmployeeSalaryWithdrawalService
                     ->delete();
             }
         });
+    }
+
+    /**
+     * الكاشير يسجّل المسحوب دون الاطلاع على أرقام الراتب المتبقية.
+     */
+    private function shouldHideSalaryAmountsFromViewer(): bool
+    {
+        $user = auth()->user();
+
+        if (! $user) {
+            return true;
+        }
+
+        if ($user->hasAnyRole(['admin', 'super admin'])) {
+            return false;
+        }
+
+        return $user->hasRole('cashier');
     }
 }

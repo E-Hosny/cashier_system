@@ -30,6 +30,11 @@ class TenantSettingsController extends Controller
             'tenantName' => $tenant->name,
             'logoUrl' => $tenant->logo_url,
             'qzKeysConfigured' => QzTrustInstaller::keysExist(),
+            'fixedSalaryWithdrawLimit' => [
+                'enabled' => (bool) $tenant->fixed_salary_withdraw_limit_enabled,
+                'early_percent' => (float) ($tenant->fixed_salary_early_withdraw_percent ?? 20),
+                'full_unlock_day' => (int) ($tenant->fixed_salary_full_unlock_day ?? 29),
+            ],
             'categories' => $categories,
             'branches' => Branch::query()
                 ->where('tenant_id', $tenant->id)
@@ -44,6 +49,27 @@ class TenantSettingsController extends Controller
                 ->values()
                 ->all(),
         ]);
+    }
+
+    public function updateFixedSalaryWithdrawLimit(Request $request): RedirectResponse
+    {
+        abort_unless(Auth::user()?->hasRole('super admin'), 403);
+
+        $data = $request->validate([
+            'enabled' => 'required|boolean',
+            'early_percent' => 'required|numeric|min:0|max:100',
+            'full_unlock_day' => 'required|integer|min:1|max:31',
+        ]);
+
+        $tenant = $this->currentTenant();
+        $tenant->update([
+            'fixed_salary_withdraw_limit_enabled' => (bool) $data['enabled'],
+            'fixed_salary_early_withdraw_percent' => round((float) $data['early_percent'], 2),
+            'fixed_salary_full_unlock_day' => (int) $data['full_unlock_day'],
+        ]);
+
+        return redirect()->route('admin.tenant-settings.index')
+            ->with('success', 'تم حفظ إعدادات حد سحب الراتب الثابت.');
     }
 
     public function updateBranchPrinters(Request $request, Branch $branch): RedirectResponse

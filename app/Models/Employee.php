@@ -118,12 +118,21 @@ class Employee extends Model
      *   closing_debt_raw: float,
      *   closing_debt_waived: bool,
      *   remaining: float,
-     *   withdrawals_count: int
+     *   withdrawals_count: int,
+     *   withdraw_limit_enabled: bool,
+     *   early_withdraw_percent: float|null,
+     *   early_withdraw_cap: float|null,
+     *   early_withdraw_remaining: float|null,
+     *   full_unlock_day: int|null,
+     *   fully_unlocked: bool,
+     *   withdrawable_now: float,
+     *   can_withdraw: bool
      * }
      */
-    public function getFixedSalaryMonthSummary(?string $yearMonth = null): array
+    public function getFixedSalaryMonthSummary(?string $yearMonth = null, Carbon|string|null $asOf = null): array
     {
         $yearMonth = $yearMonth ?: Carbon::now()->format('Y-m');
+        $asOf = $asOf ? Carbon::parse($asOf) : Carbon::now();
 
         if ($this->isFixedSalary()) {
             $this->syncAbsenceVacationDeduction($yearMonth);
@@ -157,6 +166,35 @@ class Employee extends Model
         $closingDebtWaived = $this->hasFixedSalaryDebtWaiver($yearMonth, EmployeeFixedSalaryDebtWaiver::KIND_CLOSING);
         $closingDebt = $closingDebtWaived ? 0.0 : $closingDebtRaw;
 
+        $tenant = $this->relationLoaded('tenant')
+            ? $this->tenant
+            : ($this->tenant_id ? Tenant::query()->find($this->tenant_id) : null);
+
+        $limitEnabled = (bool) ($tenant?->fixed_salary_withdraw_limit_enabled);
+        $earlyPercent = $limitEnabled ? (float) ($tenant->fixed_salary_early_withdraw_percent ?? 0) : null;
+        $unlockDay = $limitEnabled ? (int) ($tenant->fixed_salary_full_unlock_day ?? 29) : null;
+        $earlyCap = $limitEnabled ? $tenant->fixedSalaryEarlyWithdrawCap($fixedSalary) : null;
+        $earlyRemaining = $limitEnabled
+            ? round(max(0, $earlyCap - $withdrawalsTotal), 2)
+            : null;
+
+        $fullyUnlocked = true;
+        if ($limitEnabled && $tenant) {
+            $asOfDay = $asOf->copy()->startOfDay();
+            if ($asOfDay->gt($end)) {
+                $fullyUnlocked = true;
+            } elseif ($asOfDay->lt($start)) {
+                $fullyUnlocked = false;
+            } else {
+                $probe = Carbon::create($year, $month, min($asOf->day, $end->day));
+                $fullyUnlocked = $tenant->isFixedSalaryFullyUnlockedForDate($probe);
+            }
+        }
+
+        $withdrawableNow = $fullyUnlocked
+            ? round($remaining, 2)
+            : round(min($remaining, (float) $earlyRemaining), 2);
+
         return [
             'year_month' => $yearMonth,
             'fixed_salary' => round($fixedSalary, 2),
@@ -170,6 +208,14 @@ class Employee extends Model
             'closing_debt_waived' => $closingDebtWaived,
             'remaining' => round($remaining, 2),
             'withdrawals_count' => $withdrawalsCount,
+            'withdraw_limit_enabled' => $limitEnabled,
+            'early_withdraw_percent' => $earlyPercent,
+            'early_withdraw_cap' => $earlyCap,
+            'early_withdraw_remaining' => $earlyRemaining,
+            'full_unlock_day' => $unlockDay,
+            'fully_unlocked' => $fullyUnlocked,
+            'withdrawable_now' => $withdrawableNow,
+            'can_withdraw' => $withdrawableNow > 0.0001,
         ];
     }
 
