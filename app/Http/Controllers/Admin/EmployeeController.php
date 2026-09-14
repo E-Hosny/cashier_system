@@ -1495,6 +1495,7 @@ class EmployeeController extends Controller
                 ->get(['id', 'name']),
             'selectedEmployeeId' => $request->integer('employee_id') ?: null,
             'canClearDebtCarryover' => auth()->user()?->hasRole('super admin') ?? false,
+            'canManagePenalties' => auth()->user()?->hasRole('super admin') ?? false,
         ]);
     }
 
@@ -1608,7 +1609,21 @@ class EmployeeController extends Controller
             $discountDate = $discount->discount_date
                 ? Carbon::parse($discount->discount_date)->toDateString()
                 : Employee::businessDayAnchorFromNow();
-            $discount->delete();
+            $yearMonth = Carbon::parse($discountDate)->format('Y-m');
+            $source = $discount->source;
+
+            // خصم الغياب الشهري يُعاد توليده تلقائياً — نعفي أيام الغياب بدلاً من الحذف المباشر
+            if ($source === EmployeeDiscount::SOURCE_ABSENCE_VACATION) {
+                $attendance = $employee->getMonthlyAttendanceSummary($yearMonth);
+                foreach ($attendance['absence_dates'] as $day) {
+                    if (empty($day['waived'])) {
+                        $employee->waiveAbsenceDay($day['date'], 'إزالة جزاء الغياب من صفحة المسحوبات');
+                    }
+                }
+                $employee->syncAbsenceVacationDeduction($yearMonth);
+            } else {
+                $discount->delete();
+            }
 
             $employee->refresh();
             $todayAmount = $employee->getAmountForBusinessDayAnchor($discountDate);
@@ -1616,16 +1631,63 @@ class EmployeeController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'تم إزالة الخصم بنجاح',
+                'message' => $source === EmployeeDiscount::SOURCE_ABSENCE_VACATION
+                    ? 'تم إعفاء أيام الغياب وإزالة جزاء الغياب'
+                    : 'تم إزالة الخصم بنجاح',
                 'employee' => [
                     'today_amount' => $todayAmount,
                     'today_discount_total' => $discountTotal,
                 ],
+                'fixed_salary_month' => $employee->isFixedSalary()
+                    ? $employee->getFixedSalaryMonthSummary($yearMonth)
+                    : null,
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'حدث خطأ أثناء إزالة الخصم: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * إعفاء / استعادة جزاء يوم غياب معيّن (سوبر أدمن فقط).
+     */
+    public function manageAbsenceDayPenalty(Employee $employee, Request $request)
+    {
+        abort_unless(auth()->user()?->hasRole('super admin'), 403);
+        abort_unless($employee->isFixedSalary(), 422, 'متاح فقط لموظفي الراتب الثابت.');
+
+        $validated = $request->validate([
+            'date' => 'required|date_format:Y-m-d',
+            'action' => 'required|in:waive,restore',
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        $date = $validated['date'];
+        $yearMonth = Carbon::parse($date)->format('Y-m');
+
+        try {
+            if ($validated['action'] === 'waive') {
+                $employee->waiveAbsenceDay($date, $validated['notes'] ?? null);
+                $message = 'تم إعفاء يوم الغياب من الجزاء';
+            } else {
+                $employee->restoreAbsenceDayPenalty($date);
+                $message = 'تم استعادة احتساب يوم الغياب في الجزاء';
+            }
+
+            $employee->syncAbsenceVacationDeduction($yearMonth);
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'attendance' => $employee->getMonthlyAttendanceSummary($yearMonth),
+                'fixed_salary_month' => $employee->getFixedSalaryMonthSummary($yearMonth),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'تعذر تحديث جزاء الغياب: '.$e->getMessage(),
             ], 500);
         }
     }

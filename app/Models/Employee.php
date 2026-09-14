@@ -92,6 +92,11 @@ class Employee extends Model
         return $this->hasMany(EmployeeFixedSalaryDebtWaiver::class);
     }
 
+    public function absenceDayWaivers()
+    {
+        return $this->hasMany(EmployeeAbsenceDayWaiver::class);
+    }
+
     public function isFixedSalary(): bool
     {
         return ($this->salary_type ?? self::SALARY_TYPE_HOURLY) === self::SALARY_TYPE_FIXED;
@@ -364,7 +369,7 @@ class Employee extends Model
      *
      * @return array{
      *   absence_days_count: int,
-     *   absence_dates: array<int, array{date: string, date_arabic: string, day_name: string}>,
+     *   absence_dates: array<int, array{date: string, date_arabic: string, day_name: string, waived: bool}>,
      *   daily_log: array<int, array<string, mixed>>,
      *   allowed_vacation_days: int,
      *   excess_absence_days: int,
@@ -380,6 +385,13 @@ class Employee extends Model
         $todayAnchor = self::businessDayAnchorFromNow();
 
         $this->loadMissing('workSchedules');
+
+        $waivedDates = $this->absenceDayWaivers()
+            ->whereDate('waived_date', '>=', $start->toDateString())
+            ->whereDate('waived_date', '<=', $end->toDateString())
+            ->pluck('waived_date')
+            ->map(fn ($d) => Carbon::parse($d)->toDateString())
+            ->flip();
 
         $rangeStart = $start->copy()->setTime(7, 0, 0);
         $rangeEnd = $end->copy()->addDay()->setTime(7, 0, 0);
@@ -398,6 +410,7 @@ class Employee extends Model
             $isFuture = $dateString > $todayAnchor;
             $isToday = $dateString === $todayAnchor;
             $isOffDay = ! $this->isExpectedWorkingDay($currentDate);
+            $isWaived = $waivedDates->has($dateString);
 
             [$dayStart, $dayEnd] = self::businessDayBoundsForAnchor($dateString);
 
@@ -423,13 +436,15 @@ class Employee extends Model
             })->values()->all();
 
             $hasRecords = count($records) > 0;
-            $isAbsent = ! $isOffDay && ! $isFuture && ! $isToday && ! $hasRecords;
+            $rawAbsent = ! $isOffDay && ! $isFuture && ! $isToday && ! $hasRecords;
+            $isAbsent = $rawAbsent && ! $isWaived;
 
-            if ($isAbsent) {
+            if ($rawAbsent) {
                 $absenceDates[] = [
                     'date' => $dateString,
                     'date_arabic' => $currentDate->format('d/m/Y'),
                     'day_name' => $currentDate->locale('ar')->dayName,
+                    'waived' => $isWaived,
                 ];
             }
 
@@ -439,6 +454,7 @@ class Employee extends Model
                 'day_name' => $currentDate->locale('ar')->dayName,
                 'has_records' => $hasRecords,
                 'is_absent' => $isAbsent,
+                'is_absence_waived' => $rawAbsent && $isWaived,
                 'is_off_day' => $isOffDay,
                 'is_today' => $isToday,
                 'is_future' => $isFuture,
@@ -448,12 +464,13 @@ class Employee extends Model
             $currentDate->addDay();
         }
 
-        $absenceDaysCount = count($absenceDates);
+        // أيام الغياب المحتسبة في الجزاء = غير المعفاة فقط
+        $countedAbsenceDays = collect($absenceDates)->where('waived', false)->count();
         $allowedVacationDays = $this->isFixedSalary()
             ? max(0, (int) ($this->allowed_vacation_days ?? 0))
             : 0;
         $excessAbsenceDays = $this->isFixedSalary()
-            ? max(0, $absenceDaysCount - $allowedVacationDays)
+            ? max(0, $countedAbsenceDays - $allowedVacationDays)
             : 0;
         $dailySalaryRate = $this->isFixedSalary()
             ? round(((float) ($this->fixed_salary ?? 0)) / 30, 2)
@@ -461,7 +478,7 @@ class Employee extends Model
         $absenceDeductionAmount = round($excessAbsenceDays * $dailySalaryRate, 2);
 
         return [
-            'absence_days_count' => $absenceDaysCount,
+            'absence_days_count' => $countedAbsenceDays,
             'absence_dates' => $absenceDates,
             'daily_log' => $dailyLog,
             'allowed_vacation_days' => $allowedVacationDays,
@@ -469,6 +486,32 @@ class Employee extends Model
             'daily_salary_rate' => $dailySalaryRate,
             'absence_deduction_amount' => $absenceDeductionAmount,
         ];
+    }
+
+    public function waiveAbsenceDay(string $date, ?string $notes = null, ?int $createdBy = null): EmployeeAbsenceDayWaiver
+    {
+        $date = Carbon::parse($date)->toDateString();
+
+        return EmployeeAbsenceDayWaiver::query()->updateOrCreate(
+            [
+                'employee_id' => $this->id,
+                'waived_date' => $date,
+            ],
+            [
+                'tenant_id' => $this->tenant_id,
+                'notes' => $notes,
+                'created_by' => $createdBy ?? auth()->id(),
+            ]
+        );
+    }
+
+    public function restoreAbsenceDayPenalty(string $date): void
+    {
+        $date = Carbon::parse($date)->toDateString();
+
+        $this->absenceDayWaivers()
+            ->whereDate('waived_date', $date)
+            ->delete();
     }
 
     /**

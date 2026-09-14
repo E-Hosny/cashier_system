@@ -240,6 +240,7 @@ Route::middleware([
             Route::post('/employees/{employee}/undo-salary-delivery-for-date', [EmployeeController::class, 'undoSalaryDeliveryForDate'])->name('admin.employees.undo-salary-delivery-for-date');
             Route::post('/employees/{employee}/add-discount', [EmployeeController::class, 'addDiscount'])->name('admin.employees.add-discount');
             Route::delete('/employees/{employee}/discounts/{discount}', [EmployeeController::class, 'removeDiscount'])->name('admin.employees.remove-discount');
+            Route::post('/employees/{employee}/absence-day-penalty', [EmployeeController::class, 'manageAbsenceDayPenalty'])->name('admin.employees.absence-day-penalty');
             Route::get('/employees/{employee}/fixed-salary-month-summary', [EmployeeController::class, 'fixedSalaryMonthSummary'])->name('admin.employees.fixed-salary-month-summary');
             Route::post('/employees/{employee}/withdraw-salary', [EmployeeController::class, 'withdrawSalary'])->name('admin.employees.withdraw-salary');
             Route::delete('/employees/{employee}/salary-withdrawals/{withdrawal}', [EmployeeController::class, 'cancelSalaryWithdrawal'])->name('admin.employees.salary-withdrawals.cancel');

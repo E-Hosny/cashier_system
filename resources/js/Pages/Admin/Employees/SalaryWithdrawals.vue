@@ -220,14 +220,29 @@
               <div v-if="employee.discounts.length > 0">
                 <h4 class="font-semibold text-gray-800 mb-2">خصومات الشهر</h4>
                 <ul class="space-y-1 text-sm">
-                  <li v-for="d in employee.discounts" :key="d.id" class="flex justify-between gap-2 border-r-2 border-red-300 pr-2">
+                  <li
+                    v-for="d in employee.discounts"
+                    :key="d.id"
+                    class="flex justify-between gap-2 items-start border-r-2 border-red-300 pr-2"
+                  >
                     <span>
                       {{ d.discount_date }}
                       <span v-if="d.reason" class="text-gray-500">— {{ d.reason }}</span>
                       <span v-if="d.source === 'late_rule'" class="text-[10px] bg-amber-100 text-amber-800 px-1 rounded mr-1">تأخير</span>
                       <span v-else-if="d.source === 'absence_vacation'" class="text-[10px] bg-orange-100 text-orange-800 px-1 rounded mr-1">غياب زائد</span>
                     </span>
-                    <span class="text-red-600 font-medium">-{{ formatPrice(d.amount) }}</span>
+                    <span class="flex items-center gap-2 shrink-0">
+                      <span class="text-red-600 font-medium">-{{ formatPrice(d.amount) }}</span>
+                      <button
+                        v-if="canManagePenalties"
+                        type="button"
+                        class="text-xs text-red-700 hover:text-red-900 font-semibold disabled:opacity-50"
+                        :disabled="loading"
+                        @click="removeDiscount(employee, d)"
+                      >
+                        إزالة
+                      </button>
+                    </span>
                   </li>
                 </ul>
               </div>
@@ -261,14 +276,30 @@
 
                 <div v-if="employee.absence_dates.length > 0">
                   <h5 class="text-sm font-semibold text-orange-900 mb-2">أيام الغياب</h5>
+                  <p v-if="canManagePenalties" class="text-xs text-slate-600 mb-2">
+                    كسوبر أدمن يمكنك إعفاء يوم معيّن من جزاء الغياب أو استعادته.
+                  </p>
                   <div class="flex flex-wrap gap-2">
                     <span
                       v-for="day in employee.absence_dates"
                       :key="day.date"
-                      class="inline-flex items-center gap-1 bg-orange-100 text-orange-900 px-2 py-1 rounded text-xs"
+                      class="inline-flex items-center gap-2 px-2 py-1 rounded text-xs"
+                      :class="day.waived
+                        ? 'bg-emerald-100 text-emerald-900'
+                        : 'bg-orange-100 text-orange-900'"
                     >
                       <span>{{ day.day_name }}</span>
                       <span class="font-medium">{{ day.date_arabic }}</span>
+                      <span v-if="day.waived" class="text-[10px] font-semibold">معفى</span>
+                      <button
+                        v-if="canManagePenalties"
+                        type="button"
+                        class="underline font-semibold disabled:opacity-50"
+                        :disabled="loading"
+                        @click="manageAbsenceDay(employee, day)"
+                      >
+                        {{ day.waived ? 'استعادة الجزاء' : 'إعفاء من الجزاء' }}
+                      </button>
                     </span>
                   </div>
                 </div>
@@ -293,6 +324,7 @@
                           class="border-t"
                           :class="{
                             'bg-orange-50': day.is_absent,
+                            'bg-emerald-50': day.is_absence_waived,
                             'bg-blue-50': day.is_today,
                             'bg-gray-50': day.is_off_day && !day.has_records,
                           }"
@@ -316,6 +348,10 @@
                               v-else-if="day.is_today && day.has_records"
                               class="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded"
                             >حاضر اليوم</span>
+                            <span
+                              v-else-if="day.is_absence_waived"
+                              class="text-xs bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded font-medium"
+                            >غياب معفى من الجزاء</span>
                             <span
                               v-else-if="day.is_absent"
                               class="text-xs bg-orange-100 text-orange-900 px-2 py-0.5 rounded font-medium"
@@ -377,6 +413,7 @@ export default {
     employeeFilterOptions: { type: Array, default: () => [] },
     selectedEmployeeId: { type: Number, default: null },
     canClearDebtCarryover: { type: Boolean, default: false },
+    canManagePenalties: { type: Boolean, default: false },
   },
   data() {
     return {
@@ -497,6 +534,92 @@ export default {
           router.reload({ preserveScroll: true });
         } else {
           alert(data.message || 'تعذر الإلغاء');
+        }
+      } catch (e) {
+        console.error(e);
+        alert('حدث خطأ في الاتصال بالخادم');
+      } finally {
+        this.loading = false;
+      }
+    },
+    async removeDiscount(employee, discount) {
+      if (!this.canManagePenalties || !employee || !discount) return;
+
+      const isAbsence = discount.source === 'absence_vacation';
+      const msg = isAbsence
+        ? `إزالة جزاء الغياب لـ ${employee.name}؟\nسيتم إعفاء كل أيام الغياب المحتسبة هذا الشهر من الجزاء.`
+        : `إزالة الخصم/الجزاء بقيمة ${this.formatPrice(discount.amount)} بتاريخ ${discount.discount_date} لـ ${employee.name}؟`;
+
+      if (!confirm(msg)) return;
+
+      this.loading = true;
+      try {
+        const response = await fetch(
+          route('admin.employees.remove-discount', [employee.id, discount.id]),
+          {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+              Accept: 'application/json',
+            },
+          }
+        );
+        const data = await response.json();
+        if (response.status === 403) {
+          alert('هذه العملية متاحة لدور سوبر أدمن فقط');
+          return;
+        }
+        if (data.success) {
+          alert(data.message || 'تم إزالة الجزاء');
+          router.reload({ preserveScroll: true });
+        } else {
+          alert(data.message || 'تعذر إزالة الجزاء');
+        }
+      } catch (e) {
+        console.error(e);
+        alert('حدث خطأ في الاتصال بالخادم');
+      } finally {
+        this.loading = false;
+      }
+    },
+    async manageAbsenceDay(employee, day) {
+      if (!this.canManagePenalties || !employee || !day?.date) return;
+
+      const action = day.waived ? 'restore' : 'waive';
+      const msg = action === 'waive'
+        ? `إعفاء يوم ${day.date_arabic} لـ ${employee.name} من جزاء الغياب؟`
+        : `استعادة احتساب يوم ${day.date_arabic} لـ ${employee.name} ضمن جزاء الغياب؟`;
+
+      if (!confirm(msg)) return;
+
+      this.loading = true;
+      try {
+        const response = await fetch(
+          route('admin.employees.absence-day-penalty', employee.id),
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+              Accept: 'application/json',
+            },
+            body: JSON.stringify({
+              date: day.date,
+              action,
+            }),
+          }
+        );
+        const data = await response.json();
+        if (response.status === 403) {
+          alert('هذه العملية متاحة لدور سوبر أدمن فقط');
+          return;
+        }
+        if (data.success) {
+          alert(data.message || 'تم بنجاح');
+          router.reload({ preserveScroll: true });
+        } else {
+          alert(data.message || 'تعذر تنفيذ العملية');
         }
       } catch (e) {
         console.error(e);
