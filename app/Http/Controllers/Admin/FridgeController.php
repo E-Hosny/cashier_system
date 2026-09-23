@@ -74,6 +74,7 @@ class FridgeController extends Controller
                 'size_label' => $sizeLabel,
                 'deduct_on_sale' => $c->deduct_on_sale,
                 'is_active' => (bool) $c->is_active,
+                'exclude_from_closing_count' => (bool) $c->exclude_from_closing_count,
                 'ingredient_rules' => $c->ingredientRules->map(fn ($r) => [
                     'raw_material_id' => $r->raw_material_id,
                     'name' => $r->rawMaterial?->name,
@@ -338,6 +339,38 @@ class FridgeController extends Controller
         $config->update(['is_active' => true]);
 
         return back()->with('success', 'تمت استعادة منتج التلاجة من الأرشيف.');
+    }
+
+    public function toggleClosingCountExclusion(FridgeProductConfig $config): RedirectResponse
+    {
+        $user = auth()->user();
+        if (! $user || ! $user->hasRole('super admin')) {
+            abort(403);
+        }
+        if (! $this->isCentralHub()) {
+            abort(403);
+        }
+        if (! $config->is_active) {
+            return back()->withErrors(['fridge' => 'لا يمكن تعديل استثناء منتج مؤرشف. استعده أولاً.']);
+        }
+
+        $config->update([
+            'exclude_from_closing_count' => ! $config->exclude_from_closing_count,
+        ]);
+
+        // نظّف أي صفوف جرد تقفيلة محفوظة لهذا المنتج حتى لا تظهر لاحقاً
+        if ($config->exclude_from_closing_count) {
+            \App\Models\ClosingPhotoReportFridgeCount::query()
+                ->where('fridge_product_config_id', $config->id)
+                ->delete();
+        }
+
+        return back()->with(
+            'success',
+            $config->exclude_from_closing_count
+                ? 'تم استثناء المنتج من جرد التلاجة في التقفيلة.'
+                : 'تم إعادة إدراج المنتج في جرد التلاجة في التقفيلة.'
+        );
     }
 
     public function destroyConfig(FridgeProductConfig $config): RedirectResponse

@@ -65,6 +65,7 @@ class ClosingPhotoReportController extends Controller
         return Inertia::render('Admin/ClosingPhotoReports/Settings', [
             'settings' => [
                 'enabled' => (bool) $tenant->closing_photo_reports_enabled,
+                'show_fridge_in_sales_report' => (bool) $tenant->closing_fridge_show_in_sales_report,
                 'evening_starts_at' => substr((string) $tenant->closing_evening_starts_at, 0, 5) ?: '17:00',
                 'evening_ends_at' => substr((string) $tenant->closing_evening_ends_at, 0, 5) ?: '23:59',
                 'dawn_starts_at' => substr((string) $tenant->closing_dawn_starts_at, 0, 5) ?: '00:00',
@@ -89,6 +90,7 @@ class ClosingPhotoReportController extends Controller
 
         $data = $request->validate([
             'enabled' => ['required', 'boolean'],
+            'show_fridge_in_sales_report' => ['required', 'boolean'],
             'evening_starts_at' => ['required', 'date_format:H:i'],
             'evening_ends_at' => ['required', 'date_format:H:i'],
             'dawn_starts_at' => ['required', 'date_format:H:i'],
@@ -97,6 +99,7 @@ class ClosingPhotoReportController extends Controller
 
         $tenant->update([
             'closing_photo_reports_enabled' => $data['enabled'],
+            'closing_fridge_show_in_sales_report' => $data['show_fridge_in_sales_report'],
             'closing_evening_starts_at' => $data['evening_starts_at'].':00',
             'closing_evening_ends_at' => $data['evening_ends_at'].':59',
             'closing_dawn_starts_at' => $data['dawn_starts_at'].':00',
@@ -226,11 +229,13 @@ class ClosingPhotoReportController extends Controller
                 'branch:id,name',
                 'submittedBy:id,name',
                 'photos',
+                'fridgeCounts.product:id,name,size_variants',
             ])
             ->get()
             ->keyBy(fn (ClosingPhotoReportSubmission $s) => $s->branch_id.'|'.$s->closing_type);
 
         $rows = collect();
+        $fridgeRequiredGlobally = $this->service->activeFridgeConfigs((int) $tenant->id)->isNotEmpty();
 
         foreach ($branches as $branch) {
             foreach ($types as $type) {
@@ -266,17 +271,37 @@ class ClosingPhotoReportController extends Controller
                 $requiredRemaining = max(0, $requiredTotal - $requiredUploaded);
                 $optionalUploaded = $checklist->where('is_required', false)->where('is_uploaded', true)->count();
                 $uploadedTotal = $checklist->where('is_uploaded', true)->count();
-                $isComplete = $requiredTotal > 0 && $requiredRemaining === 0;
+                $photosComplete = $requiredTotal > 0 && $requiredRemaining === 0;
+
+                $fridge = $this->service->fridgePayload($tenant, (int) $branch->id, $submission);
+                $fridgeRequired = (bool) ($fridge['required'] ?? $fridgeRequiredGlobally);
+                $fridgeCounted = (bool) ($fridge['counted'] ?? false);
+                $isComplete = $photosComplete && (! $fridgeRequired || $fridgeCounted);
 
                 if ($isComplete) {
                     $statusLabel = 'مكتمل';
                     $statusDetail = "تم إرسال كل البنود الإجبارية ({$requiredUploaded}/{$requiredTotal})";
-                } elseif ($uploadedTotal === 0) {
+                    if ($fridgeRequired) {
+                        $statusDetail .= ' · جرد التلاجة تم';
+                    }
+                } elseif ($uploadedTotal === 0 && ! $fridgeCounted) {
                     $statusLabel = 'لم يبدأ';
                     $statusDetail = "لم يُرسل أي بند بعد — متبقي {$requiredRemaining} إجباري";
+                    if ($fridgeRequired) {
+                        $statusDetail .= ' · وجرد التلاجة';
+                    }
                 } else {
                     $statusLabel = 'جارٍ الاستكمال';
-                    $statusDetail = "تم إرسال {$requiredUploaded} من {$requiredTotal} إجباري — متبقي {$requiredRemaining}";
+                    $parts = [];
+                    if (! $photosComplete) {
+                        $parts[] = "صور: {$requiredUploaded}/{$requiredTotal} إجباري";
+                    } else {
+                        $parts[] = 'الصور مكتملة';
+                    }
+                    if ($fridgeRequired) {
+                        $parts[] = $fridgeCounted ? 'جرد التلاجة تم' : 'جرد التلاجة متبقي';
+                    }
+                    $statusDetail = implode(' · ', $parts);
                 }
 
                 if ($optionalUploaded > 0) {
@@ -292,6 +317,7 @@ class ClosingPhotoReportController extends Controller
                     'closing_type_label' => ClosingPhotoReportItem::typeLabel($type),
                     'business_date' => $businessDate,
                     'is_complete' => $isComplete,
+                    'photos_complete' => $photosComplete,
                     'completed_at' => optional($submission?->completed_at)?->toDateTimeString(),
                     'submitted_by_name' => $submission?->submittedBy?->name,
                     'status_label' => $statusLabel,
@@ -301,6 +327,7 @@ class ClosingPhotoReportController extends Controller
                     'required_remaining' => $requiredRemaining,
                     'uploaded_total' => $uploadedTotal,
                     'items' => $checklist->all(),
+                    'fridge' => $fridge,
                 ]);
             }
         }
@@ -373,6 +400,7 @@ class ClosingPhotoReportController extends Controller
             'currentRequirement' => $requirement,
             'submission' => $payload['submission'],
             'items' => $payload['items'],
+            'fridge' => $payload['fridge'],
             'canChooseType' => $user->hasRole('super admin'),
             'salesReportUrl' => route('admin.sales.report'),
         ]);
@@ -416,9 +444,17 @@ class ClosingPhotoReportController extends Controller
         $submission->save();
 
         $payload = $this->service->formPayload($tenant, (int) $branchId, $data['closing_type'], $data['business_date']);
-        $message = $submission->isComplete()
-            ? 'تم رفع الصورة واكتملت كل البنود المطلوبة. يمكنك فتح تقارير المبيعات الآن.'
-            : 'تم رفع الصورة.';
+        $photosComplete = (bool) ($payload['submission']['photos_complete'] ?? false);
+        $fridgeRequired = (bool) ($payload['fridge']['required'] ?? false);
+        $fridgeCounted = (bool) ($payload['fridge']['counted'] ?? false);
+
+        if ($payload['submission']['is_complete'] ?? false) {
+            $message = 'تم رفع الصورة واكتملت التقفيلة. يمكنك فتح تقارير المبيعات الآن.';
+        } elseif ($photosComplete && $fridgeRequired && ! $fridgeCounted) {
+            $message = 'تم رفع كل الصور المطلوبة. أكمل إدخال أعداد التلاجة الفعلية.';
+        } else {
+            $message = 'تم رفع الصورة.';
+        }
 
         if ($request->expectsJson() || $request->wantsJson() || $request->ajax()) {
             return response()->json([
@@ -433,6 +469,59 @@ class ClosingPhotoReportController extends Controller
                 ],
                 'submission' => $payload['submission'],
                 'items' => $payload['items'],
+                'fridge' => $payload['fridge'],
+                'is_complete' => (bool) ($payload['submission']['is_complete'] ?? false),
+            ]);
+        }
+
+        return back()->with('success', $message);
+    }
+
+    /**
+     * إدخال أعداد التلاجة الفعلية بعد الصور وتسوية المخزون.
+     */
+    public function storeFridgeCount(Request $request)
+    {
+        $user = Auth::user();
+        abort_unless($user?->hasRole('admin') || $user?->hasRole('super admin'), 403);
+
+        $tenant = $this->currentTenant();
+        abort_unless($tenant->closing_photo_reports_enabled || $user->hasRole('super admin'), 403);
+
+        $data = $request->validate([
+            'closing_type' => ['required', Rule::in([ClosingPhotoReportItem::TYPE_EVENING, ClosingPhotoReportItem::TYPE_DAWN])],
+            'business_date' => ['required', 'date_format:Y-m-d'],
+            'counts' => ['required', 'array', 'min:1'],
+            'counts.*.config_id' => ['required', 'integer', 'exists:fridge_product_configs,id'],
+            'counts.*.actual_qty' => ['required', 'numeric'],
+        ]);
+
+        $branchId = BranchContext::id() ?: $user->branch_id;
+        abort_unless($branchId, 422, 'يجب تحديد الفرع أولاً.');
+
+        $submission = $this->service->getOrCreateSubmission(
+            $tenant,
+            (int) $branchId,
+            $data['closing_type'],
+            $data['business_date'],
+            $user->id
+        );
+
+        $result = $this->service->saveFridgeCounts($submission, $data['counts'], $user);
+        $payload = $this->service->formPayload($tenant, (int) $branchId, $data['closing_type'], $data['business_date']);
+
+        $message = 'تم حفظ أعداد التلاجة وتسوية المخزون.';
+        if ($payload['submission']['is_complete'] ?? false) {
+            $message .= ' اكتملت التقفيلة ويمكن فتح تقارير المبيعات.';
+        }
+
+        if ($request->expectsJson() || $request->wantsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'result' => $result,
+                'submission' => $payload['submission'],
+                'fridge' => $payload['fridge'],
                 'is_complete' => (bool) ($payload['submission']['is_complete'] ?? false),
             ]);
         }

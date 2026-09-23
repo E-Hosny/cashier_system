@@ -248,6 +248,94 @@
               </table>
             </div>
           </div>
+
+          <!-- جرد التلاجة لكل تقفيلة (اختياري من الإعدادات) — آخر الصفحة -->
+          <div v-if="show_fridge_in_sales_report && fridge_closings.length" class="mt-8 space-y-3">
+            <h3 class="text-lg font-bold text-gray-800 text-end">🧊 جرد التلاجة حسب التقفيلة</h3>
+            <div
+              v-for="closing in fridge_closings"
+              :key="`${closing.branch_id}-${closing.business_date}-${closing.closing_type}`"
+              class="rounded-xl border p-4 text-end space-y-3"
+              :class="closing.counted ? 'border-cyan-200 bg-cyan-50/50' : 'border-amber-200 bg-amber-50/40'"
+            >
+              <div class="flex flex-wrap items-start justify-between gap-2">
+                <span
+                  class="px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                  :class="closing.counted ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'"
+                >
+                  {{ closing.counted ? 'تم الجرد' : 'لم يُجرَد بعد' }}
+                </span>
+                <div>
+                  <div class="font-semibold text-gray-900">
+                    {{ closing.branch_name }} · {{ closing.closing_type_label }}
+                  </div>
+                  <div class="text-xs text-gray-600">
+                    اليوم التشغيلي: {{ closing.business_date }}
+                    <span v-if="closing.counted_at"> · {{ closing.counted_at }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <template v-if="closing.counted && closing.summary">
+                <div class="grid grid-cols-2 gap-2 text-xs sm:text-sm">
+                  <div class="rounded-lg bg-white border border-blue-100 p-2">
+                    <div class="text-blue-800 font-semibold">زيادة</div>
+                    <div class="font-bold text-blue-900">+{{ formatQty(closing.summary.surplus_total) }}</div>
+                    <div class="font-bold text-blue-800">{{ formatMoney(closing.summary.surplus_value_total) }}</div>
+                  </div>
+                  <div class="rounded-lg bg-white border border-red-100 p-2">
+                    <div class="text-red-700 font-semibold">عجز</div>
+                    <div class="font-bold text-red-800">-{{ formatQty(closing.summary.shortage_total) }}</div>
+                    <div class="font-bold text-red-700">{{ formatMoney(closing.summary.shortage_value_total) }}</div>
+                  </div>
+                </div>
+                <div class="text-sm text-gray-700">
+                  مطابق: {{ closing.summary.matched_count }} · بفروقات: {{ closing.summary.variance_count }}
+                  <span
+                    v-if="closing.summary.net_value !== undefined"
+                    class="ms-2 font-semibold"
+                    :class="Number(closing.summary.net_value) >= 0 ? 'text-blue-800' : 'text-red-700'"
+                  >
+                    · صافي: {{ formatMoney(closing.summary.net_value, true) }}
+                  </span>
+                </div>
+
+                <div v-if="(closing.summary.shortage_items || []).length" class="space-y-1.5">
+                  <div class="text-sm font-bold text-red-800">منتجات فيها عجز</div>
+                  <div
+                    v-for="item in closing.summary.shortage_items"
+                    :key="`sr-sh-${closing.branch_id}-${closing.closing_type}-${item.config_id}`"
+                    class="rounded-lg border border-red-200 bg-white p-2 text-xs flex flex-wrap justify-between gap-2"
+                  >
+                    <span class="font-semibold text-gray-900">
+                      {{ item.product_name }}
+                      <span v-if="item.size" class="text-gray-500 font-normal">({{ sizeToArabic(item.size) }})</span>
+                      — عجز {{ formatQty(Math.abs(item.diff_qty)) }}
+                    </span>
+                    <span class="text-red-700 font-bold">{{ formatMoney(Math.abs(item.diff_value || 0)) }}</span>
+                  </div>
+                </div>
+
+                <div v-if="(closing.summary.surplus_items || []).length" class="space-y-1.5">
+                  <div class="text-sm font-bold text-blue-800">منتجات فيها زيادة</div>
+                  <div
+                    v-for="item in closing.summary.surplus_items"
+                    :key="`sr-su-${closing.branch_id}-${closing.closing_type}-${item.config_id}`"
+                    class="rounded-lg border border-blue-200 bg-white p-2 text-xs flex flex-wrap justify-between gap-2"
+                  >
+                    <span class="font-semibold text-gray-900">
+                      {{ item.product_name }}
+                      <span v-if="item.size" class="text-gray-500 font-normal">({{ sizeToArabic(item.size) }})</span>
+                      — زيادة +{{ formatQty(item.diff_qty) }}
+                    </span>
+                    <span class="text-blue-800 font-bold">+{{ formatMoney(Math.abs(item.diff_value || 0)) }}</span>
+                  </div>
+                </div>
+              </template>
+
+              <div v-else class="text-sm text-amber-900">لم يتم إدخال جرد التلاجة لهذه التقفيلة.</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -318,6 +406,14 @@ export default {
       default: null,
     },
     reportBranches: {
+      type: Array,
+      default: () => [],
+    },
+    show_fridge_in_sales_report: {
+      type: Boolean,
+      default: false,
+    },
+    fridge_closings: {
       type: Array,
       default: () => [],
     },
@@ -452,6 +548,18 @@ export default {
     },
     formatPrice(price) {
       return price ? Number(price).toFixed(2) : "0.00";
+    },
+    formatQty(value) {
+      const n = Number(value);
+      if (Number.isNaN(n)) return '—';
+      return Number.isInteger(n) ? String(n) : n.toFixed(2);
+    },
+    formatMoney(value, signed = false) {
+      const n = Number(value);
+      if (Number.isNaN(n)) return '—';
+      const abs = Math.abs(n).toFixed(2);
+      const prefix = signed ? (n > 0 ? '+' : n < 0 ? '-' : '') : '';
+      return `${prefix}${abs} ج.م`;
     },
     sizeToArabic(size) {
       if (!size) return 'غير محدد';

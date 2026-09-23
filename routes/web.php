@@ -129,6 +129,7 @@ Route::middleware([
     Route::put('/raw-materials/fridge/configs/{config}', [FridgeController::class, 'updateConfig'])->name('admin.fridge.configs.update');
     Route::post('/raw-materials/fridge/configs/{config}/archive', [FridgeController::class, 'archiveConfig'])->name('admin.fridge.configs.archive');
     Route::post('/raw-materials/fridge/configs/{config}/restore', [FridgeController::class, 'restoreConfig'])->name('admin.fridge.configs.restore');
+    Route::post('/raw-materials/fridge/configs/{config}/closing-count-exclusion', [FridgeController::class, 'toggleClosingCountExclusion'])->name('admin.fridge.configs.closing-count-exclusion');
     Route::delete('/raw-materials/fridge/configs/{config}', [FridgeController::class, 'destroyConfig'])->name('admin.fridge.configs.destroy');
     Route::post('/raw-materials/fridge/combined-labels', [FridgeController::class, 'storeCombinedLabel'])->name('admin.fridge.combined-labels.store');
     Route::post('/raw-materials/fridge/configs/{config}/labels', [FridgeController::class, 'storeLabel'])->name('admin.fridge.labels.store');
@@ -215,6 +216,7 @@ Route::middleware([
     Route::middleware(['admin'])->prefix('admin/closing-photo-reports')->name('admin.closing-photo-reports.')->group(function () {
         Route::get('/submit', [ClosingPhotoReportController::class, 'submitForm'])->name('submit');
         Route::post('/upload', [ClosingPhotoReportController::class, 'upload'])->name('upload');
+        Route::post('/fridge-count', [ClosingPhotoReportController::class, 'storeFridgeCount'])->name('fridge-count');
     });
 
     Route::get('/admin/closing-photo-reports/browse', [ClosingPhotoReportController::class, 'browse'])

@@ -183,6 +183,25 @@ class SalesReportController extends Controller
             ? $this->offerBundleSummary($dateFrom, $dateTo, $hubReportBranchId, $categoryId, $productId, $offerId)
             : [];
 
+        $tenant = \App\Models\Tenant::query()->find($user->tenant_id);
+        $fridgeClosings = [];
+        if ($tenant?->closing_fridge_show_in_sales_report) {
+            $fridgeBranchIds = null;
+            if ($salesReportHub) {
+                $fridgeBranchIds = $hubReportBranchId !== null ? [$hubReportBranchId] : null;
+            } else {
+                $ownBranchId = BranchContext::id() ?: $user->branch_id;
+                $fridgeBranchIds = $ownBranchId ? [(int) $ownBranchId] : [];
+            }
+
+            $fridgeClosings = $closingPhotoReports->salesReportFridgeClosings(
+                $tenant,
+                $dateFrom,
+                $dateTo,
+                $fridgeBranchIds,
+            );
+        }
+
         return Inertia::render('Admin/SalesReport', [
             'sales' => $sales,
             'date' => $dateFrom,
@@ -210,6 +229,8 @@ class SalesReportController extends Controller
             'branchSalesSummary' => $branchSalesSummary,
             'branchExpenseSummary' => $branchExpenseSummary,
             'branchSalarySummary' => $branchSalarySummary,
+            'show_fridge_in_sales_report' => (bool) ($tenant?->closing_fridge_show_in_sales_report),
+            'fridge_closings' => $fridgeClosings,
         ]);
     }
 

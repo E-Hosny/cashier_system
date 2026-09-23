@@ -14,12 +14,30 @@
             <div>
               <h3 class="text-lg font-semibold text-gray-900">تفعيل الخاصية ونوافذ الوقت</h3>
               <p class="text-sm text-gray-600">
-                عند التفعيل، يُمنع المدير من فتح تقارير المبيعات أثناء نافذة التقفيلة حتى يرفع كل الصور الإجبارية.
+                عند التفعيل، يُمنع المدير من فتح تقارير المبيعات أثناء نافذة التقفيلة حتى يرفع كل الصور الإجبارية،
+                ثم يُدخل أعداد التلاجة الفعلية (المنتجات النشطة غير المؤرشفة) لكل فرع؛ النظام يقارن بالمسجّل ويسوّي المخزون.
               </p>
             </div>
             <label class="inline-flex items-center gap-2 text-sm font-medium">
               <input v-model="settingsForm.enabled" type="checkbox" class="rounded border-gray-300 text-indigo-600" />
               تفعيل تقارير صور التقفيلة
+            </label>
+          </div>
+
+          <div class="rounded-xl border border-cyan-200 bg-cyan-50/50 p-4">
+            <label class="inline-flex items-start gap-3 text-sm cursor-pointer">
+              <input
+                v-model="settingsForm.show_fridge_in_sales_report"
+                type="checkbox"
+                class="mt-0.5 rounded border-gray-300 text-indigo-600"
+              />
+              <span>
+                <span class="font-semibold text-gray-900 block">إظهار جرد التلاجة في تقارير المبيعات</span>
+                <span class="text-gray-600">
+                  عند التفعيل تظهر حالة جرد التلاجة (عجز/زيادة بالقيمة والمنتجات) داخل تقرير المبيعات لكل تقفيلة.
+                  عند الإيقاف يبقى تقرير المبيعات كما هو بدون تفاصيل التلاجة.
+                </span>
+              </span>
             </label>
           </div>
 
@@ -174,6 +192,7 @@ export default {
     return {
       settingsForm: useForm({
         enabled: !!this.settings.enabled,
+        show_fridge_in_sales_report: !!this.settings.show_fridge_in_sales_report,
         evening_starts_at: this.settings.evening_starts_at,
         evening_ends_at: this.settings.evening_ends_at,
         dawn_starts_at: this.settings.dawn_starts_at,

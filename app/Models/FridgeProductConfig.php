@@ -24,12 +24,14 @@ class FridgeProductConfig extends Model
         'deduct_on_pull',
         'deduct_on_sale',
         'is_active',
+        'exclude_from_closing_count',
     ];
 
     protected function casts(): array
     {
         return [
             'is_active' => 'boolean',
+            'exclude_from_closing_count' => 'boolean',
         ];
     }
 

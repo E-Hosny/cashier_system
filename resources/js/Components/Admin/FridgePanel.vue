@@ -321,6 +321,15 @@ function deleteArchivedConfig(id) {
     router.delete(route('admin.fridge.configs.destroy', id), { preserveScroll: true });
 }
 
+function toggleClosingCountExclusion(cfg) {
+    const next = !cfg.exclude_from_closing_count;
+    const msg = next
+        ? 'استثناء هذا المنتج من جرد التلاجة في التقفيلة؟ سيبقى ظاهراً في المخزون والكاشير.'
+        : 'إعادة إدراج هذا المنتج في جرد التلاجة في التقفيلة؟';
+    if (!confirm(msg)) return;
+    router.post(route('admin.fridge.configs.closing-count-exclusion', cfg.id), {}, { preserveScroll: true });
+}
+
 function openPrint(cfg) {
     printModal.value = {
         open: true,
@@ -392,6 +401,11 @@ function stockQtyClass(qty) {
 const canEditBranchStock = computed(() => {
     const roles = page.props?.auth?.user?.roles || [];
     return !props.isCentralView && roles.includes('super admin');
+});
+
+const canToggleClosingExclusion = computed(() => {
+    const roles = page.props?.auth?.user?.roles || [];
+    return props.isCentralView && roles.includes('super admin');
 });
 
 function startBranchStockEdit(cfg) {
@@ -533,7 +547,15 @@ function goToBranchScope(branchId) {
             >
                 <div class="flex items-start justify-between gap-3">
                     <div>
-                        <div class="font-bold text-gray-900">{{ cfg.product_name }}</div>
+                        <div class="font-bold text-gray-900">
+                            {{ cfg.product_name }}
+                            <span
+                                v-if="cfg.exclude_from_closing_count"
+                                class="mr-2 text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-bold"
+                            >
+                                مستثنى من الجرد
+                            </span>
+                        </div>
                         <div class="text-sm text-gray-600 mt-1">المقاس: {{ translateSize(cfg.size) }}</div>
                     </div>
                     <div v-if="canManage && isCentralView">
@@ -579,6 +601,15 @@ function goToBranchScope(branchId) {
                 <div v-if="canManage && isCentralView" class="mt-3 flex flex-wrap gap-2 justify-end">
                     <button type="button" class="btn-green text-xs" @click="openPrint(cfg)">تكويد</button>
                     <button type="button" class="btn-yellow text-xs" @click="openEditConfig(cfg)">تعديل</button>
+                    <button
+                        v-if="canToggleClosingExclusion"
+                        type="button"
+                        class="text-xs font-bold py-1 px-3 rounded-lg text-white"
+                        :class="cfg.exclude_from_closing_count ? 'bg-slate-600 hover:bg-slate-700' : 'bg-indigo-600 hover:bg-indigo-700'"
+                        @click="toggleClosingCountExclusion(cfg)"
+                    >
+                        {{ cfg.exclude_from_closing_count ? 'مُستثنى من الجرد' : 'استثناء من الجرد' }}
+                    </button>
                     <button type="button" class="btn-amber text-xs" @click="archiveConfig(cfg.id)">أرشفة</button>
                 </div>
 
@@ -625,7 +656,15 @@ function goToBranchScope(branchId) {
                         <td v-if="canManage && isCentralView" class="p-3 text-center">
                             <input v-model="rowSelection[cfg.id].selected" type="checkbox" class="rounded" />
                         </td>
-                        <td class="p-3 font-semibold">{{ cfg.product_name }}</td>
+                        <td class="p-3 font-semibold">
+                            {{ cfg.product_name }}
+                            <span
+                                v-if="cfg.exclude_from_closing_count"
+                                class="mr-2 text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-bold"
+                            >
+                                مستثنى من جرد التقفيلة
+                            </span>
+                        </td>
                         <td class="p-3">{{ translateSize(cfg.size) }}</td>
                         <td class="p-3">
                             <div class="font-medium">{{ saleModeLabel(cfg.deduct_on_sale) }}</div>
@@ -673,6 +712,15 @@ function goToBranchScope(branchId) {
                             <div class="space-x-1 space-x-reverse">
                             <button type="button" class="btn-green text-xs" @click="openPrint(cfg)">تكويد</button>
                             <button type="button" class="btn-yellow text-xs" @click="openEditConfig(cfg)">تعديل</button>
+                            <button
+                                v-if="canToggleClosingExclusion"
+                                type="button"
+                                class="text-xs font-bold py-1 px-3 rounded-lg text-white"
+                                :class="cfg.exclude_from_closing_count ? 'bg-slate-600 hover:bg-slate-700' : 'bg-indigo-600 hover:bg-indigo-700'"
+                                @click="toggleClosingCountExclusion(cfg)"
+                            >
+                                {{ cfg.exclude_from_closing_count ? 'مُستثنى من الجرد' : 'استثناء من الجرد' }}
+                            </button>
                             <button type="button" class="btn-amber text-xs" @click="archiveConfig(cfg.id)">أرشفة</button>
                             </div>
                         </td>

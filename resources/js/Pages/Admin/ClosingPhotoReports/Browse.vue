@@ -11,7 +11,7 @@
             <div>
               <h3 class="text-lg font-semibold text-gray-900">مراجعة صور التقفيلة</h3>
               <p class="text-sm text-gray-600">
-                عرض فقط — يظهر كل البنود وحالة كل بند (مرفوع / متبقي) لكل فرع.
+                عرض فقط — يظهر كل البنود وحالة كل بند (مرفوع / متبقي) وجرد التلاجة لكل فرع.
               </p>
             </div>
             <span
@@ -129,6 +129,106 @@
               </div>
             </div>
           </div>
+
+          <div
+            v-if="row.fridge?.required"
+            class="rounded-xl border p-4 space-y-3"
+            :class="row.fridge.counted ? 'border-cyan-200 bg-cyan-50/60' : 'border-amber-200 bg-amber-50/40'"
+          >
+            <div class="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <div class="font-semibold text-gray-900">جرد التلاجة</div>
+                <div class="text-xs text-gray-600" v-if="row.fridge.counted_at">
+                  تم الجرد: {{ row.fridge.counted_at }}
+                </div>
+              </div>
+              <span
+                class="px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                :class="row.fridge.counted ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'"
+              >
+                {{ row.fridge.counted ? 'تم الجرد' : 'لم يُجرَد بعد' }}
+              </span>
+            </div>
+
+            <template v-if="row.fridge.counted && row.fridge.summary">
+              <div class="grid grid-cols-2 gap-2 text-xs sm:text-sm">
+                <div class="rounded-lg bg-white border border-blue-100 p-2">
+                  <div class="text-blue-800 font-semibold">زيادة إجمالية</div>
+                  <div class="text-lg font-bold text-blue-900">+{{ formatQty(row.fridge.summary.surplus_total) }}</div>
+                  <div class="mt-0.5 text-sm font-bold text-blue-800">{{ formatMoney(row.fridge.summary.surplus_value_total) }}</div>
+                </div>
+                <div class="rounded-lg bg-white border border-red-100 p-2">
+                  <div class="text-red-700 font-semibold">عجز إجمالي</div>
+                  <div class="text-lg font-bold text-red-800">-{{ formatQty(row.fridge.summary.shortage_total) }}</div>
+                  <div class="mt-0.5 text-sm font-bold text-red-700">{{ formatMoney(row.fridge.summary.shortage_value_total) }}</div>
+                </div>
+              </div>
+              <div class="text-sm text-gray-700 flex flex-wrap gap-x-3 gap-y-1">
+                <span>مطابق: {{ row.fridge.summary.matched_count }} · بفروقات: {{ row.fridge.summary.variance_count }}</span>
+                <span
+                  v-if="row.fridge.summary.net_value !== undefined && row.fridge.summary.net_value !== null"
+                  :class="Number(row.fridge.summary.net_value) >= 0 ? 'text-blue-800 font-semibold' : 'text-red-700 font-semibold'"
+                >
+                  صافي القيمة: {{ formatMoney(row.fridge.summary.net_value, true) }}
+                </span>
+              </div>
+
+              <div v-if="(row.fridge.summary.shortage_items || []).length" class="space-y-2">
+                <div class="font-bold text-red-800 text-sm">منتجات فيها عجز</div>
+                <div
+                  v-for="item in row.fridge.summary.shortage_items"
+                  :key="`browse-shortage-${row.id}-${item.config_id}`"
+                  class="rounded-lg border border-red-200 bg-white p-2.5"
+                >
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="font-semibold text-gray-900 text-sm">
+                      {{ item.product_name }}
+                      <span v-if="item.size" class="text-xs text-gray-500 font-normal">({{ translateSize(item.size) }})</span>
+                    </div>
+                    <div class="text-red-700 font-bold text-sm whitespace-nowrap">{{ formatMoney(Math.abs(item.diff_value || 0)) }}</div>
+                  </div>
+                  <div class="mt-1 text-xs text-gray-700 flex flex-wrap gap-x-3 gap-y-1">
+                    <span>المسجّل: <strong>{{ formatQty(item.system_qty) }}</strong></span>
+                    <span>الفعلي: <strong>{{ formatQty(item.actual_qty) }}</strong></span>
+                    <span class="text-red-700 font-bold">العجز: {{ formatQty(Math.abs(item.diff_qty)) }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="(row.fridge.summary.surplus_items || []).length" class="space-y-2">
+                <div class="font-bold text-blue-800 text-sm">منتجات فيها زيادة</div>
+                <div
+                  v-for="item in row.fridge.summary.surplus_items"
+                  :key="`browse-surplus-${row.id}-${item.config_id}`"
+                  class="rounded-lg border border-blue-200 bg-white p-2.5"
+                >
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="font-semibold text-gray-900 text-sm">
+                      {{ item.product_name }}
+                      <span v-if="item.size" class="text-xs text-gray-500 font-normal">({{ translateSize(item.size) }})</span>
+                    </div>
+                    <div class="text-blue-800 font-bold text-sm whitespace-nowrap">+{{ formatMoney(Math.abs(item.diff_value || 0)) }}</div>
+                  </div>
+                  <div class="mt-1 text-xs text-gray-700 flex flex-wrap gap-x-3 gap-y-1">
+                    <span>المسجّل: <strong>{{ formatQty(item.system_qty) }}</strong></span>
+                    <span>الفعلي: <strong>{{ formatQty(item.actual_qty) }}</strong></span>
+                    <span class="text-blue-800 font-bold">الزيادة: +{{ formatQty(item.diff_qty) }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                v-if="!(row.fridge.summary.shortage_items || []).length && !(row.fridge.summary.surplus_items || []).length"
+                class="text-emerald-800 font-semibold text-sm"
+              >
+                كل المنتجات مطابقة للمخزون المسجّل.
+              </div>
+            </template>
+
+            <div v-else class="text-sm text-amber-900">
+              لم يتم إدخال جرد التلاجة لهذه التقفيلة بعد.
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -198,6 +298,7 @@
 <script>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { router } from '@inertiajs/vue3';
+import { translateSize } from '@/utils/productSizes';
 
 export default {
   layout: AppLayout,
@@ -232,9 +333,22 @@ export default {
     this.unbindLightboxKeys();
   },
   methods: {
+    translateSize,
+    formatQty(value) {
+      const n = Number(value);
+      if (Number.isNaN(n)) return '—';
+      return Number.isInteger(n) ? String(n) : n.toFixed(2);
+    },
+    formatMoney(value, signed = false) {
+      const n = Number(value);
+      if (Number.isNaN(n)) return '—';
+      const abs = Math.abs(n).toFixed(2);
+      const prefix = signed ? (n > 0 ? '+' : n < 0 ? '-' : '') : '';
+      return `${prefix}${abs} ج.م`;
+    },
     statusBadgeClass(row) {
       if (row.is_complete) return 'bg-green-100 text-green-800';
-      if (row.uploaded_total > 0) return 'bg-amber-100 text-amber-900';
+      if (row.uploaded_total > 0 || row.fridge?.counted) return 'bg-amber-100 text-amber-900';
       return 'bg-gray-100 text-gray-700';
     },
     applyFilters() {
