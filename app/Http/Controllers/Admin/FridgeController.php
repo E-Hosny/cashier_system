@@ -59,41 +59,38 @@ class FridgeController extends Controller
      */
     public static function buildIndexPayload(?int $branchId = null): array
     {
-        $configs = FridgeProductConfig::query()
+        $fridgeService = app(FridgeInventoryService::class);
+        $pendingSums = self::pendingUnitsByConfigId();
+
+        $mapConfig = function (FridgeProductConfig $c) use ($fridgeService, $pendingSums) {
+            $variants = $c->product?->size_variants ?? [];
+            $sizeLabel = $c->size !== '' ? $c->size : (count($variants) ? null : '—');
+
+            return [
+                'id' => $c->id,
+                'product_id' => $c->product_id,
+                'product_name' => $c->product?->name ?? '—',
+                'size' => $c->size,
+                'size_label' => $sizeLabel,
+                'deduct_on_sale' => $c->deduct_on_sale,
+                'is_active' => (bool) $c->is_active,
+                'ingredient_rules' => $c->ingredientRules->map(fn ($r) => [
+                    'raw_material_id' => $r->raw_material_id,
+                    'name' => $r->rawMaterial?->name,
+                    'deduct_on_sale' => $r->deduct_on_sale,
+                ])->values()->all(),
+                'sale_ingredients' => $fridgeService->saleIngredientsForDisplay($c),
+                'pending_units' => (float) ($pendingSums[$c->id] ?? 0),
+            ];
+        };
+
+        $allConfigs = FridgeProductConfig::query()
             ->with(['product:id,name,size_variants,type', 'ingredientRules.rawMaterial:id,name,consume_unit'])
-            ->where('is_active', true)
             ->orderBy('id')
             ->get();
 
-        $fridgeService = app(FridgeInventoryService::class);
-
-        $configs = $configs->map(function (FridgeProductConfig $c) use ($fridgeService) {
-                $variants = $c->product?->size_variants ?? [];
-                $sizeLabel = $c->size !== '' ? $c->size : (count($variants) ? null : '—');
-
-                return [
-                    'id' => $c->id,
-                    'product_id' => $c->product_id,
-                    'product_name' => $c->product?->name ?? '—',
-                    'size' => $c->size,
-                    'size_label' => $sizeLabel,
-                    'deduct_on_sale' => $c->deduct_on_sale,
-                    'ingredient_rules' => $c->ingredientRules->map(fn ($r) => [
-                        'raw_material_id' => $r->raw_material_id,
-                        'name' => $r->rawMaterial?->name,
-                        'deduct_on_sale' => $r->deduct_on_sale,
-                    ])->values()->all(),
-                    'sale_ingredients' => $fridgeService->saleIngredientsForDisplay($c),
-                ];
-            });
-
-        $pendingSums = self::pendingUnitsByConfigId();
-
-        $configs = $configs->map(function (array $row) use ($pendingSums) {
-            $row['pending_units'] = (float) ($pendingSums[$row['id']] ?? 0);
-
-            return $row;
-        });
+        $configs = $allConfigs->where('is_active', true)->values()->map($mapConfig);
+        $archivedConfigs = $allConfigs->where('is_active', false)->values()->map($mapConfig);
 
         $categories = Category::forProducts()
             ->orderBy('name')
@@ -114,13 +111,6 @@ class FridgeController extends Controller
                 'category_id' => $p->category_id,
                 'sizes' => collect($p->size_variants ?? [])->pluck('size')->filter()->values()->all(),
             ]);
-
-        $mapStockRow = fn (BranchFridgeStock $s) => [
-            'product_id' => $s->product_id,
-            'product_name' => $s->product?->name ?? '—',
-            'size' => $s->size,
-            'quantity' => (float) $s->quantity,
-        ];
 
         $stocks = [];
         $stocksByBranch = [];
@@ -143,17 +133,30 @@ class FridgeController extends Controller
                 ];
             })->values()->all();
         } else {
+            // كل منتجات التلاجة النشطة في كل فرع — حتى لو الكمية صفر أو سالبة
             $branches = Branch::query()->orderBy('name')->get(['id', 'name']);
             $grouped = BranchFridgeStock::query()
-                ->where('quantity', '>', 0)
-                ->with('product:id,name')
                 ->get()
                 ->groupBy('branch_id');
 
-            $stocksByBranch = $branches->map(function (Branch $branch) use ($grouped, $mapStockRow) {
-                $items = ($grouped[$branch->id] ?? collect())
-                    ->sortBy(fn (BranchFridgeStock $s) => $s->product?->name ?? '')
-                    ->map($mapStockRow)
+            $stocksByBranch = $branches->map(function (Branch $branch) use ($grouped, $configs) {
+                $stockRows = ($grouped[$branch->id] ?? collect())
+                    ->keyBy(fn (BranchFridgeStock $s) => $s->product_id.'|'.($s->size ?? ''));
+
+                $items = $configs
+                    ->map(function (array $cfg) use ($stockRows) {
+                        $key = $cfg['product_id'].'|'.($cfg['size'] ?? '');
+                        $stock = $stockRows->get($key);
+
+                        return [
+                            'config_id' => $cfg['id'],
+                            'product_id' => $cfg['product_id'],
+                            'product_name' => $cfg['product_name'],
+                            'size' => $cfg['size'],
+                            'quantity' => (float) ($stock?->quantity ?? 0),
+                        ];
+                    })
+                    ->sortBy('product_name', SORT_NATURAL | SORT_FLAG_CASE)
                     ->values()
                     ->all();
 
@@ -168,6 +171,7 @@ class FridgeController extends Controller
 
         return [
             'configs' => $configs->values()->all(),
+            'archivedConfigs' => $archivedConfigs->values()->all(),
             'categories' => $categories->values()->all(),
             'finishedProducts' => $finishedProducts->values()->all(),
             'stocks' => $stocks,
@@ -194,27 +198,44 @@ class FridgeController extends Controller
         $product = Product::query()->where('type', 'finished')->findOrFail($data['product_id']);
         $size = (string) ($data['size'] ?? '');
 
-        $exists = FridgeProductConfig::query()
+        $activeExists = FridgeProductConfig::query()
             ->where('product_id', $product->id)
             ->where('size', $size)
+            ->where('is_active', true)
             ->exists();
-        if ($exists) {
+        if ($activeExists) {
             return back()->withErrors(['product_id' => 'هذا المنتج والمقاس مُعرَّفان مسبقاً للتلاجة.']);
         }
 
-        $config = FridgeProductConfig::create([
-            'product_id' => $product->id,
-            'size' => $size,
-            'deduct_on_pull' => FridgeProductConfig::MODE_NONE,
-            'deduct_on_sale' => $data['deduct_on_sale'],
-            'is_active' => true,
-        ]);
+        $archived = FridgeProductConfig::query()
+            ->where('product_id', $product->id)
+            ->where('size', $size)
+            ->where('is_active', false)
+            ->first();
+
+        if ($archived) {
+            $archived->update([
+                'deduct_on_pull' => FridgeProductConfig::MODE_NONE,
+                'deduct_on_sale' => $data['deduct_on_sale'],
+                'is_active' => true,
+            ]);
+            $archived->ingredientRules()->delete();
+            $config = $archived;
+        } else {
+            $config = FridgeProductConfig::create([
+                'product_id' => $product->id,
+                'size' => $size,
+                'deduct_on_pull' => FridgeProductConfig::MODE_NONE,
+                'deduct_on_sale' => $data['deduct_on_sale'],
+                'is_active' => true,
+            ]);
+        }
 
         if ($data['deduct_on_sale'] === 'custom') {
             $this->fridgeService->syncIngredientRules($config, $this->saleRulesFromRequest($data['ingredient_rules'] ?? []));
         }
 
-        return back()->with('success', 'تمت إضافة منتج التلاجة.');
+        return back()->with('success', $archived ? 'تمت استعادة منتج التلاجة من الأرشيف وتفعيله.' : 'تمت إضافة منتج التلاجة.');
     }
 
     public function updateConfig(Request $request, FridgeProductConfig $config): RedirectResponse
@@ -279,11 +300,55 @@ class FridgeController extends Controller
         ])->with('success', 'تم تحديث مخزون التلاجة في الفرع.');
     }
 
+    public function archiveConfig(FridgeProductConfig $config): RedirectResponse
+    {
+        $this->requireHubRoles();
+        if (! $this->isCentralHub()) {
+            abort(403);
+        }
+
+        if (! $config->is_active) {
+            return back()->with('success', 'المنتج مؤرشف مسبقاً.');
+        }
+
+        $hasPending = FridgePendingLabel::query()
+            ->where('fridge_product_config_id', $config->id)
+            ->where('status', FridgePendingLabel::STATUS_PENDING)
+            ->exists();
+        if ($hasPending) {
+            return back()->withErrors(['fridge' => 'لا يمكن الأرشفة: توجد ملصقات بانتظار السحب.']);
+        }
+
+        $config->update(['is_active' => false]);
+
+        return back()->with('success', 'تم أرشفة منتج التلاجة. لن يظهر في المخزون أو الكاشير.');
+    }
+
+    public function restoreConfig(FridgeProductConfig $config): RedirectResponse
+    {
+        $this->requireHubRoles();
+        if (! $this->isCentralHub()) {
+            abort(403);
+        }
+
+        if ($config->is_active) {
+            return back()->with('success', 'المنتج مفعّل مسبقاً.');
+        }
+
+        $config->update(['is_active' => true]);
+
+        return back()->with('success', 'تمت استعادة منتج التلاجة من الأرشيف.');
+    }
+
     public function destroyConfig(FridgeProductConfig $config): RedirectResponse
     {
         $this->requireHubRoles();
         if (! $this->isCentralHub()) {
             abort(403);
+        }
+
+        if ($config->is_active) {
+            return back()->withErrors(['fridge' => 'أرشف المنتج أولاً قبل الحذف النهائي.']);
         }
 
         $hasPending = FridgePendingLabel::query()
@@ -296,7 +361,7 @@ class FridgeController extends Controller
 
         $config->delete();
 
-        return back()->with('success', 'تم حذف منتج التلاجة من الإعدادات.');
+        return back()->with('success', 'تم حذف منتج التلاجة نهائياً من الأرشيف.');
     }
 
     /**
@@ -378,9 +443,14 @@ class FridgeController extends Controller
         ]);
 
         $configs = FridgeProductConfig::query()
+            ->where('is_active', true)
             ->whereIn('id', collect($data['items'])->pluck('fridge_product_config_id'))
             ->get()
             ->keyBy('id');
+
+        if ($configs->count() !== count($data['items'])) {
+            return response()->json(['message' => 'أحد المنتجات غير مفعّل أو غير موجود للتلاجة.'], 422);
+        }
 
         $label = DB::transaction(function () use ($data, $configs) {
             $label = FridgePendingLabel::create([
@@ -423,6 +493,14 @@ class FridgeController extends Controller
         $this->requireHubRoles();
         if (! $this->isCentralHub()) {
             abort(403);
+        }
+
+        if (! $config->is_active) {
+            if ($request->expectsJson() || $request->isXmlHttpRequest()) {
+                return response()->json(['message' => 'لا يمكن تكويد منتج مؤرشف.'], 422);
+            }
+
+            return back()->withErrors(['fridge' => 'لا يمكن تكويد منتج مؤرشف.']);
         }
 
         $data = $request->validate([

@@ -14,6 +14,7 @@ const props = defineProps({
 
 const page = usePage();
 const configs = ref([...(props.fridge?.configs || [])]);
+const archivedConfigs = ref([...(props.fridge?.archivedConfigs || [])]);
 const showConfigForm = ref(false);
 const editingConfig = ref(null);
 const printModal = ref({ open: false, configId: null, labelId: null, productName: '', unit_count: 1, label_code: '', created: false });
@@ -121,6 +122,10 @@ const configForm = useForm({
 
 watch(() => props.fridge?.configs, (v) => {
     if (v) configs.value = [...v];
+}, { deep: true });
+
+watch(() => props.fridge?.archivedConfigs, (v) => {
+    if (v) archivedConfigs.value = [...v];
 }, { deep: true });
 
 const selectedProduct = computed(() =>
@@ -301,8 +306,18 @@ function submitConfig() {
 
 const showSaleIngredients = computed(() => configForm.deduct_on_sale === 'custom');
 
-function deleteConfig(id) {
-    if (!confirm('حذف هذا المنتج من إعدادات التلاجة؟')) return;
+function archiveConfig(id) {
+    if (!confirm('أرشفة هذا المنتج؟ لن يظهر في جدول المخزون ولا في خانة التلاجة بالكاشير.')) return;
+    router.post(route('admin.fridge.configs.archive', id), {}, { preserveScroll: true });
+}
+
+function restoreConfig(id) {
+    if (!confirm('استعادة هذا المنتج من الأرشيف؟')) return;
+    router.post(route('admin.fridge.configs.restore', id), {}, { preserveScroll: true });
+}
+
+function deleteArchivedConfig(id) {
+    if (!confirm('حذف هذا المنتج نهائياً من الأرشيف؟ لا يمكن التراجع.')) return;
     router.delete(route('admin.fridge.configs.destroy', id), { preserveScroll: true });
 }
 
@@ -423,6 +438,9 @@ function goToBranchScope(branchId) {
         <div v-if="page.props.flash?.success" class="bg-green-100 border border-green-300 text-green-900 px-4 py-3 rounded-lg text-sm no-print">
             {{ page.props.flash.success }}
         </div>
+        <div v-if="page.props.errors?.fridge" class="bg-red-100 border border-red-300 text-red-900 px-4 py-3 rounded-lg text-sm no-print">
+            {{ page.props.errors.fridge }}
+        </div>
 
         <div class="flex flex-wrap justify-between items-center gap-3 no-print">
             <p class="text-gray-600 text-sm max-w-2xl">
@@ -436,10 +454,11 @@ function goToBranchScope(branchId) {
             </button>
         </div>
 
-        <!-- مركزي: ملخص كل الفروع -->
+        <!-- مركزي: ملخص كل الفروع — كل المنتجات النشطة بما فيها الصفر والسالب -->
         <div v-if="isCentralView" class="bg-white border border-cyan-200 rounded-xl shadow-sm overflow-hidden">
             <div class="bg-cyan-700 text-white px-4 py-3 font-bold">مخزون التلاجة — كل الفروع</div>
             <div v-if="!fridge.stocksByBranch?.length" class="p-6 text-center text-gray-500 text-sm">لا توجد فروع.</div>
+            <div v-else-if="!configs.length" class="p-6 text-center text-gray-500 text-sm">لا توجد منتجات مفعّلة للتلاجة حالياً.</div>
             <div v-else class="divide-y divide-gray-100">
                 <div v-for="branch in fridge.stocksByBranch" :key="branch.branch_id" class="p-4">
                     <div class="flex flex-wrap justify-between items-center gap-2 mb-2">
@@ -455,7 +474,7 @@ function goToBranchScope(branchId) {
                             </button>
                         </div>
                     </div>
-                    <p v-if="!branch.items.length" class="text-sm text-gray-500">لا يوجد مخزون حالياً في تلاجة هذا الفرع.</p>
+                    <p v-if="!branch.items.length" class="text-sm text-gray-500">لا توجد منتجات مفعّلة للتلاجة.</p>
                     <table v-else class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
                         <thead class="bg-gray-50">
                             <tr>
@@ -468,7 +487,7 @@ function goToBranchScope(branchId) {
                             <tr v-for="item in branch.items" :key="item.product_id + '-' + item.size" class="border-b last:border-0">
                                 <td class="p-2">{{ item.product_name }}</td>
                                 <td class="p-2 text-gray-600">{{ translateSize(item.size) }}</td>
-                                <td class="p-2 text-center font-bold text-cyan-800">{{ item.quantity }}</td>
+                                <td class="p-2 text-center" :class="stockQtyClass(item.quantity)">{{ item.quantity }}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -560,7 +579,7 @@ function goToBranchScope(branchId) {
                 <div v-if="canManage && isCentralView" class="mt-3 flex flex-wrap gap-2 justify-end">
                     <button type="button" class="btn-green text-xs" @click="openPrint(cfg)">تكويد</button>
                     <button type="button" class="btn-yellow text-xs" @click="openEditConfig(cfg)">تعديل</button>
-                    <button type="button" class="btn-red text-xs" @click="deleteConfig(cfg.id)">حذف</button>
+                    <button type="button" class="btn-amber text-xs" @click="archiveConfig(cfg.id)">أرشفة</button>
                 </div>
 
                 <div v-if="canEditBranchStock" class="mt-3 flex flex-wrap gap-2 justify-end">
@@ -654,7 +673,7 @@ function goToBranchScope(branchId) {
                             <div class="space-x-1 space-x-reverse">
                             <button type="button" class="btn-green text-xs" @click="openPrint(cfg)">تكويد</button>
                             <button type="button" class="btn-yellow text-xs" @click="openEditConfig(cfg)">تعديل</button>
-                            <button type="button" class="btn-red text-xs" @click="deleteConfig(cfg.id)">حذف</button>
+                            <button type="button" class="btn-amber text-xs" @click="archiveConfig(cfg.id)">أرشفة</button>
                             </div>
                         </td>
                         <td v-if="canEditBranchStock" class="p-3 text-center whitespace-nowrap">
@@ -683,6 +702,78 @@ function goToBranchScope(branchId) {
                     </tr>
                 </tbody>
             </table>
+        </div>
+
+        <!-- أرشيف منتجات التلاجة -->
+        <div v-if="canManage && isCentralView" class="space-y-3 no-print">
+            <div class="bg-amber-700 text-white px-4 py-3 font-bold rounded-t-xl">
+                أرشيف منتجات التلاجة
+                <span class="font-normal text-amber-100 text-sm mr-2">(لا تظهر في المخزون ولا في الكاشير)</span>
+            </div>
+
+            <div class="sm:hidden space-y-3">
+                <div
+                    v-for="cfg in archivedConfigs"
+                    :key="'archived-mobile-' + cfg.id"
+                    class="bg-white border border-amber-200 rounded-xl shadow p-4"
+                >
+                    <div class="font-bold text-gray-900">{{ cfg.product_name }}</div>
+                    <div class="text-sm text-gray-600 mt-1">المقاس: {{ translateSize(cfg.size) }}</div>
+                    <div class="mt-2 text-sm text-gray-700">{{ saleModeLabel(cfg.deduct_on_sale) }}</div>
+                    <div class="mt-3 flex flex-wrap gap-2 justify-end">
+                        <button type="button" class="btn-green text-xs" @click="restoreConfig(cfg.id)">استعادة</button>
+                        <button type="button" class="btn-red text-xs" @click="deleteArchivedConfig(cfg.id)">حذف نهائي</button>
+                    </div>
+                </div>
+                <div v-if="!archivedConfigs.length" class="p-6 text-center text-gray-500 bg-white rounded-xl border border-amber-100 text-sm">
+                    لا توجد منتجات مؤرشفة.
+                </div>
+            </div>
+
+            <div class="hidden sm:block overflow-x-auto">
+                <table class="min-w-full bg-white shadow rounded-b-xl text-sm border border-amber-200">
+                    <thead class="bg-amber-50 text-amber-950">
+                        <tr>
+                            <th class="p-3 text-right">المنتج</th>
+                            <th class="p-3 text-right">المقاس</th>
+                            <th class="p-3 text-right">مقادير عند البيع</th>
+                            <th class="p-3 text-center">إجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="cfg in archivedConfigs" :key="'archived-' + cfg.id" class="border-t hover:bg-amber-50/40">
+                            <td class="p-3 font-semibold">{{ cfg.product_name }}</td>
+                            <td class="p-3">{{ translateSize(cfg.size) }}</td>
+                            <td class="p-3">
+                                <div class="font-medium">{{ saleModeLabel(cfg.deduct_on_sale) }}</div>
+                                <ul
+                                    v-if="cfg.sale_ingredients?.length"
+                                    class="mt-1.5 space-y-0.5 text-xs text-gray-700"
+                                >
+                                    <li
+                                        v-for="ing in cfg.sale_ingredients"
+                                        :key="'arch-' + cfg.id + '-' + ing.raw_material_id"
+                                        class="flex flex-wrap items-baseline gap-1"
+                                    >
+                                        <span class="font-semibold text-gray-800">{{ ing.name }}</span>
+                                        <span class="text-gray-500">
+                                            {{ formatIngredientQty(ing.quantity_consumed) }} {{ ing.consume_unit }}
+                                            <span class="text-gray-400">/ وحدة</span>
+                                        </span>
+                                    </li>
+                                </ul>
+                            </td>
+                            <td class="p-3 text-center whitespace-nowrap">
+                                <button type="button" class="btn-green text-xs" @click="restoreConfig(cfg.id)">استعادة</button>
+                                <button type="button" class="btn-red text-xs mr-1" @click="deleteArchivedConfig(cfg.id)">حذف نهائي</button>
+                            </td>
+                        </tr>
+                        <tr v-if="!archivedConfigs.length">
+                            <td colspan="4" class="p-8 text-center text-gray-500">لا توجد منتجات مؤرشفة.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <div v-if="showConfigForm" class="fixed inset-0 bg-black/40 z-40 flex items-center justify-center p-4" @click.self="showConfigForm = false">
@@ -843,5 +934,6 @@ function goToBranchScope(branchId) {
 .btn-gray { @apply bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg; }
 .btn-green { @apply bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-3 rounded-lg; }
 .btn-yellow { @apply bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-1 px-3 rounded-lg; }
+.btn-amber { @apply bg-amber-600 hover:bg-amber-700 text-white font-bold py-1 px-3 rounded-lg; }
 .btn-red { @apply bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded-lg; }
 </style>
