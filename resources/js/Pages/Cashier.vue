@@ -199,7 +199,11 @@
               <span v-if="item.type === 'offer'" class="text-xs text-gray-500 block">
                 {{ item.components.map(c => `${c.quantity}× ${c.product_name}${c.size ? ' (' + translateSize(c.size) + ')' : ''}${c.from_fridge ? ' (تلاجة)' : ''}`).join(' + ') }}
               </span>
-              <span v-if="item.size" class="text-xs text-gray-600 block">({{ translateSize(item.size) }})</span> 
+              <span v-if="item.size" class="text-xs text-gray-600 block">({{ translateSize(item.size) }})</span>
+              <span v-if="item.is_required_addon" class="text-[11px] text-amber-700 font-semibold block">
+                إضافة إجبارية
+                <span v-if="!(Number(item.price) > 0)" class="text-gray-500">(مشمولة)</span>
+              </span>
               <br>
               <span class="text-green-600 font-bold">{{ item.price }} جنيه</span>
               <span v-if="item.type === 'offer' && item.original_total" class="text-xs text-gray-400 line-through mr-1">{{ item.original_total }}</span>
@@ -260,6 +264,71 @@
     </div>
 
 
+
+    <!-- نافذة: إضافات إجبارية -->
+    <div
+      v-if="showAddonModal"
+      class="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4"
+      @click.self="cancelAddonModal"
+    >
+      <div class="bg-white rounded-xl shadow-xl p-5 w-full max-w-lg max-h-[90vh] overflow-y-auto" dir="rtl">
+        <h3 class="text-lg font-bold text-amber-900 mb-1 text-center">إضافات إجبارية</h3>
+        <p class="text-sm text-gray-600 mb-4 text-center">
+          للمنتج: <span class="font-semibold text-gray-900">{{ addonModalParent?.name }}</span>
+          <span v-if="addonModalParentSize"> ({{ translateSize(addonModalParentSize) }})</span>
+          × {{ addonModalQuantity }}
+        </p>
+
+        <div v-for="group in addonModalGroups" :key="'ag-' + group.id" class="mb-4 border border-amber-200 rounded-xl p-3 bg-amber-50/50">
+          <div class="font-semibold text-gray-900 mb-1">{{ group.name }}</div>
+          <div class="text-xs text-amber-800 mb-2">
+            اختَر {{ group.required_count }} —
+            محدد الآن: {{ addonSelectionCount(group.id) }}
+          </div>
+          <div class="space-y-2">
+            <label
+              v-for="opt in group.options"
+              :key="'ao-' + group.id + '-' + opt.addon_product_id"
+              class="flex items-center justify-between gap-2 bg-white border rounded-lg px-3 py-2 cursor-pointer hover:border-amber-400"
+              :class="isAddonSelected(group.id, opt.addon_product_id) ? 'border-amber-500 ring-1 ring-amber-300' : 'border-gray-200'"
+            >
+              <div class="flex items-center gap-2 min-w-0">
+                <input
+                  type="checkbox"
+                  class="rounded border-gray-300 text-amber-600"
+                  :checked="isAddonSelected(group.id, opt.addon_product_id)"
+                  @change="toggleAddonSelection(group, opt)"
+                />
+                <span class="text-sm font-medium text-gray-900 truncate">{{ opt.name }}</span>
+              </div>
+              <span class="text-xs font-bold whitespace-nowrap" :class="addonOptionPrice(opt) > 0 ? 'text-green-700' : 'text-gray-500'">
+                <template v-if="addonOptionPrice(opt) > 0">+{{ addonOptionPrice(opt) }} ج</template>
+                <template v-else>مشمول</template>
+                <span v-if="opt.default_size" class="text-gray-500 font-normal"> ({{ translateSize(opt.default_size) }})</span>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div class="flex gap-2 mt-2">
+          <button
+            type="button"
+            class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg disabled:opacity-50"
+            :disabled="!addonSelectionsReady"
+            @click="confirmAddonModal"
+          >
+            تأكيد والإضافة
+          </button>
+          <button
+            type="button"
+            class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 rounded-lg"
+            @click="cancelAddonModal"
+          >
+            إلغاء
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- نافذة: المنتج متوفر في التلاجة -->
     <div
@@ -656,6 +725,14 @@ export default {
       showFridgeAvailableModal: false,
       fridgePromptProduct: null,
       fridgePromptEntry: null,
+      showAddonModal: false,
+      addonModalParent: null,
+      addonModalParentSize: null,
+      addonModalParentPrice: 0,
+      addonModalQuantity: 1,
+      addonModalFromFridge: false,
+      addonModalGroups: [],
+      addonSelections: {}, // groupId -> [productId, ...]
       newShiftType: 'morning',
       isStartingShift: false,
 
@@ -713,13 +790,21 @@ export default {
       return this.showFridgeView ? this.filteredFridgeProducts : this.filteredProducts;
     },
     cartProcessing() {
-      const eligible = this.rawCart.filter((i) => i.type !== 'offer');
+      // حزم الإضافات الإجبارية لا تدخل مطابقة العروض (الأب + الإضافات)
+      const eligible = this.rawCart.filter((i) => i.type !== 'offer' && !i.required_addon_bundle_key);
+      const bundled = this.rawCart.filter((i) => i.required_addon_bundle_key);
       const { applied, remaining } = applyOffersToCart(this.offers, eligible);
-      return { applied, remaining };
+      return { applied, remaining: [...remaining, ...bundled] };
     },
     cart() {
       const { applied, remaining } = this.cartProcessing;
       return [...applied, ...remaining];
+    },
+    addonSelectionsReady() {
+      if (!this.addonModalGroups.length) return false;
+      return this.addonModalGroups.every(
+        (g) => this.addonSelectionCount(g.id) === Number(g.required_count)
+      );
     },
     totalAmount() {
       return this.cart.reduce((total, item) => total + item.price * item.quantity, 0).toFixed(2);
@@ -917,26 +1002,155 @@ export default {
       const price = variant
         ? (parseFloat(variant.price) || 0)
         : (parseFloat(product.price) || 0);
-      const cartItemId = `fridge-${product.product_id}-${size || ''}`;
-      const found = this.rawCart.find(item => item.cartItemId === cartItemId);
-      if (found) {
-        found.quantity += quantity;
-      } else {
-        this.rawCart.push({
-          cartItemId,
-          product_id: product.product_id,
-          category_id: product.category_id ?? this.findProductCategoryId(product.product_id),
-          name: product.name,
+      const catalog = this.liveProducts.find((p) => Number(p.id) === Number(product.product_id));
+      const groups = this.applicableAddonGroups(catalog, size);
+      if (groups.length) {
+        this.openAddonModal({
+          product: {
+            id: product.product_id,
+            name: product.name,
+            category_id: product.category_id ?? this.findProductCategoryId(product.product_id),
+          },
           size,
           price,
           quantity,
-          from_fridge: true,
+          fromFridge: true,
+          groups,
         });
+        product.quantityToAdd = 1;
+        return;
       }
+      this.pushCartLine({
+        product_id: product.product_id,
+        category_id: product.category_id ?? this.findProductCategoryId(product.product_id),
+        name: product.name,
+        size,
+        price,
+        quantity,
+        from_fridge: true,
+      });
       product.quantityToAdd = 1;
     },
     selectVariant(product, variantIndex) {
         product.selectedVariantIndex = variantIndex;
+    },
+    applicableAddonGroups(product, size) {
+      if (!product) return [];
+      const groups = product.required_addon_groups || [];
+      return groups.filter((g) => {
+        if (!g.options?.length) return false;
+        if (!g.size) return true;
+        return String(g.size) === String(size || '');
+      });
+    },
+    openAddonModal({ product, size, price, quantity, fromFridge, groups }) {
+      this.addonModalParent = product;
+      this.addonModalParentSize = size || null;
+      this.addonModalParentPrice = price;
+      this.addonModalQuantity = quantity;
+      this.addonModalFromFridge = !!fromFridge;
+      this.addonModalGroups = groups;
+      const selections = {};
+      groups.forEach((g) => { selections[g.id] = []; });
+      this.addonSelections = selections;
+      this.showAddonModal = true;
+    },
+    cancelAddonModal() {
+      this.showAddonModal = false;
+      this.addonModalParent = null;
+      this.addonModalGroups = [];
+      this.addonSelections = {};
+    },
+    addonSelectionCount(groupId) {
+      return (this.addonSelections[groupId] || []).length;
+    },
+    isAddonSelected(groupId, productId) {
+      return (this.addonSelections[groupId] || []).includes(Number(productId));
+    },
+    addonOptionPrice(opt) {
+      // السعر الإضافي فقط — 0 يعني مشمول في سعر المنتج الأساسي
+      return parseFloat(opt.extra_price) || 0;
+    },
+    toggleAddonSelection(group, opt) {
+      const id = Number(opt.addon_product_id);
+      const current = [...(this.addonSelections[group.id] || [])];
+      const idx = current.indexOf(id);
+      if (idx >= 0) {
+        current.splice(idx, 1);
+      } else {
+        if (current.length >= Number(group.required_count)) {
+          // استبدال آخر اختيار لو وصل للحد
+          current.pop();
+        }
+        current.push(id);
+      }
+      this.addonSelections = { ...this.addonSelections, [group.id]: current };
+    },
+    confirmAddonModal() {
+      if (!this.addonSelectionsReady || !this.addonModalParent) return;
+      const bundleKey = 'addon-' + this.createClientRequestId().slice(0, 20);
+      const parentQty = this.addonModalQuantity;
+      const parent = this.addonModalParent;
+
+      this.rawCart.push({
+        cartItemId: `${bundleKey}-parent`,
+        product_id: parent.id,
+        category_id: parent.category_id,
+        name: parent.name,
+        size: this.addonModalParentSize,
+        price: this.addonModalParentPrice,
+        quantity: parentQty,
+        from_fridge: this.addonModalFromFridge,
+        required_addon_bundle_key: bundleKey,
+        is_required_addon: false,
+      });
+
+      for (const group of this.addonModalGroups) {
+        const selectedIds = this.addonSelections[group.id] || [];
+        for (const productId of selectedIds) {
+          const opt = group.options.find((o) => Number(o.addon_product_id) === Number(productId));
+          if (!opt) continue;
+          const size = opt.default_size || null;
+          const price = this.addonOptionPrice(opt);
+          this.rawCart.push({
+            cartItemId: `${bundleKey}-addon-${group.id}-${productId}`,
+            product_id: opt.addon_product_id,
+            category_id: opt.category_id,
+            name: opt.name,
+            size,
+            price,
+            quantity: parentQty, // لكل وحدة من المنتج الرئيسي
+            from_fridge: false,
+            required_addon_bundle_key: bundleKey,
+            required_addon_group_id: group.id,
+            is_required_addon: true,
+          });
+        }
+      }
+
+      this.cancelAddonModal();
+    },
+    pushCartLine({ product_id, category_id, name, size, price, quantity, from_fridge }) {
+      const cartItemId = from_fridge
+        ? `fridge-${product_id}-${size || ''}`
+        : (size ? `${product_id}-${size}` : `${product_id}`);
+      const found = this.rawCart.find(
+        (item) => item.cartItemId === cartItemId && !item.required_addon_bundle_key
+      );
+      if (found) {
+        found.quantity += quantity;
+        return;
+      }
+      this.rawCart.push({
+        cartItemId,
+        product_id,
+        category_id,
+        name,
+        size: size || null,
+        price,
+        quantity,
+        from_fridge: !!from_fridge,
+      });
     },
     addToCart(product) {
         if (!this.showFridgeView) {
@@ -952,55 +1166,69 @@ export default {
     },
     addToCartDirect(product) {
         const quantity = product.quantityToAdd || 1;
+        let size = null;
+        let price = parseFloat(product.price) || 0;
 
         if (this.hasVariants(product)) {
             const variant = product.size_variants[Number(product.selectedVariantIndex)];
             if (!variant) return;
-            
-            const cartItemId = `${product.id}-${variant.size}`;
-            const found = this.rawCart.find(item => item.cartItemId === cartItemId);
-
-            if (found) {
-                found.quantity += quantity;
-            } else {
-                this.rawCart.push({
-                    cartItemId: cartItemId,
-                    product_id: product.id,
-                    category_id: product.category_id,
-                    name: product.name,
-                    size: variant.size,
-                    price: parseFloat(variant.price) || 0,
-                    quantity: quantity
-                });
-            }
-        } else {
-            const cartItemId = `${product.id}`;
-            const found = this.rawCart.find(item => item.cartItemId === cartItemId);
-
-            if (found) {
-                found.quantity += quantity;
-            } else {
-                this.rawCart.push({
-                    cartItemId: cartItemId,
-                    product_id: product.id,
-                    category_id: product.category_id,
-                    name: product.name,
-                    size: null,
-                    price: parseFloat(product.price) || 0,
-                    quantity: quantity
-                });
-            }
+            size = variant.size;
+            price = parseFloat(variant.price) || 0;
         }
-      product.quantityToAdd = 1;
+
+        const groups = this.applicableAddonGroups(product, size);
+        if (groups.length) {
+          this.openAddonModal({
+            product: { id: product.id, name: product.name, category_id: product.category_id },
+            size,
+            price,
+            quantity,
+            fromFridge: false,
+            groups,
+          });
+          product.quantityToAdd = 1;
+          return;
+        }
+
+        this.pushCartLine({
+          product_id: product.id,
+          category_id: product.category_id,
+          name: product.name,
+          size,
+          price,
+          quantity,
+          from_fridge: false,
+        });
+        product.quantityToAdd = 1;
     },
     removeFromCart(index) {
       const item = this.cart[index];
       if (!item || item.type === 'offer') return;
+      if (item.required_addon_bundle_key) {
+        const key = item.required_addon_bundle_key;
+        this.rawCart = this.rawCart.filter((r) => r.required_addon_bundle_key !== key);
+        return;
+      }
       this.rawCart = this.rawCart.filter((r) => r.cartItemId !== item.cartItemId);
     },
     updateQuantity(index, change) {
       const item = this.cart[index];
       if (!item || item.type === 'offer') return;
+      // للحزم ذات الإضافات: غيّر كمية الأب وكل إضافاته معاً
+      if (item.required_addon_bundle_key) {
+        const key = item.required_addon_bundle_key;
+        const parent = this.rawCart.find((r) => r.required_addon_bundle_key === key && !r.is_required_addon);
+        if (!parent) return;
+        const next = parent.quantity + change;
+        if (next <= 0) {
+          this.rawCart = this.rawCart.filter((r) => r.required_addon_bundle_key !== key);
+          return;
+        }
+        this.rawCart.forEach((r) => {
+          if (r.required_addon_bundle_key === key) r.quantity = next;
+        });
+        return;
+      }
       const raw = this.rawCart.find((r) => r.cartItemId === item.cartItemId);
       if (!raw) return;
       raw.quantity += change;
@@ -1060,6 +1288,9 @@ export default {
             price: parseFloat(item.price) || 0,
             size: item.size,
             from_fridge: !!item.from_fridge,
+            is_required_addon: !!item.is_required_addon,
+            required_addon_bundle_key: item.required_addon_bundle_key || null,
+            required_addon_group_id: item.required_addon_group_id || null,
           }];
         }),
         total_price: parseFloat(this.totalAmount) || 0,

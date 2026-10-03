@@ -8,17 +8,23 @@ use App\Models\Category;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Services\ProductAddonService;
 use App\Support\BranchContext;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use App\Exports\ProductsExport;
 use Maatwebsite\Excel\Facades\Excel;
 
 class ProductController extends Controller
 {
+    public function __construct(private ProductAddonService $productAddonService)
+    {
+    }
+
     public function index(Request $request)
     {
         $query = Product::with(['category', 'ingredients'])
@@ -82,6 +88,12 @@ class ProductController extends Controller
 
         $categories = Category::forProducts()->latest()->get();
         $rawMaterials = Product::where('type', 'raw')->get(['id', 'name', 'unit']);
+        $finishedProducts = Product::query()
+            ->where('type', 'finished')
+            ->where('id', '!=', $product->id)
+            ->published()
+            ->orderBy('name')
+            ->get(['id', 'name', 'category_id']);
         $sizes = [
             ['value' => 'small', 'label' => 'صغير'],
             ['value' => 'medium', 'label' => 'وسط'],
@@ -92,11 +104,29 @@ class ProductController extends Controller
         // Group ingredients by size for the form
         $ingredients_by_size = $product->ingredients->groupBy('pivot.size');
 
+        $addonGroups = $product->addonGroups()
+            ->with('options:id,group_id,addon_product_id,extra_price,sort_order')
+            ->get()
+            ->map(fn ($group) => [
+                'id' => $group->id,
+                'name' => $group->name,
+                'required_count' => (int) $group->required_count,
+                'size' => $group->size,
+                'options' => $group->options->map(fn ($opt) => [
+                    'addon_product_id' => (int) $opt->addon_product_id,
+                    'extra_price' => (float) ($opt->extra_price ?? 0),
+                ])->values()->all(),
+            ])
+            ->values()
+            ->all();
+
         return Inertia::render('Admin/Products/Edit', [
             'product' => $product->append(['available_sizes']),
             'categories' => $categories,
             'sizes' => $sizes,
             'rawMaterials' => $rawMaterials,
+            'finishedProducts' => $finishedProducts,
+            'addonGroups' => $addonGroups,
             'ingredients_by_size' => $ingredients_by_size,
             'backFilters' => $backFilters,
         ]);
@@ -166,6 +196,13 @@ class ProductController extends Controller
             'size_variants.*.ingredients' => 'nullable|array',
             'size_variants.*.ingredients.*.id' => 'required|exists:products,id',
             'size_variants.*.ingredients.*.quantity' => 'required|numeric|min:0.001',
+            'addon_groups' => 'nullable|array',
+            'addon_groups.*.name' => 'nullable|string|max:180',
+            'addon_groups.*.required_count' => 'required_with:addon_groups|integer|min:1|max:20',
+            'addon_groups.*.size' => 'nullable|string|max:50',
+            'addon_groups.*.options' => 'nullable|array',
+            'addon_groups.*.options.*.addon_product_id' => 'required|integer|exists:products,id',
+            'addon_groups.*.options.*.extra_price' => 'nullable|numeric|min:0',
         ]);
         
         if ($request->hasFile('image')) {
@@ -175,7 +212,14 @@ class ProductController extends Controller
             $data['image'] = $request->file('image')->store('products', 'public');
         }
 
+        unset($data['addon_groups']);
         $product->update($data);
+
+        try {
+            $this->productAddonService->syncGroups($product, $request->input('addon_groups', []) ?: []);
+        } catch (ValidationException $e) {
+            return back()->withErrors($e->errors())->withInput();
+        }
 
         // Detach all old ingredients first
         $product->ingredients()->detach();

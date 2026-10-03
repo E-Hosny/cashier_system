@@ -44,6 +44,13 @@ class Product extends Model
             ->withPivot('quantity_consumed', 'size');
     }
 
+    public function addonGroups()
+    {
+        return $this->hasMany(ProductAddonGroup::class, 'product_id')
+            ->orderBy('sort_order')
+            ->orderBy('id');
+    }
+
     public function rawMaterialPendingLabels()
     {
         return $this->hasMany(RawMaterialPendingLabel::class, 'product_id');

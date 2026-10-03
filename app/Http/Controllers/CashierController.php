@@ -24,6 +24,8 @@ use App\Services\FridgeInventoryService;
 use App\Services\InvoiceNumberService;
 use App\Services\OfferMatchingService;
 use App\Services\OrderRefundService;
+use App\Services\ProductAddonService;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -36,20 +38,26 @@ class CashierController extends Controller
         private FridgeInventoryService $fridgeService,
         private OrderRefundService $orderRefundService,
         private OfferMatchingService $offerMatchingService,
+        private ProductAddonService $productAddonService,
     ) {}
 
     //comment
   public function index()
 {
-    $products = Product::with('category')
+    $products = Product::with([
+        'category',
+        'addonGroups.options.addonProduct:id,name,size_variants,category_id,is_draft,type',
+    ])
         ->where('type', 'finished')
         ->published()
         ->latest()->get()->append('available_sizes');
-    // Ensure size_variants is always an array
+    // Ensure size_variants is always an array + attach cashier addon groups
     $products->transform(function ($product) {
         if (is_null($product->size_variants)) {
             $product->size_variants = [];
         }
+        $product->setAttribute('required_addon_groups', $this->productAddonService->groupsForCashier($product));
+
         return $product;
     });
     // فقط فئات المنتجات النهائية — لا تُعرض فئات المواد الخام على شاشة الكاشير
@@ -130,6 +138,9 @@ class CashierController extends Controller
             'items.*.size' => 'nullable|string',
             'items.*.from_fridge' => 'sometimes|boolean',
             'items.*.offer_id' => 'nullable|integer|exists:offers,id',
+            'items.*.is_required_addon' => 'sometimes|boolean',
+            'items.*.required_addon_bundle_key' => 'nullable|string|max:64',
+            'items.*.required_addon_group_id' => 'nullable|integer',
             'items.*.components' => 'nullable|array',
             'items.*.components.*.product_id' => 'required|integer|exists:products,id',
             'items.*.components.*.product_name' => 'required|string',
@@ -140,7 +151,13 @@ class CashierController extends Controller
         ]);
 
         try {
-            $resolved = $this->offerMatchingService->resolveCheckoutItems($data['items']);
+            $withAddons = $this->productAddonService->resolveCheckoutItems($data['items']);
+            $resolved = $this->offerMatchingService->resolveCheckoutItems($withAddons['items']);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => collect($e->errors())->flatten()->first() ?: 'تعذر التحقق من الإضافات الإجبارية.',
+            ], 422);
         } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'success' => false,
