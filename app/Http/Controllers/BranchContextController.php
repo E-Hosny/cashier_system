@@ -12,7 +12,7 @@ class BranchContextController extends Controller
     public function select(Request $request, Branch $branch): RedirectResponse
     {
         $user = Auth::user();
-        abort_unless($user && $user->hasRole('super admin'), 403);
+        abort_unless($user && $user->can('branches.switch'), 403);
         abort_unless((int) $branch->tenant_id === (int) $user->tenant_id, 403);
 
         session(['active_branch_id' => $branch->id]);
@@ -27,7 +27,7 @@ class BranchContextController extends Controller
     public function clear(Request $request): RedirectResponse
     {
         $user = Auth::user();
-        abort_unless($user && $user->hasRole('super admin'), 403);
+        abort_unless($user && $user->can('branches.switch'), 403);
         session()->forget('active_branch_id');
 
         return $this->redirectAfterContextChange(

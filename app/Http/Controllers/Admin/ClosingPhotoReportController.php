@@ -174,12 +174,7 @@ class ClosingPhotoReportController extends Controller
     public function browse(Request $request): Response
     {
         $user = Auth::user();
-        abort_unless(
-            $user?->hasRole('super admin')
-            || $user?->hasRole('admin')
-            || $user?->isHrOnly(),
-            403
-        );
+        abort_unless($user?->can('closing_photos.browse'), 403);
 
         $tenant = $this->currentTenant();
         $businessDate = $request->input('business_date')
@@ -193,8 +188,8 @@ class ClosingPhotoReportController extends Controller
             ->orderBy('name')
             ->get(['id', 'name']);
 
-        // المدير العادي يرى فرعه فقط إن لم يكن سوبر أدمن / HR
-        if ($user->hasRole('admin') && ! $user->hasRole('super admin') && ! $user->isHrOnly()) {
+        // من لا يملك تبديل الفروع وليس HR يرى فرعه فقط
+        if (! $user->can('branches.switch') && ! $user->isHrOnly()) {
             $ownBranchId = BranchContext::id() ?: $user->branch_id;
             $branches = $branches->where('id', (int) $ownBranchId)->values();
             $branchId = $ownBranchId ? (int) $ownBranchId : null;
@@ -353,7 +348,7 @@ class ClosingPhotoReportController extends Controller
                 'evening' => ClosingPhotoReportItem::typeLabel(ClosingPhotoReportItem::TYPE_EVENING),
                 'dawn' => ClosingPhotoReportItem::typeLabel(ClosingPhotoReportItem::TYPE_DAWN),
             ],
-            'canFilterAllBranches' => $user->hasRole('super admin') || $user->isHrOnly(),
+            'canFilterAllBranches' => $user->can('branches.switch') || $user->isHrOnly(),
             'readOnly' => true,
             'enabled' => (bool) $tenant->closing_photo_reports_enabled,
         ]);
@@ -365,10 +360,10 @@ class ClosingPhotoReportController extends Controller
     public function submitForm(Request $request): Response|RedirectResponse
     {
         $user = Auth::user();
-        abort_unless($user?->hasRole('admin') || $user?->hasRole('super admin'), 403);
+        abort_unless($user?->can('closing_photos.submit'), 403);
 
         $tenant = $this->currentTenant();
-        if (! $tenant->closing_photo_reports_enabled && ! $user->hasRole('super admin')) {
+        if (! $tenant->closing_photo_reports_enabled && ! $user->can('closing_photos.settings')) {
             return redirect()->route('admin.sales.report');
         }
 
@@ -401,7 +396,7 @@ class ClosingPhotoReportController extends Controller
             'submission' => $payload['submission'],
             'items' => $payload['items'],
             'fridge' => $payload['fridge'],
-            'canChooseType' => $user->hasRole('super admin'),
+            'canChooseType' => $user->can('closing_photos.settings'),
             'salesReportUrl' => route('admin.sales.report'),
         ]);
     }
@@ -409,10 +404,10 @@ class ClosingPhotoReportController extends Controller
     public function upload(Request $request)
     {
         $user = Auth::user();
-        abort_unless($user?->hasRole('admin') || $user?->hasRole('super admin'), 403);
+        abort_unless($user?->can('closing_photos.submit'), 403);
 
         $tenant = $this->currentTenant();
-        abort_unless($tenant->closing_photo_reports_enabled || $user->hasRole('super admin'), 403);
+        abort_unless($tenant->closing_photo_reports_enabled || $user->can('closing_photos.settings'), 403);
 
         $data = $request->validate([
             'item_id' => ['required', 'integer', 'exists:closing_photo_report_items,id'],
@@ -483,10 +478,10 @@ class ClosingPhotoReportController extends Controller
     public function storeFridgeCount(Request $request)
     {
         $user = Auth::user();
-        abort_unless($user?->hasRole('admin') || $user?->hasRole('super admin'), 403);
+        abort_unless($user?->can('closing_photos.submit'), 403);
 
         $tenant = $this->currentTenant();
-        abort_unless($tenant->closing_photo_reports_enabled || $user->hasRole('super admin'), 403);
+        abort_unless($tenant->closing_photo_reports_enabled || $user->can('closing_photos.settings'), 403);
 
         $data = $request->validate([
             'closing_type' => ['required', Rule::in([ClosingPhotoReportItem::TYPE_EVENING, ClosingPhotoReportItem::TYPE_DAWN])],
@@ -531,7 +526,7 @@ class ClosingPhotoReportController extends Controller
 
     private function assertSuperAdmin(): void
     {
-        abort_unless(Auth::user()?->hasRole('super admin'), 403);
+        abort_unless(Auth::user()?->can('closing_photos.settings'), 403);
     }
 
     private function assertItemTenant(ClosingPhotoReportItem $item): void

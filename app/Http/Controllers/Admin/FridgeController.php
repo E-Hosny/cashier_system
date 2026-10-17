@@ -30,14 +30,14 @@ class FridgeController extends Controller
     private function requireHubRoles(): void
     {
         $user = auth()->user();
-        if (! $user || ! $user->hasAnyRole(['admin', 'super admin'])) {
+        if (! $user || ! $user->canAny(['inventory.fridge_manage', 'inventory.manage'])) {
             abort(403);
         }
     }
 
     private function isCentralHub(): bool
     {
-        return auth()->user()?->hasRole('super admin') && ! BranchContext::hasBranch();
+        return auth()->user()?->canAny(['inventory.fridge_manage', 'inventory.manage']) && ! BranchContext::hasBranch();
     }
 
     private function generateFridgeLabelCode(): string
@@ -269,7 +269,7 @@ class FridgeController extends Controller
     public function updateBranchStock(Request $request, Branch $branch, FridgeProductConfig $config): RedirectResponse
     {
         $user = auth()->user();
-        if (! $user || ! $user->hasRole('super admin')) {
+        if (! $user || ! $user->can('inventory.manage')) {
             abort(403);
         }
         if (! $this->isCentralHub()) {
@@ -344,7 +344,7 @@ class FridgeController extends Controller
     public function toggleClosingCountExclusion(FridgeProductConfig $config): RedirectResponse
     {
         $user = auth()->user();
-        if (! $user || ! $user->hasRole('super admin')) {
+        if (! $user || ! $user->can('inventory.manage')) {
             abort(403);
         }
         if (! $this->isCentralHub()) {
@@ -604,7 +604,7 @@ class FridgeController extends Controller
     public function fridgePullForm(Request $request)
     {
         $user = auth()->user();
-        if (! $user || ! $user->hasAnyRole(['cashier', 'admin', 'super admin'])) {
+        if (! $user || ! $user->canAny(['inventory.fridge_pull', 'inventory.fridge_manage', 'inventory.manage'])) {
             abort(403);
         }
 
@@ -669,7 +669,7 @@ class FridgeController extends Controller
     public function fridgePullStore(Request $request): RedirectResponse
     {
         $user = auth()->user();
-        if (! $user || ! $user->hasAnyRole(['cashier', 'admin', 'super admin'])) {
+        if (! $user || ! $user->canAny(['inventory.fridge_pull', 'inventory.fridge_manage', 'inventory.manage'])) {
             abort(403);
         }
 

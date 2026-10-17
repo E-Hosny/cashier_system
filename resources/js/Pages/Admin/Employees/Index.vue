@@ -236,12 +236,12 @@
                               <span v-if="discount.source === 'late_rule'" class="text-[10px] bg-amber-100 text-amber-800 px-1 rounded mr-1">تلقائي</span>
                             </span>
                             <button
-                              v-if="isSuperAdmin"
+                              v-if="canManagePenalties"
                               type="button"
                               @click="removeDiscount(employee, discount)"
                               :disabled="loading"
                               class="text-[10px] bg-red-100 hover:bg-red-200 text-red-700 px-1.5 py-0.5 rounded font-semibold disabled:opacity-50"
-                              title="إزالة هذا الخصم (سوبر أدمن فقط)"
+                              title="إزالة هذا الخصم"
                             >
                               إزالة
                             </button>
@@ -258,12 +258,12 @@
                         <div class="font-medium flex items-center gap-2 flex-wrap">
                           <span>-{{ formatPrice(discount.amount) }}</span>
                           <button
-                            v-if="isSuperAdmin"
+                            v-if="canManagePenalties"
                             type="button"
                             @click="removeDiscount(employee, discount)"
                             :disabled="loading"
                             class="text-[10px] bg-amber-100 hover:bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded font-semibold disabled:opacity-50"
-                            title="إزالة هذا الخصم المعلّق (سوبر أدمن فقط)"
+                            title="إزالة هذا الخصم المعلّق"
                           >
                             إزالة
                           </button>
@@ -388,16 +388,16 @@
 
                       <!-- زر التعديل -->
                       <Link
-                        v-if="isAdmin || isSuperAdmin"
+                        v-if="hasPermission('employees.manage')"
                         :href="route('admin.employees.edit', employee.id)"
                         class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm font-medium"
                       >
                         ✏️ تعديل
                       </Link>
 
-                      <!-- زر الحذف (سوبر أدمن فقط) -->
+                      <!-- زر الحذف -->
                       <button
-                        v-if="isSuperAdmin"
+                        v-if="canDeleteEmployees"
                         @click="deleteEmployee(employee)"
                         :disabled="loading"
                         class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm font-medium disabled:opacity-50"
@@ -408,6 +408,7 @@
 
                       <!-- زر الخصم -->
                       <button
+                        v-if="canAddDiscount"
                         @click="openDiscountModal(employee)"
                         :disabled="loading"
                         class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-sm font-medium disabled:opacity-50"
@@ -598,6 +599,7 @@ export default {
     canFilterBranches: { type: Boolean, default: false },
     branches: { type: Array, default: () => [] },
     selectedBranchId: { type: Number, default: null },
+    canManagePenalties: { type: Boolean, default: false },
   },
   data() {
     return {
@@ -632,15 +634,22 @@ export default {
     isHrOnly() {
       return this.isHr && !this.isAdmin && !this.isSuperAdmin && !this.isCashier;
     },
+    userPermissions() {
+      const permissions = this.$page.props.auth.user?.permissions;
+      return Array.isArray(permissions) ? permissions : [];
+    },
+    hasPermission() {
+      return (...names) => names.some((name) => this.userPermissions.includes(name));
+    },
     canRecordAttendance() {
-      return !this.isHrOnly;
+      return this.hasPermission('employees.attendance') && !this.isHrOnly;
     },
     isCashier() {
       const roles = this.$page.props.auth.user?.roles;
       return Array.isArray(roles) && roles.includes('cashier');
     },
     pageTitle() {
-      if (this.isAdmin || this.isSuperAdmin) {
+      if (this.hasPermission('employees.manage') || this.isAdmin || this.isSuperAdmin) {
         return 'إدارة الموظفين';
       }
       if (this.isHr) {
@@ -649,7 +658,7 @@ export default {
       return 'الحضور والانصراف';
     },
     pageSubtitle() {
-      if (this.isAdmin || this.isSuperAdmin) {
+      if (this.hasPermission('employees.manage') || this.isAdmin || this.isSuperAdmin) {
         return 'إدارة حضور وانصراف الموظفين';
       }
       if (this.isHr) {
@@ -660,10 +669,10 @@ export default {
       return 'تسجيل حضور وانصراف الموظفين';
     },
     canPaySalary() {
-      return this.isAdmin || this.isSuperAdmin || this.isCashier;
+      return this.hasPermission('employees.salaries');
     },
     showEmployeeAdminActions() {
-      if (!this.isAdmin && !this.isSuperAdmin) {
+      if (!this.hasPermission('employees.manage')) {
         return false;
       }
       // من عرض كل الفروع: الأزرار تظهر بعد اختيار فرع محدد
@@ -677,15 +686,18 @@ export default {
       return false;
     },
     canManageEmployees() {
-      const roles = this.$page.props.auth.user?.roles;
-      const permissions = this.$page.props.auth.user?.permissions;
-      return (Array.isArray(permissions) && permissions.includes('manage employee attendance')) ||
-             (Array.isArray(roles) && (
-               roles.includes('admin') ||
-               roles.includes('cashier') ||
-               roles.includes('super admin') ||
-               roles.includes('hr')
-             ));
+      return this.hasPermission(
+        'employees.view',
+        'employees.manage',
+        'employees.attendance',
+        'manage employee attendance'
+      );
+    },
+    canDeleteEmployees() {
+      return this.hasPermission('employees.delete');
+    },
+    canAddDiscount() {
+      return this.hasPermission('employees.discounts');
     },
     presentEmployees() {
       return this.employees.filter(emp => emp.is_present);
@@ -1189,7 +1201,7 @@ export default {
     },
 
     async removeDiscount(employee, discount) {
-      if (!this.isSuperAdmin || !employee || !discount) return;
+      if (!this.canManagePenalties || !employee || !discount) return;
 
       const amountLabel = this.formatPrice(discount.amount);
       if (!confirm(`هل تريد إزالة الخصم بقيمة ${amountLabel} من الموظف ${employee.name}؟`)) {

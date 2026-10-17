@@ -277,7 +277,7 @@
                 <div v-if="employee.absence_dates.length > 0">
                   <h5 class="text-sm font-semibold text-orange-900 mb-2">أيام الغياب</h5>
                   <p v-if="canManagePenalties" class="text-xs text-slate-600 mb-2">
-                    كسوبر أدمن يمكنك إعفاء يوم معيّن من جزاء الغياب أو استعادته.
+                    يمكنك إعفاء يوم معيّن من جزاء الغياب أو استعادته.
                   </p>
                   <div class="flex flex-wrap gap-2">
                     <span

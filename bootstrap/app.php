@@ -23,6 +23,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'employee.attendance' => \App\Http\Middleware\EmployeeAttendanceMiddleware::class,
             'branch.context' => \App\Http\Middleware\EnsureBranchContext::class,
             'hr.employees_only' => \App\Http\Middleware\RestrictHrToEmployees::class,
+            'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
+            'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
+            'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

@@ -16,7 +16,7 @@ class OfferController extends Controller
 {
     public function index()
     {
-        abort_unless(auth()->user()?->hasRole('super admin'), 403);
+        abort_unless(auth()->user()?->canAny(['offers.view', 'offers.manage']), 403);
 
         $offers = Offer::query()
             ->withCount('rules')
@@ -42,7 +42,7 @@ class OfferController extends Controller
 
     public function create()
     {
-        abort_unless(auth()->user()?->hasRole('super admin'), 403);
+        abort_unless(auth()->user()?->canAny(['offers.view', 'offers.manage']), 403);
 
         return Inertia::render('Admin/Offers/Form', [
             'offer' => null,
@@ -52,7 +52,7 @@ class OfferController extends Controller
 
     public function store(Request $request)
     {
-        abort_unless(auth()->user()?->hasRole('super admin'), 403);
+        abort_unless(auth()->user()?->canAny(['offers.view', 'offers.manage']), 403);
 
         $data = $this->validateOffer($request);
 
@@ -66,7 +66,7 @@ class OfferController extends Controller
 
     public function edit(Offer $offer)
     {
-        abort_unless(auth()->user()?->hasRole('super admin'), 403);
+        abort_unless(auth()->user()?->canAny(['offers.view', 'offers.manage']), 403);
 
         $offer->load(['rules.products.product:id,name']);
 
@@ -100,7 +100,7 @@ class OfferController extends Controller
 
     public function update(Request $request, Offer $offer)
     {
-        abort_unless(auth()->user()?->hasRole('super admin'), 403);
+        abort_unless(auth()->user()?->canAny(['offers.view', 'offers.manage']), 403);
 
         $data = $this->validateOffer($request);
 
@@ -118,7 +118,7 @@ class OfferController extends Controller
 
     public function destroy(Offer $offer)
     {
-        abort_unless(auth()->user()?->hasRole('super admin'), 403);
+        abort_unless(auth()->user()?->canAny(['offers.view', 'offers.manage']), 403);
 
         $offer->delete();
 
@@ -127,7 +127,7 @@ class OfferController extends Controller
 
     public function toggle(Offer $offer)
     {
-        abort_unless(auth()->user()?->hasRole('super admin'), 403);
+        abort_unless(auth()->user()?->canAny(['offers.view', 'offers.manage']), 403);
 
         $offer->update(['is_active' => ! $offer->is_active]);
 

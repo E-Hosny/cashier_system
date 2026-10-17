@@ -26,7 +26,7 @@ class BaristaController extends Controller
 
     public function index()
     {
-        $this->requireAnyRole(['super admin', 'admin', 'barista']);
+        abort_unless(auth()->user()?->can('barista.use'), 403, 'غير مصرح لك بالوصول لهذه الصفحة');
 
         $products = Product::where('type', 'finished')
             ->latest()

@@ -292,6 +292,7 @@ class EmployeeController extends Controller
             'canFilterBranches' => $canFilterBranches && $wantsAllBranches,
             'branches' => $branchOptions->values(),
             'selectedBranchId' => $selectedBranchId,
+            'canManagePenalties' => auth()->user()?->can('employees.manage_penalties') ?? false,
         ]);
     }
 
@@ -305,8 +306,8 @@ class EmployeeController extends Controller
         return Inertia::render('Admin/Employees/Create', [
             'employees' => Employee::where('is_active', true)->select('id', 'name')->orderBy('name')->get(),
             'attendanceGroups' => AttendanceGroup::select('id', 'name', 'max_present')->orderBy('name')->get(),
-            'canManageAttendanceDependency' => auth()->user()?->hasRole('super admin') ?? false,
-            'canManageSchedule' => auth()->user()?->hasAnyRole(['admin', 'super admin']) ?? false,
+            'canManageAttendanceDependency' => auth()->user()?->can('employees.attendance_groups') ?? false,
+            'canManageSchedule' => auth()->user()?->can('employees.attendance_settings') || auth()->user()?->can('employees.manage'),
         ]);
     }
 
@@ -345,7 +346,7 @@ class EmployeeController extends Controller
 
         $validated = $this->normalizeSalaryFields($validated, $request);
 
-        if (! (auth()->user()?->hasAnyRole(['admin', 'super admin']) ?? false)) {
+        if (! (auth()->user()?->can('employees.manage') ?? false)) {
             unset($validated['expected_checkin_time'], $validated['expected_checkout_time'], $validated['grace_minutes'], $validated['late_deductions_enabled'], $validated['use_weekly_schedule'], $validated['work_schedules']);
             unset($validated['salary_type'], $validated['fixed_salary'], $validated['allowed_vacation_days']);
             $validated['salary_type'] = Employee::SALARY_TYPE_HOURLY;
@@ -353,7 +354,7 @@ class EmployeeController extends Controller
             $validated['allowed_vacation_days'] = 0;
         }
 
-        if (! (auth()->user()?->hasRole('super admin') ?? false)) {
+        if (! (auth()->user()?->can('employees.attendance_groups') ?? false)) {
             $validated['attendance_dependency_employee_id'] = null;
             $validated['attendance_group_id'] = null;
             $validated['attendance_group_code'] = null;
@@ -398,8 +399,8 @@ class EmployeeController extends Controller
                 ->orderBy('name')
                 ->get(),
             'attendanceGroups' => AttendanceGroup::select('id', 'name', 'max_present')->orderBy('name')->get(),
-            'canManageAttendanceDependency' => auth()->user()?->hasRole('super admin') ?? false,
-            'canManageSchedule' => auth()->user()?->hasAnyRole(['admin', 'super admin']) ?? false,
+            'canManageAttendanceDependency' => auth()->user()?->can('employees.attendance_groups') ?? false,
+            'canManageSchedule' => auth()->user()?->can('employees.attendance_settings') || auth()->user()?->can('employees.manage'),
         ]);
     }
 
@@ -437,7 +438,7 @@ class EmployeeController extends Controller
             'work_schedules.*.grace_minutes' => 'nullable|integer|min:0|max:120',
         ]);
 
-        $canManageSalaryType = auth()->user()?->hasAnyRole(['admin', 'super admin']) ?? false;
+        $canManageSalaryType = auth()->user()?->can('employees.manage') ?? false;
         if ($canManageSalaryType) {
             $validated = $this->normalizeSalaryFields($validated, $request);
         } else {
@@ -448,7 +449,7 @@ class EmployeeController extends Controller
             unset($validated['expected_checkin_time'], $validated['expected_checkout_time'], $validated['grace_minutes'], $validated['late_deductions_enabled'], $validated['use_weekly_schedule'], $validated['work_schedules']);
         }
 
-        if (! (auth()->user()?->hasRole('super admin') ?? false)) {
+        if (! (auth()->user()?->can('employees.attendance_groups') ?? false)) {
             unset($validated['attendance_dependency_employee_id']);
             unset($validated['attendance_group_id']);
             unset($validated['attendance_group_code']);
@@ -476,7 +477,7 @@ class EmployeeController extends Controller
      */
     public function destroy(Request $request, Employee $employee)
     {
-        abort_unless(auth()->user()?->hasRole('super admin'), 403);
+        abort_unless(auth()->user()?->can('employees.delete'), 403);
 
         if ($employee->isCurrentlyPresent()) {
             return redirect()->route('admin.employees.index', array_filter([
@@ -1391,7 +1392,7 @@ class EmployeeController extends Controller
      */
     public function salaryWithdrawals(Request $request)
     {
-        abort_unless(auth()->user()?->hasAnyRole(['admin', 'super admin']), 403);
+        abort_unless(auth()->user()?->can('employees.manage'), 403);
 
         $request->validate([
             'month' => 'nullable|date_format:Y-m',
@@ -1494,8 +1495,8 @@ class EmployeeController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'name']),
             'selectedEmployeeId' => $request->integer('employee_id') ?: null,
-            'canClearDebtCarryover' => auth()->user()?->hasRole('super admin') ?? false,
-            'canManagePenalties' => auth()->user()?->hasRole('super admin') ?? false,
+            'canClearDebtCarryover' => auth()->user()?->can('employees.delete') ?? false,
+            'canManagePenalties' => auth()->user()?->can('employees.manage_penalties') ?? false,
         ]);
     }
 
@@ -1504,7 +1505,7 @@ class EmployeeController extends Controller
      */
     public function manageFixedSalaryDebtCarryover(Employee $employee, Request $request)
     {
-        abort_unless(auth()->user()?->hasRole('super admin'), 403);
+        abort_unless(auth()->user()?->can('employees.delete'), 403);
         abort_unless($employee->isFixedSalary(), 422, 'متاح فقط لموظفي الراتب الثابت.');
 
         $validated = $request->validate([
@@ -1564,7 +1565,7 @@ class EmployeeController extends Controller
      */
     public function cancelSalaryWithdrawal(Employee $employee, EmployeeSalaryWithdrawal $withdrawal)
     {
-        abort_unless(auth()->user()?->hasAnyRole(['admin', 'super admin']), 403);
+        abort_unless(auth()->user()?->can('employees.manage'), 403);
 
         if ((int) $withdrawal->employee_id !== (int) $employee->id) {
             return response()->json([
@@ -1592,11 +1593,11 @@ class EmployeeController extends Controller
     }
 
     /**
-     * إزالة خصم من موظف (سوبر أدمن فقط)
+     * إزالة خصم من موظف / إعفاء جزاء الغياب المجمع
      */
     public function removeDiscount(Employee $employee, EmployeeDiscount $discount)
     {
-        abort_unless(auth()->user()?->hasRole('super admin'), 403);
+        abort_unless(auth()->user()?->can('employees.manage_penalties'), 403);
 
         if ((int) $discount->employee_id !== (int) $employee->id) {
             return response()->json([
@@ -1651,11 +1652,11 @@ class EmployeeController extends Controller
     }
 
     /**
-     * إعفاء / استعادة جزاء يوم غياب معيّن (سوبر أدمن فقط).
+     * إعفاء / استعادة جزاء يوم غياب معيّن.
      */
     public function manageAbsenceDayPenalty(Employee $employee, Request $request)
     {
-        abort_unless(auth()->user()?->hasRole('super admin'), 403);
+        abort_unless(auth()->user()?->can('employees.manage_penalties'), 403);
         abort_unless($employee->isFixedSalary(), 422, 'متاح فقط لموظفي الراتب الثابت.');
 
         $validated = $request->validate([
@@ -1697,7 +1698,7 @@ class EmployeeController extends Controller
      */
     private function abortUnlessCanAdministerEmployees(): void
     {
-        abort_unless(auth()->user()?->hasAnyRole(['admin', 'super admin']), 403);
+        abort_unless(auth()->user()?->can('employees.manage'), 403);
     }
 
     /**
@@ -1705,7 +1706,7 @@ class EmployeeController extends Controller
      */
     private function abortUnlessCanPayEmployeeSalary(): void
     {
-        abort_unless(auth()->user()?->hasAnyRole(['admin', 'super admin', 'cashier']), 403);
+        abort_unless(auth()->user()?->can('employees.salaries'), 403);
     }
 
     private function abortUnlessCanRecordAttendance(): void
@@ -1733,8 +1734,7 @@ class EmployeeController extends Controller
     {
         $user = auth()->user();
         $hideAmounts = $user
-            && $user->hasRole('cashier')
-            && ! $user->hasAnyRole(['admin', 'super admin']);
+            && ! $user->can('employees.manage');
 
         if (! $hideAmounts) {
             return $summary;

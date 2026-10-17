@@ -15,7 +15,7 @@ class EmployeeAttendanceSettingsController extends Controller
     private function requireManagerRoles(): void
     {
         $user = auth()->user();
-        if (! $user || ! $user->hasAnyRole(['admin', 'super admin'])) {
+        if (! $user || ! $user->can('employees.attendance_settings')) {
             abort(403);
         }
     }

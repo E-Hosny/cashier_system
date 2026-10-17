@@ -23,8 +23,8 @@ class InventoryCountController extends Controller
     private function requireSuperAdminHub(): void
     {
         $user = auth()->user();
-        if (! $user?->hasRole('super admin')) {
-            abort(403, 'خاصية الجرد متاحة لسوبر أدمن فقط');
+        if (! $user?->can('inventory.counts')) {
+            abort(403, 'غير مصرح لك بالوصول لخاصية الجرد');
         }
 
         if (BranchContext::hasBranch()) {

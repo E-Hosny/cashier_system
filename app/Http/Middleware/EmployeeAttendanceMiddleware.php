@@ -15,7 +15,15 @@ class EmployeeAttendanceMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if (!auth()->check() || !auth()->user()->can('manage employee attendance')) {
+        $user = auth()->user();
+        $allowed = $user
+            && (
+                $user->can('employees.attendance')
+                || $user->can('employees.view')
+                || $user->can('manage employee attendance')
+            );
+
+        if (! $allowed) {
             abort(403, 'غير مصرح لك بالوصول لصفحة إدارة الحضور والانصراف');
         }
 

@@ -85,7 +85,7 @@ class CashierShiftController extends Controller
                 'sales_details' => [],
                 'sales_hidden' => true,
                 'sales_hidden_reason' => $salesHidden['reason'] ?? null,
-                'closing_photo_submit_url' => ($user->hasRole('admin') || $user->hasRole('super admin'))
+                'closing_photo_submit_url' => $user->can('closing_photos.submit')
                     ? route('admin.closing-photo-reports.submit', array_filter([
                         'closing_type' => $salesHidden['requirement']['closing_type'] ?? null,
                         'business_date' => $salesHidden['requirement']['business_date'] ?? null,
@@ -219,7 +219,7 @@ class CashierShiftController extends Controller
         $shift = CashierShift::with('user')->findOrFail($request->shift_id);
         
         // التحقق من أن المستخدم يمكنه الوصول لهذه الوردية
-        if ($shift->user_id !== Auth::id() && !Auth::user()->hasRole('admin') && !Auth::user()->hasRole('super admin')) {
+        if ($shift->user_id !== Auth::id() && ! Auth::user()->can('cashier.shifts')) {
             return response()->json([
                 'success' => false,
                 'message' => 'غير مصرح لك بالوصول لهذه الوردية'

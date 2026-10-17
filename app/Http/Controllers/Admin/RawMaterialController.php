@@ -57,16 +57,28 @@ class RawMaterialController extends Controller
 
     private function requireAnyRole(array $roles): void
     {
-        if (! $this->userHasAnyRole($roles)) {
-            abort(403, 'غير مصرح لك بالوصول لهذه الصفحة');
+        $user = auth()->user();
+        if ($user && ($this->userHasAnyRole($roles) || $user->canAny([
+            'inventory.view',
+            'inventory.manage',
+            'inventory.branch_pull',
+            'inventory.fridge_pull',
+            'inventory.counts',
+            'inventory.fridge_manage',
+        ]))) {
+            return;
         }
+
+        abort(403, 'غير مصرح لك بالوصول لهذه الصفحة');
     }
 
     private function isCentralHub(): bool
     {
         $user = auth()->user();
 
-        return $user?->hasRole('super admin') && ! BranchContext::hasBranch();
+        return $user
+            && ! BranchContext::hasBranch()
+            && $user->canAny(['inventory.view', 'inventory.manage']);
     }
 
     private function currentBusinessDayBounds(): array
@@ -187,7 +199,7 @@ class RawMaterialController extends Controller
             'materials' => $materials,
             'todayPulls' => $todayPulls->values()->all(),
             'businessDayLabel' => Employee::periodTextForAnchorDate(Employee::businessDayAnchorFromNow()),
-            'can_edit_stock' => auth()->user()?->hasRole('super admin') ?? false,
+            'can_edit_stock' => auth()->user()?->can('inventory.manage') ?? false,
             'active_inventory_count' => $this->activeInventoryCountSummary($branchId),
         ];
     }
@@ -197,7 +209,7 @@ class RawMaterialController extends Controller
      */
     private function activeInventoryCountSummary(int $branchId): ?array
     {
-        if (! auth()->user()?->hasRole('super admin')) {
+        if (! auth()->user()?->can('inventory.manage')) {
             return null;
         }
 
@@ -217,7 +229,7 @@ class RawMaterialController extends Controller
 
     public function updateBranchStock(Request $request, Branch $branch, Product $raw_material): RedirectResponse
     {
-        if (! auth()->user()?->hasRole('super admin')) {
+        if (! auth()->user()?->can('inventory.manage')) {
             abort(403);
         }
 

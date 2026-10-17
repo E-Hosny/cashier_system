@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Models\Branch;
 use App\Models\Tenant;
 use App\Support\BranchContext;
+use App\Support\TenantFeatures;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -58,6 +59,9 @@ class HandleInertiaRequests extends Middleware
             'logoUrl' => null,
         ];
 
+        $tenantFeatures = TenantFeatures::for(null);
+        $tenant = null;
+
         if ($user && $user->tenant_id) {
             $bid = BranchContext::id();
             if ($bid) {
@@ -77,6 +81,7 @@ class HandleInertiaRequests extends Middleware
                     'name' => $tenant->name,
                     'logoUrl' => $tenant->logo_url,
                 ];
+                $tenantFeatures = TenantFeatures::for($tenant);
             }
 
             if ($user->hasRole('super admin')) {
@@ -107,6 +112,7 @@ class HandleInertiaRequests extends Middleware
             ],
             'branchContext' => $branchContext,
             'tenantBranding' => $tenantBranding,
+            'tenantFeatures' => $tenantFeatures,
         ]);
     }
 }

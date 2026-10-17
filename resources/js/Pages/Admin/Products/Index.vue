@@ -3,11 +3,11 @@
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
       <h1 class="text-3xl font-bold text-gray-800">📦 إدارة المنتجات</h1>
       <div class="flex flex-col sm:flex-row gap-2 sm:gap-4">
-        <a v-if="hasSuperAdminRole" :href="route('admin.products.sales-analysis')" class="btn-blue text-center">📈 تحليل المنتجات</a>
-        <a :href="route('admin.products.cost-analysis')" class="btn-blue text-center">💰 تحليل التكلفة</a>
+        <a v-if="canSalesAnalysis" :href="route('admin.products.sales-analysis')" class="btn-blue text-center">📈 تحليل المنتجات</a>
+        <a v-if="canCostAnalysis" :href="route('admin.products.cost-analysis')" class="btn-blue text-center">💰 تحليل التكلفة</a>
         <a :href="route('admin.products.export')" class="btn-green text-center">📊 تصدير Excel</a>
-        <a v-if="hasSuperAdminRole" :href="route('admin.products.create')" class="btn-primary text-center">➕ إضافة منتج جديد</a>
-        <a :href="route('admin.categories.index')" class="btn-green text-center">📁 إدارة الفئات</a>
+        <a v-if="canManageProducts" :href="route('admin.products.create')" class="btn-primary text-center">➕ إضافة منتج جديد</a>
+        <a v-if="canManageCategories" :href="route('admin.categories.index')" class="btn-green text-center">📁 إدارة الفئات</a>
       </div>
     </div>
 
@@ -106,16 +106,16 @@
               </td>
               <td class="p-4 block sm:table-cell" data-label="الإجراءات">
                 <div class="flex justify-center items-center gap-2 flex-wrap">
-                  <a v-if="hasSuperAdminRole" :href="buildEditUrl(product.id)" class="btn-yellow">✏️ تعديل</a>
+                  <a v-if="canManageProducts" :href="buildEditUrl(product.id)" class="btn-yellow">✏️ تعديل</a>
                   <button
-                    v-if="hasSuperAdminRole"
+                    v-if="canManageProducts"
                     @click="deleteProduct(product.id)"
                     class="btn-red"
                   >
                     🗑️ حذف
                   </button>
                   <button
-                    v-if="hasSuperAdminRole"
+                    v-if="canManageProducts"
                     type="button"
                     :class="product.is_draft ? 'btn-green' : 'btn-draft'"
                     :title="product.is_draft ? 'إظهار المنتج في الكاشير' : 'إخفاء المنتج من الكاشير (مسودة)'"
@@ -168,9 +168,21 @@ export default {
     filters: Object,
   },
   computed: {
-    hasSuperAdminRole() {
-      const roles = this.$page?.props?.auth?.user?.roles;
-      return Array.isArray(roles) && roles.includes('super admin');
+    userPermissions() {
+      const permissions = this.$page?.props?.auth?.user?.permissions;
+      return Array.isArray(permissions) ? permissions : [];
+    },
+    canManageProducts() {
+      return this.userPermissions.includes('products.manage');
+    },
+    canManageCategories() {
+      return this.userPermissions.includes('categories.manage') || this.canManageProducts;
+    },
+    canSalesAnalysis() {
+      return this.userPermissions.includes('products.sales_analysis');
+    },
+    canCostAnalysis() {
+      return this.userPermissions.includes('products.cost_analysis');
     },
   },
   data() {

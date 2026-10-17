@@ -19,7 +19,7 @@ class TenantSettingsController extends Controller
 {
     public function index(): Response
     {
-        abort_unless(Auth::user()?->hasRole('super admin'), 403);
+        abort_unless(Auth::user()?->can('tenant.settings'), 403);
 
         $tenant = $this->currentTenant();
         $categories = Category::forProducts()
@@ -53,7 +53,7 @@ class TenantSettingsController extends Controller
 
     public function updateFixedSalaryWithdrawLimit(Request $request): RedirectResponse
     {
-        abort_unless(Auth::user()?->hasRole('super admin'), 403);
+        abort_unless(Auth::user()?->can('tenant.settings'), 403);
 
         $data = $request->validate([
             'enabled' => 'required|boolean',
@@ -74,7 +74,7 @@ class TenantSettingsController extends Controller
 
     public function updateBranchPrinters(Request $request, Branch $branch): RedirectResponse
     {
-        abort_unless(Auth::user()?->hasRole('super admin'), 403);
+        abort_unless(Auth::user()?->can('tenant.settings'), 403);
         abort_if((int) $branch->tenant_id !== (int) Auth::user()->tenant_id, 403);
 
         $data = $request->validate([
@@ -114,7 +114,7 @@ class TenantSettingsController extends Controller
 
     public function updateLogo(Request $request): RedirectResponse
     {
-        abort_unless(Auth::user()?->hasRole('super admin'), 403);
+        abort_unless(Auth::user()?->can('tenant.settings'), 403);
 
         $request->validate([
             'logo' => ['required', 'image', 'mimes:jpeg,jpg,png,webp,gif', 'max:2048'],
@@ -135,7 +135,7 @@ class TenantSettingsController extends Controller
 
     public function destroyLogo(): RedirectResponse
     {
-        abort_unless(Auth::user()?->hasRole('super admin'), 403);
+        abort_unless(Auth::user()?->can('tenant.settings'), 403);
 
         $tenant = $this->currentTenant();
 
@@ -151,7 +151,7 @@ class TenantSettingsController extends Controller
 
     public function uploadQzKeys(Request $request): RedirectResponse
     {
-        abort_unless(Auth::user()?->hasRole('super admin'), 403);
+        abort_unless(Auth::user()?->can('tenant.settings'), 403);
 
         $request->validate([
             'certificate' => ['required', 'file', 'max:64'],
