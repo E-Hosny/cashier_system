@@ -15,6 +15,7 @@ const props = defineProps({
             full_unlock_day: 29,
         }),
     },
+    salesReportShowRefunds: { type: Boolean, default: false },
     categories: { type: Array, default: () => [] },
     branches: { type: Array, default: () => [] },
 });
@@ -41,6 +42,10 @@ const salaryLimitForm = useForm({
     full_unlock_day: Number(props.fixedSalaryWithdrawLimit?.full_unlock_day ?? 29),
 });
 
+const salesReportRefundsForm = useForm({
+    enabled: !!props.salesReportShowRefunds,
+});
+
 watch(() => props.fixedSalaryWithdrawLimit, (value) => {
     if (!value || salaryLimitForm.processing) {
         return;
@@ -50,8 +55,21 @@ watch(() => props.fixedSalaryWithdrawLimit, (value) => {
     salaryLimitForm.full_unlock_day = Number(value.full_unlock_day ?? 29);
 }, { deep: true });
 
+watch(() => props.salesReportShowRefunds, (value) => {
+    if (salesReportRefundsForm.processing) {
+        return;
+    }
+    salesReportRefundsForm.enabled = !!value;
+});
+
 function submitSalaryWithdrawLimit() {
     salaryLimitForm.put(route('admin.tenant-settings.fixed-salary-withdraw-limit.update'), {
+        preserveScroll: true,
+    });
+}
+
+function submitSalesReportShowRefunds() {
+    salesReportRefundsForm.put(route('admin.tenant-settings.sales-report-show-refunds.update'), {
         preserveScroll: true,
     });
 }
@@ -247,6 +265,37 @@ function saveBranchPrinters(branch) {
                                 </button>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- عرض المرتجعات في تقرير المبيعات -->
+                <div class="bg-white shadow-xl sm:rounded-lg p-6 space-y-4">
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-900">المرتجعات في تقرير المبيعات</h3>
+                        <p class="text-sm text-gray-600 mt-1">
+                            عند التفعيل يظهر كارت «إجمالي قيم الفواتير المرتجعة» في صفحة تقارير المبيعات
+                            حسب وقت الإرجاع خلال الفترة المختارة. الإعداد مغلق افتراضياً.
+                        </p>
+                    </div>
+
+                    <label class="flex items-center gap-3 text-sm text-gray-800">
+                        <input v-model="salesReportRefundsForm.enabled" type="checkbox" class="rounded border-gray-300" />
+                        إظهار إجمالي المرتجعات في تقرير المبيعات
+                    </label>
+
+                    <div v-if="salesReportRefundsForm.errors.enabled" class="text-sm text-red-600">
+                        {{ salesReportRefundsForm.errors.enabled }}
+                    </div>
+
+                    <div class="flex justify-end">
+                        <button
+                            type="button"
+                            class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+                            :disabled="salesReportRefundsForm.processing"
+                            @click="submitSalesReportShowRefunds"
+                        >
+                            {{ salesReportRefundsForm.processing ? 'جاري الحفظ...' : 'حفظ إعداد المرتجعات' }}
+                        </button>
                     </div>
                 </div>
 

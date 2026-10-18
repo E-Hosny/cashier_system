@@ -35,6 +35,7 @@ class TenantSettingsController extends Controller
                 'early_percent' => (float) ($tenant->fixed_salary_early_withdraw_percent ?? 20),
                 'full_unlock_day' => (int) ($tenant->fixed_salary_full_unlock_day ?? 29),
             ],
+            'salesReportShowRefunds' => (bool) $tenant->sales_report_show_refunds,
             'categories' => $categories,
             'branches' => Branch::query()
                 ->where('tenant_id', $tenant->id)
@@ -70,6 +71,23 @@ class TenantSettingsController extends Controller
 
         return redirect()->route('admin.tenant-settings.index')
             ->with('success', 'تم حفظ إعدادات حد سحب الراتب الثابت.');
+    }
+
+    public function updateSalesReportShowRefunds(Request $request): RedirectResponse
+    {
+        abort_unless(Auth::user()?->can('tenant.settings'), 403);
+
+        $data = $request->validate([
+            'enabled' => 'required|boolean',
+        ]);
+
+        $tenant = $this->currentTenant();
+        $tenant->update([
+            'sales_report_show_refunds' => (bool) $data['enabled'],
+        ]);
+
+        return redirect()->route('admin.tenant-settings.index')
+            ->with('success', 'تم حفظ إعداد عرض المرتجعات في تقرير المبيعات.');
     }
 
     public function updateBranchPrinters(Request $request, Branch $branch): RedirectResponse

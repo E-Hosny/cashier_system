@@ -150,10 +150,23 @@
           </div>
 
           <!-- ملخص الإجماليات -->
-          <div v-if="sales.length > 0" class="mt-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div
+            v-if="sales.length > 0 || (show_refunds_in_sales_report && Number(totalRefunds) > 0)"
+            class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4"
+            :class="show_refunds_in_sales_report ? 'xl:grid-cols-5' : 'xl:grid-cols-4'"
+          >
             <div class="text-lg font-bold text-center bg-gray-200 p-4 rounded-lg">
               <div class="text-gray-800 text-sm mb-1">💵 إجمالي المبيعات</div>
               <div class="text-xl">{{ formatPrice(totalSales) }}</div>
+            </div>
+
+            <div
+              v-if="show_refunds_in_sales_report"
+              class="text-lg font-bold text-center bg-rose-50 p-4 rounded-lg"
+            >
+              <div class="text-gray-800 text-sm mb-1">↩️ إجمالي قيم الفواتير المرتجعة</div>
+              <div class="text-xl text-rose-700">{{ formatPrice(totalRefunds) }}</div>
+              <span class="text-xs text-gray-600 block mt-1">حسب وقت الإرجاع في الفترة</span>
             </div>
 
             <div
@@ -379,6 +392,14 @@ export default {
     totalPurchases: Number,
     totalExpenses: Number,
     totalSalaries: Number,
+    show_refunds_in_sales_report: {
+      type: Boolean,
+      default: false,
+    },
+    totalRefunds: {
+      type: Number,
+      default: 0,
+    },
     categories: Array,
     products: Array,
     aggregateAllBranches: {

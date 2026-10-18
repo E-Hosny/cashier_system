@@ -7,9 +7,11 @@ use App\Models\Branch;
 use App\Models\Category;
 use App\Models\Expense;
 use App\Models\Offer;
+use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\SalaryDelivery;
+use App\Models\Tenant;
 use App\Support\BranchContext;
 use App\Services\ClosingPhotoReportService;
 use Carbon\Carbon;
@@ -183,7 +185,7 @@ class SalesReportController extends Controller
             ? $this->offerBundleSummary($dateFrom, $dateTo, $hubReportBranchId, $categoryId, $productId, $offerId)
             : [];
 
-        $tenant = \App\Models\Tenant::query()->find($user->tenant_id);
+        $tenant = Tenant::query()->find($user->tenant_id);
         $fridgeClosings = [];
         if ($tenant?->closing_fridge_show_in_sales_report) {
             $fridgeBranchIds = null;
@@ -202,6 +204,11 @@ class SalesReportController extends Controller
             );
         }
 
+        $showRefundsInSalesReport = (bool) ($tenant?->sales_report_show_refunds);
+        $totalRefunds = $showRefundsInSalesReport
+            ? $this->sumRefundsForReport($dateFrom, $dateTo, $hubReportBranchId)
+            : 0.0;
+
         return Inertia::render('Admin/SalesReport', [
             'sales' => $sales,
             'date' => $dateFrom,
@@ -218,6 +225,8 @@ class SalesReportController extends Controller
             'totalPurchases' => $totalPurchases,
             'totalExpenses' => $totalExpenses,
             'totalSalaries' => $totalSalaries,
+            'show_refunds_in_sales_report' => $showRefundsInSalesReport,
+            'totalRefunds' => $totalRefunds,
             'categories' => $categories,
             'products' => $products,
             'salesReportHub' => $salesReportHub,
@@ -232,6 +241,31 @@ class SalesReportController extends Controller
             'show_fridge_in_sales_report' => (bool) ($tenant?->closing_fridge_show_in_sales_report),
             'fridge_closings' => $fridgeClosings,
         ]);
+    }
+
+    protected function sumRefundsForReport(string $dateFrom, ?string $dateTo, ?int $hubReportBranchId): float
+    {
+        $query = Order::query()
+            ->where('status', 'refunded')
+            ->whereNotNull('refunded_at');
+
+        if ($dateTo) {
+            $query->whereBetween('refunded_at', [
+                Carbon::parse($dateFrom)->setTime(7, 0, 0),
+                Carbon::parse($dateTo)->setTime(7, 0, 0),
+            ]);
+        } else {
+            $query->whereBetween('refunded_at', [
+                Carbon::parse($dateFrom)->setTime(7, 0, 0),
+                Carbon::parse($dateFrom)->addDay()->setTime(7, 0, 0),
+            ]);
+        }
+
+        if ($hubReportBranchId !== null) {
+            $query->where('branch_id', $hubReportBranchId);
+        }
+
+        return (float) $query->sum('total');
     }
 
     protected function normalizeReportBranchId(Request $request): ?int

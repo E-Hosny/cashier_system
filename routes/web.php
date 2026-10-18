@@ -237,6 +237,7 @@ Route::middleware([
         Route::delete('/logo', [TenantSettingsController::class, 'destroyLogo'])->name('logo.destroy');
         Route::put('/branches/{branch}/printers', [TenantSettingsController::class, 'updateBranchPrinters'])->name('branches.printers.update');
         Route::put('/fixed-salary-withdraw-limit', [TenantSettingsController::class, 'updateFixedSalaryWithdrawLimit'])->name('fixed-salary-withdraw-limit.update');
+        Route::put('/sales-report-show-refunds', [TenantSettingsController::class, 'updateSalesReportShowRefunds'])->name('sales-report-show-refunds.update');
         Route::post('/qz-keys', [TenantSettingsController::class, 'uploadQzKeys'])->name('qz-keys.upload');
         Route::get('/qz-trust-package', [QzTrayController::class, 'downloadTrustPackage'])->name('qz-trust-package.download');
     });
