@@ -21,6 +21,7 @@ class Employee extends Model
     protected $fillable = [
         'name',
         'hourly_rate',
+        'hourly_payout_cap',
         'salary_type',
         'fixed_salary',
         'allowed_vacation_days',
@@ -42,6 +43,7 @@ class Employee extends Model
 
     protected $casts = [
         'hourly_rate' => 'decimal:2',
+        'hourly_payout_cap' => 'decimal:2',
         'fixed_salary' => 'decimal:2',
         'allowed_vacation_days' => 'integer',
         'is_active' => 'boolean',
@@ -938,7 +940,32 @@ class Employee extends Model
         $baseAmount = $hours * (float) $this->hourly_rate;
         $discountTotal = $this->getDiscountTotalForBusinessDayAnchor($anchorDate);
 
-        return max(0, $baseAmount - $discountTotal);
+        return $this->capHourlyPayout(max(0, $baseAmount - $discountTotal));
+    }
+
+    /**
+     * سقف القبض ليوم عمل واحد. null = بدون سقف.
+     */
+    public function hourlyPayoutCapAmount(): ?float
+    {
+        if ($this->isFixedSalary() || $this->hourly_payout_cap === null) {
+            return null;
+        }
+
+        return round((float) $this->hourly_payout_cap, 2);
+    }
+
+    /**
+     * يقص المبلغ المستحق ليوم العمل إذا تجاوز سقف القبض.
+     */
+    public function capHourlyPayout(float $amount): float
+    {
+        $cap = $this->hourlyPayoutCapAmount();
+        if ($cap === null) {
+            return round($amount, 2);
+        }
+
+        return round(min($amount, $cap), 2);
     }
 
     /**

@@ -67,6 +67,24 @@
               <div v-if="errors.hourly_rate" class="text-red-500 text-sm mt-1">{{ errors.hourly_rate }}</div>
             </div>
 
+            <div v-if="form.salary_type === 'hourly' && canSetPayoutCap" class="mb-4">
+              <label class="block text-gray-700 text-sm font-bold mb-2">
+                الحد الأقصى للقبض في يوم العمل (جنيه)
+              </label>
+              <input
+                v-model="form.hourly_payout_cap"
+                type="number"
+                step="0.01"
+                min="0"
+                class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="اتركه فارغاً بدون حد"
+              />
+              <p class="text-xs text-gray-500 mt-1">
+                لو قيمة الساعات بعد الخصم أكبر من هذا المبلغ، يُقبض الموظف هذا الحد فقط في يوم العمل.
+              </p>
+              <div v-if="errors.hourly_payout_cap" class="text-red-500 text-sm mt-1">{{ errors.hourly_payout_cap }}</div>
+            </div>
+
             <!-- الراتب الثابت -->
             <div v-if="form.salary_type === 'fixed'" class="mb-4">
               <label class="block text-gray-700 text-sm font-bold mb-2">
@@ -268,6 +286,10 @@ export default {
       type: Boolean,
       default: false,
     },
+    canSetPayoutCap: {
+      type: Boolean,
+      default: false,
+    },
     attendanceGroups: {
       type: Array,
       default: () => [],
@@ -278,6 +300,7 @@ export default {
       name: props.employee.name,
       salary_type: props.employee.salary_type || 'hourly',
       hourly_rate: props.employee.hourly_rate,
+      hourly_payout_cap: props.employee.hourly_payout_cap ?? '',
       fixed_salary: props.employee.fixed_salary || '',
       allowed_vacation_days: props.employee.allowed_vacation_days ?? 0,
       phone: props.employee.phone || '',

@@ -251,6 +251,10 @@
                         <div class="font-semibold text-green-600">
                           {{ formatPrice(day.amount) }}
                         </div>
+                        <div v-if="day.cap_applied" class="text-xs text-amber-700 mt-1">
+                          سقف القبض: {{ formatPrice(day.payout_cap) }}
+                          <span v-if="day.amount_before_cap != null"> (قبل السقف {{ formatPrice(day.amount_before_cap) }})</span>
+                        </div>
                         <div v-if="day.discount_total > 0" class="text-xs text-red-600 mt-1 space-y-1">
                           <div>خصومات: -{{ formatPrice(day.discount_total) }}</div>
                           <div v-if="day.base_amount" class="text-gray-500">

@@ -190,7 +190,7 @@ class EmployeeController extends Controller
             $discountTotal = round((float) $discounts->sum('amount'), 2);
             $todayAmount = 0.0;
             if (! $isFixed) {
-                $todayAmount = max(0, round(($todayHours * (float) $employee->hourly_rate) - $discountTotal, 2));
+                $todayAmount = $employee->capHourlyPayout(max(0, ($todayHours * (float) $employee->hourly_rate) - $discountTotal));
             }
 
             $pendingMapped = $pending->map(fn (EmployeeDiscount $d) => [
@@ -308,6 +308,7 @@ class EmployeeController extends Controller
             'attendanceGroups' => AttendanceGroup::select('id', 'name', 'max_present')->orderBy('name')->get(),
             'canManageAttendanceDependency' => auth()->user()?->can('employees.attendance_groups') ?? false,
             'canManageSchedule' => auth()->user()?->can('employees.attendance_settings') || auth()->user()?->can('employees.manage'),
+            'canSetPayoutCap' => auth()->user()?->can('employees.set_payout_cap') ?? false,
         ]);
     }
 
@@ -322,6 +323,7 @@ class EmployeeController extends Controller
             'name' => 'required|string|max:255',
             'salary_type' => ['nullable', Rule::in([Employee::SALARY_TYPE_HOURLY, Employee::SALARY_TYPE_FIXED])],
             'hourly_rate' => 'nullable|numeric|min:0',
+            'hourly_payout_cap' => 'nullable|numeric|min:0',
             'fixed_salary' => 'nullable|numeric|min:0',
             'allowed_vacation_days' => 'nullable|integer|min:0|max:31',
             'phone' => 'nullable|string|max:20',
@@ -401,6 +403,7 @@ class EmployeeController extends Controller
             'attendanceGroups' => AttendanceGroup::select('id', 'name', 'max_present')->orderBy('name')->get(),
             'canManageAttendanceDependency' => auth()->user()?->can('employees.attendance_groups') ?? false,
             'canManageSchedule' => auth()->user()?->can('employees.attendance_settings') || auth()->user()?->can('employees.manage'),
+            'canSetPayoutCap' => auth()->user()?->can('employees.set_payout_cap') ?? false,
         ]);
     }
 
@@ -415,6 +418,7 @@ class EmployeeController extends Controller
             'name' => 'required|string|max:255',
             'salary_type' => ['nullable', Rule::in([Employee::SALARY_TYPE_HOURLY, Employee::SALARY_TYPE_FIXED])],
             'hourly_rate' => 'nullable|numeric|min:0',
+            'hourly_payout_cap' => 'nullable|numeric|min:0',
             'fixed_salary' => 'nullable|numeric|min:0',
             'allowed_vacation_days' => 'nullable|integer|min:0|max:31',
             'phone' => 'nullable|string|max:20',
@@ -778,8 +782,10 @@ class EmployeeController extends Controller
                 ->get();
             $dayDiscountTotal = $dayDiscounts->sum('amount');
             
-            // خصم الخصومات من المبلغ اليومي
-            $dayAmountAfterDiscount = max(0, $dayAmount - $dayDiscountTotal);
+            // خصم الخصومات من المبلغ اليومي ثم تطبيق سقف القبض إن وُجد
+            $dayAmountBeforeCap = max(0, $dayAmount - $dayDiscountTotal);
+            $dayAmountAfterDiscount = $employee->capHourlyPayout($dayAmountBeforeCap);
+            $payoutCap = $employee->hourlyPayoutCapAmount();
 
             $totalHours += $dayHours;
             $totalAmount += $dayAmountAfterDiscount; // استخدام المبلغ بعد الخصم في الإجمالي
@@ -794,8 +800,11 @@ class EmployeeController extends Controller
                 'date_arabic' => $currentDate->format('d/m/Y'),
                 'day_name' => $currentDate->locale('ar')->dayName,
                 'hours' => round($dayHours, 2),
-                'amount' => round($dayAmountAfterDiscount, 2), // المبلغ بعد الخصم
+                'amount' => round($dayAmountAfterDiscount, 2), // المبلغ بعد الخصم وسقف القبض
                 'base_amount' => round($dayAmount, 2), // المبلغ الأصلي قبل الخصم
+                'amount_before_cap' => round($dayAmountBeforeCap, 2),
+                'payout_cap' => $payoutCap,
+                'cap_applied' => $payoutCap !== null && $dayAmountBeforeCap > $payoutCap,
                 'discounts' => $dayDiscounts->map(function ($discount) {
                     return [
                         'id' => $discount->id,
@@ -1793,6 +1802,41 @@ class EmployeeController extends Controller
             $validated['fixed_salary'] = null;
             $validated['allowed_vacation_days'] = 0;
         }
+
+        $validated = $this->applyHourlyPayoutCapInput($validated, $request);
+
+        return $validated;
+    }
+
+    /**
+     * سقف القبض يُحفظ فقط لمن لديه الصلاحية، ويُلغى مع الراتب الثابت.
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array<string, mixed>
+     */
+    private function applyHourlyPayoutCapInput(array $validated, Request $request): array
+    {
+        $salaryType = $validated['salary_type'] ?? Employee::SALARY_TYPE_HOURLY;
+
+        if ($salaryType === Employee::SALARY_TYPE_FIXED) {
+            $validated['hourly_payout_cap'] = null;
+
+            return $validated;
+        }
+
+        if (! (auth()->user()?->can('employees.set_payout_cap') ?? false)) {
+            unset($validated['hourly_payout_cap']);
+
+            return $validated;
+        }
+
+        if (! $request->filled('hourly_payout_cap')) {
+            $validated['hourly_payout_cap'] = null;
+
+            return $validated;
+        }
+
+        $validated['hourly_payout_cap'] = round((float) $request->input('hourly_payout_cap'), 2);
 
         return $validated;
     }
