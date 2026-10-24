@@ -7,6 +7,7 @@ const page = usePage();
 const canViewReports = computed(() => page.props.canViewReports);
 const canManageAttendance = computed(() => !!page.props.canManageAttendance);
 const canManageFeedback = computed(() => !!page.props.canManageFeedback);
+const canViewSuppliers = computed(() => !!page.props.canViewSuppliers);
 const closingPhotoReportGate = computed(() => page.props.closingPhotoReportGate || null);
 const closingPhotoBlocked = computed(() => !!closingPhotoReportGate.value?.blocked);
 const branchContext = computed(() => page.props.branchContext || {});
@@ -101,6 +102,17 @@ function clearBranch() {
                                     <div class="text-yellow-500 text-4xl mb-4">🛒</div>
                                     <h3 class="text-lg font-semibold text-gray-700 break-words leading-snug">المشتريات</h3>
                                     <p class="text-sm text-gray-500 break-words leading-relaxed">مركزية</p>
+                                </div>
+                            </a>
+                            <a
+                                v-if="canViewSuppliers"
+                                :href="route('admin.suppliers.index')"
+                                class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl min-w-0"
+                            >
+                                <div class="flex flex-col items-stretch w-full text-center min-w-0">
+                                    <div class="text-teal-600 text-4xl mb-4">🚚</div>
+                                    <h3 class="text-lg font-semibold text-gray-700 break-words leading-snug">الموردين</h3>
+                                    <p class="text-sm text-gray-500 break-words leading-relaxed">فواتير الشراء وربطها بالمخزون</p>
                                 </div>
                             </a>
                             <a href="/expenses" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl min-w-0">

@@ -78,6 +78,17 @@ class PermissionCatalog
                 ],
             ],
             [
+                'key' => 'suppliers',
+                'label' => 'الموردون',
+                'feature' => null,
+                'permissions' => [
+                    ['name' => 'suppliers.view', 'label' => 'عرض الموردين', 'scope' => 'central', 'description' => 'الاطلاع على الموردين وفواتيرهم بدون تعديل'],
+                    ['name' => 'suppliers.manage', 'label' => 'إدارة الموردين', 'scope' => 'central', 'description' => 'إضافة وتعديل وحذف الموردين وفواتير الشراء'],
+                    ['name' => 'suppliers.payments.view', 'label' => 'عرض دفعات الموردين', 'scope' => 'central', 'description' => 'رؤية المتبقي وتفاصيل الدفعات المسددة بدون تعديل'],
+                    ['name' => 'suppliers.payments.manage', 'label' => 'إدارة دفعات الموردين', 'scope' => 'central', 'description' => 'إضافة وتعديل وحذف دفعات السداد'],
+                ],
+            ],
+            [
                 'key' => 'expenses',
                 'label' => 'المصروفات',
                 'feature' => null,

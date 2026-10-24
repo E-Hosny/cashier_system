@@ -33,6 +33,8 @@ use App\Http\Controllers\Admin\TenantSettingsController;
 use App\Http\Controllers\Admin\SpacesLabController;
 use App\Http\Controllers\Admin\ClosingPhotoReportController;
 use App\Http\Controllers\Admin\RolePermissionController;
+use App\Http\Controllers\Admin\SupplierController;
+use App\Http\Controllers\Admin\SupplierPaymentController;
 use App\Http\Controllers\BranchContextController;
 use App\Http\Controllers\QzTrayController;
 
@@ -64,6 +66,7 @@ Route::middleware([
                 || $user->can('employees.view')
                 || $user->can('manage employee attendance'),
             'canManageFeedback' => $user->can('feedback.view') || $user->can('feedback.manage'),
+            'canViewSuppliers' => $user->can('suppliers.view') || $user->can('suppliers.manage'),
             'closingPhotoReportGate' => $closingGate,
         ]);
     })->name('dashboard');
@@ -387,6 +390,28 @@ Route::middleware([
     // Purchases
     Route::middleware(['permission:purchases.view|purchases.manage'])->group(function () {
         Route::get('/purchases', [PurchaseController::class, 'index'])->name('purchases.index');
+    });
+
+    Route::middleware(['permission:suppliers.view|suppliers.manage|suppliers.payments.view|suppliers.payments.manage'])->prefix('admin/suppliers')->name('admin.suppliers.')->group(function () {
+        Route::get('/', [SupplierController::class, 'index'])->name('index');
+        Route::get('/create', [SupplierController::class, 'create'])->middleware('permission:suppliers.manage')->name('create');
+        Route::post('/', [SupplierController::class, 'store'])->middleware('permission:suppliers.manage')->name('store');
+        Route::get('/{supplier}/edit', [SupplierController::class, 'edit'])->middleware('permission:suppliers.manage')->name('edit');
+        Route::put('/{supplier}', [SupplierController::class, 'update'])->middleware('permission:suppliers.manage')->name('update');
+        Route::delete('/{supplier}', [SupplierController::class, 'destroy'])->middleware('permission:suppliers.manage')->name('destroy');
+        Route::get('/{supplier}/purchases/create', [SupplierController::class, 'createPurchase'])->middleware('permission:suppliers.manage')->name('purchases.create');
+        Route::post('/{supplier}/purchases', [SupplierController::class, 'storePurchase'])->middleware('permission:suppliers.manage')->name('purchases.store');
+        Route::get('/{supplier}/purchases/{purchase}/edit', [SupplierController::class, 'editPurchase'])->middleware('permission:suppliers.manage')->name('purchases.edit');
+        Route::put('/{supplier}/purchases/{purchase}', [SupplierController::class, 'updatePurchase'])->middleware('permission:suppliers.manage')->name('purchases.update');
+        Route::delete('/{supplier}/purchases/{purchase}', [SupplierController::class, 'destroyPurchase'])->middleware('permission:suppliers.manage')->name('purchases.destroy');
+        Route::get('/{supplier}/purchases/{purchase}/invoice', [SupplierController::class, 'invoice'])->name('purchases.invoice');
+        Route::get('/{supplier}/payments', [SupplierPaymentController::class, 'index'])->middleware('permission:suppliers.payments.view|suppliers.payments.manage')->name('payments.index');
+        Route::get('/{supplier}/payments/create', [SupplierPaymentController::class, 'create'])->middleware('permission:suppliers.payments.manage')->name('payments.create');
+        Route::post('/{supplier}/payments', [SupplierPaymentController::class, 'store'])->middleware('permission:suppliers.payments.manage')->name('payments.store');
+        Route::get('/{supplier}/payments/{payment}/edit', [SupplierPaymentController::class, 'edit'])->middleware('permission:suppliers.payments.manage')->name('payments.edit');
+        Route::put('/{supplier}/payments/{payment}', [SupplierPaymentController::class, 'update'])->middleware('permission:suppliers.payments.manage')->name('payments.update');
+        Route::delete('/{supplier}/payments/{payment}', [SupplierPaymentController::class, 'destroy'])->middleware('permission:suppliers.payments.manage')->name('payments.destroy');
+        Route::get('/{supplier}', [SupplierController::class, 'show'])->name('show');
     });
     Route::middleware(['permission:purchases.manage'])->group(function () {
         Route::post('/purchases', [PurchaseController::class, 'store'])->name('purchases.store');

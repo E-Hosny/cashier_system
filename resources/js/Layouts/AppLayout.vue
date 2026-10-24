@@ -40,6 +40,9 @@ const canViewProducts = computed(() =>
     userRoles.value.includes('cashier') ||
     isSuperAdmin.value
 );
+const showSuppliersNav = computed(() =>
+    hasPermission('suppliers.view', 'suppliers.manage')
+);
 const showPurchasesNav = computed(
     () => !hideOperationalNav.value
         && branchContext.value.activeBranchId == null
@@ -156,6 +159,14 @@ const navSections = computed(() => {
             href: route('purchases.index'),
             active: route().current('purchases.*'),
             icon: 'purchase',
+        });
+    }
+    if (showSuppliersNav.value) {
+        operations.push({
+            label: 'الموردين',
+            href: route('admin.suppliers.index'),
+            active: route().current('admin.suppliers.*'),
+            icon: 'supplier',
         });
     }
     if (canUseBarista.value) {
@@ -365,6 +376,7 @@ const closeSidebar = () => {
                                         <svg v-else-if="item.icon === 'cashier'" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h.01M11 15h2M5 6h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2z" /></svg>
                                         <svg v-else-if="item.icon === 'expense'" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 10v-1M5 12a7 7 0 1114 0 7 7 0 01-14 0z" /></svg>
                                         <svg v-else-if="item.icon === 'purchase'" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2 9m12-9l2 9M10 21a1 1 0 100-2 1 1 0 000 2zm8 0a1 1 0 100-2 1 1 0 000 2z" /></svg>
+                                        <svg v-else-if="item.icon === 'supplier'" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17h6m-7 4h8a2 2 0 002-2v-5H4v5a2 2 0 002 2zM3 10h18l-2-5H5L3 10z" /></svg>
                                         <svg v-else-if="item.icon === 'barista'" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h8v6a4 4 0 01-8 0V7zm8 2h2a2 2 0 010 4h-2M6 19h12" /></svg>
                                         <svg v-else-if="item.icon === 'product'" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
                                         <svg v-else-if="item.icon === 'offer'" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M4 4h6l10 10-6 6L4 10V4z" /></svg>
