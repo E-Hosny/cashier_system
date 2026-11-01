@@ -4,6 +4,8 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
@@ -97,6 +99,16 @@ class User extends Authenticatable
     public function cashierShifts()
     {
         return $this->hasMany(CashierShift::class);
+    }
+
+    public function loginLogs(): HasMany
+    {
+        return $this->hasMany(UserLoginLog::class);
+    }
+
+    public function latestLogin(): HasOne
+    {
+        return $this->hasOne(UserLoginLog::class)->latestOfMany('logged_in_at');
     }
 
     public const ROLE_HR = 'hr';

@@ -2,8 +2,11 @@
 
 namespace App\Providers;
 
+use App\Listeners\RecordUserLogin;
 use App\Models\User;
 use App\Support\PermissionCatalog;
+use Illuminate\Auth\Events\Login;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
@@ -22,6 +25,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Event::listen(Login::class, RecordUserLogin::class);
+
         /*
          * جسر توافق: الصلاحيات القديمة ↔ الجديدة.
          * لا يستدعي can() لتجنب recursion — يعتمد على getAllPermissions().
