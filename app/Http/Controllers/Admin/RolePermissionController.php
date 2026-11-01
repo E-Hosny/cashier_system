@@ -60,17 +60,23 @@ class RolePermissionController extends Controller
         $visibleNames = PermissionCatalog::permissionNamesForFeatures($features);
 
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:100', 'regex:/^[a-z0-9_\-\s]+$/i', Rule::unique('roles', 'name')],
-            'display_name' => ['required', 'string', 'max:150'],
+            'display_name' => [
+                'required',
+                'string',
+                'max:150',
+                Rule::unique('roles', 'name'),
+            ],
             'description' => ['nullable', 'string', 'max:500'],
             'permissions' => ['nullable', 'array'],
             'permissions.*' => ['string', Rule::in($visibleNames)],
         ]);
 
+        $teamName = trim($validated['display_name']);
+
         $role = Role::create([
-            'name' => trim($validated['name']),
+            'name' => $teamName,
             'guard_name' => 'web',
-            'display_name' => $validated['display_name'],
+            'display_name' => $teamName,
             'description' => $validated['description'] ?? null,
         ]);
 
@@ -88,25 +94,24 @@ class RolePermissionController extends Controller
         $features = $this->currentTenantFeatures();
         $visibleNames = PermissionCatalog::permissionNamesForFeatures($features);
 
+        $nameRules = ['required', 'string', 'max:150'];
+        if (! $isSystem) {
+            $nameRules[] = Rule::unique('roles', 'name')->ignore($role->id);
+        }
+
         $validated = $request->validate([
-            'name' => [
-                $isSystem ? 'nullable' : 'required',
-                'string',
-                'max:100',
-                'regex:/^[a-z0-9_\-\s]+$/i',
-                Rule::unique('roles', 'name')->ignore($role->id),
-            ],
-            'display_name' => ['required', 'string', 'max:150'],
+            'display_name' => $nameRules,
             'description' => ['nullable', 'string', 'max:500'],
             'permissions' => ['nullable', 'array'],
             'permissions.*' => ['string', Rule::in($visibleNames)],
         ]);
 
-        $role->display_name = $validated['display_name'];
+        $teamName = trim($validated['display_name']);
+        $role->display_name = $teamName;
         $role->description = $validated['description'] ?? null;
 
-        if (! $isSystem && ! empty($validated['name'])) {
-            $role->name = trim($validated['name']);
+        if (! $isSystem) {
+            $role->name = $teamName;
         }
 
         $role->save();

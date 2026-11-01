@@ -23,7 +23,8 @@ use Illuminate\Validation\ValidationException;
 class ClosingPhotoReportService
 {
     /**
-     * هل يجب منع المدير من تقارير المبيعات الآن؟
+     * هل يجب منع من يملك صلاحية رفع صور التقفيلة من تقارير المبيعات الآن؟
+     * السوبر أدمن مستثنى.
      *
      * @return array{blocked: bool, reason?: string, requirement?: array}|null
      */
@@ -33,7 +34,7 @@ class ClosingPhotoReportService
             return null;
         }
 
-        if (! $user->hasRole('admin')) {
+        if (! $user->can('closing_photos.submit')) {
             return null;
         }
 

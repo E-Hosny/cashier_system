@@ -368,27 +368,6 @@ initSelection();
                                         </div>
                                     </div>
 
-                                    <div v-if="isCreating || (selectedTeam && !selectedTeam.is_system)" class="mt-4">
-                                        <label class="block text-sm font-medium text-gray-700 mb-1.5">
-                                            المعرّف التقني
-                                            <span class="text-gray-400 font-normal">(بالإنجليزية)</span>
-                                        </label>
-                                        <input
-                                            v-model="form.name"
-                                            type="text"
-                                            class="w-full md:w-1/2 rounded-xl border-gray-200 focus:border-blue-500 focus:ring-blue-500 text-sm font-mono"
-                                            placeholder="accountants"
-                                            :disabled="selectedTeam?.is_system"
-                                        >
-                                        <p class="mt-1 text-xs text-gray-500">يُستخدم داخلياً في النظام ولا يُعرض للمستخدمين.</p>
-                                        <p v-if="form.errors.name" class="mt-1 text-xs text-red-600">{{ form.errors.name }}</p>
-                                    </div>
-                                    <div v-else-if="selectedTeam?.is_system" class="mt-3 text-xs text-gray-500">
-                                        المعرّف التقني:
-                                        <code class="bg-gray-100 px-1.5 py-0.5 rounded text-gray-700">{{ selectedTeam.name }}</code>
-                                        — لا يمكن تغييره للأدوار الأساسية
-                                    </div>
-
                                     <div class="mt-4">
                                         <button
                                             type="button"
