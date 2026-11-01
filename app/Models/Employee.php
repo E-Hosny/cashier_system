@@ -17,6 +17,7 @@ class Employee extends Model
 
     public const SALARY_TYPE_HOURLY = 'hourly';
     public const SALARY_TYPE_FIXED = 'fixed';
+    public const SALARY_TYPE_DAILY = 'daily';
 
     protected $fillable = [
         'name',
@@ -24,6 +25,7 @@ class Employee extends Model
         'hourly_payout_cap',
         'salary_type',
         'fixed_salary',
+        'daily_salary',
         'allowed_vacation_days',
         'is_active',
         'phone',
@@ -45,6 +47,7 @@ class Employee extends Model
         'hourly_rate' => 'decimal:2',
         'hourly_payout_cap' => 'decimal:2',
         'fixed_salary' => 'decimal:2',
+        'daily_salary' => 'decimal:2',
         'allowed_vacation_days' => 'integer',
         'is_active' => 'boolean',
         'grace_minutes' => 'integer',
@@ -104,9 +107,47 @@ class Employee extends Model
         return ($this->salary_type ?? self::SALARY_TYPE_HOURLY) === self::SALARY_TYPE_FIXED;
     }
 
+    public function isDailySalary(): bool
+    {
+        return ($this->salary_type ?? self::SALARY_TYPE_HOURLY) === self::SALARY_TYPE_DAILY;
+    }
+
+    /**
+     * راتب يُصرف مع الحضور: بالساعة، أو يوم ثابت مع تسجيل ساعات.
+     */
     public function isHourlySalary(): bool
     {
         return ! $this->isFixedSalary();
+    }
+
+    public function recordedPayRate(): float
+    {
+        if ($this->isDailySalary()) {
+            return round((float) $this->daily_salary, 2);
+        }
+
+        return round((float) $this->hourly_rate, 2);
+    }
+
+    public function hasAttendanceOnBusinessDay(string $anchorDate): bool
+    {
+        return $this->getAttendanceRecordsForBusinessDayAnchor($anchorDate)->isNotEmpty();
+    }
+
+    /**
+     * هل لهذا اليوم حضور يستحق تسليمه (ساعات، أو حضور واحد في الراتب اليومي الثابت).
+     */
+    public function hasPayableWorkOnBusinessDay(string $anchorDate): bool
+    {
+        if ($this->isFixedSalary()) {
+            return false;
+        }
+
+        if ($this->isDailySalary()) {
+            return $this->hasAttendanceOnBusinessDay($anchorDate);
+        }
+
+        return $this->getHoursForBusinessDayAnchor($anchorDate) > 0;
     }
 
     /**
@@ -931,14 +972,23 @@ class Employee extends Model
      */
     public function getAmountForBusinessDayAnchor(string $anchorDate): float
     {
-        // الراتب الثابت لا يُحسب يومياً من الساعات
+        // الراتب الشهري الثابت لا يُحسب يومياً من الحضور
         if ($this->isFixedSalary()) {
             return 0;
         }
 
+        $discountTotal = $this->getDiscountTotalForBusinessDayAnchor($anchorDate);
+
+        if ($this->isDailySalary()) {
+            $baseAmount = $this->hasAttendanceOnBusinessDay($anchorDate)
+                ? (float) $this->daily_salary
+                : 0;
+
+            return round(max(0, $baseAmount - $discountTotal), 2);
+        }
+
         $hours = $this->getHoursForBusinessDayAnchor($anchorDate);
         $baseAmount = $hours * (float) $this->hourly_rate;
-        $discountTotal = $this->getDiscountTotalForBusinessDayAnchor($anchorDate);
 
         return $this->capHourlyPayout(max(0, $baseAmount - $discountTotal));
     }
@@ -948,7 +998,7 @@ class Employee extends Model
      */
     public function hourlyPayoutCapAmount(): ?float
     {
-        if ($this->isFixedSalary() || $this->hourly_payout_cap === null) {
+        if ($this->isFixedSalary() || $this->isDailySalary() || $this->hourly_payout_cap === null) {
             return null;
         }
 
@@ -1129,6 +1179,10 @@ class Employee extends Model
             $totalHours += $checkinTime->diffInHours($checkoutTime, true);
         }
 
+        if ($this->isDailySalary()) {
+            return $this->getAmountForPeriod($startDate, $endDate);
+        }
+
         return $totalHours * $this->hourly_rate;
     }
 
@@ -1156,7 +1210,7 @@ class Employee extends Model
         return $this->salaryDeliveries()->create([
             'salary_date' => $date,
             'hours_worked' => $hours,
-            'hourly_rate' => $this->hourly_rate,
+            'hourly_rate' => $this->recordedPayRate(),
             'total_amount' => $amount,
             'status' => 'pending'
         ]);
@@ -1188,7 +1242,7 @@ class Employee extends Model
             if (!$delivery->isDelivered()) {
                 $delivery->update([
                     'hours_worked' => $hours,
-                    'hourly_rate' => $this->hourly_rate,
+                    'hourly_rate' => $this->recordedPayRate(),
                     'total_amount' => $amount
                 ]);
             }

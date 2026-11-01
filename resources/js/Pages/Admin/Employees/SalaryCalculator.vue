@@ -84,8 +84,8 @@
                   <span class="font-semibold text-blue-900">{{ salaryData.employee.position || 'غير محدد' }}</span>
                 </div>
                 <div v-if="isAdmin">
-                  <span class="text-sm text-blue-700">سعر الساعة:</span>
-                  <span class="font-semibold text-blue-900">{{ formatPrice(salaryData.employee.hourly_rate) }}</span>
+                  <span class="text-sm text-blue-700">{{ salaryData.employee.salary_type === 'daily' ? 'القبض اليومي:' : 'سعر الساعة:' }}</span>
+                  <span class="font-semibold text-blue-900">{{ formatPrice(salaryData.employee.salary_type === 'daily' ? salaryData.employee.daily_salary : salaryData.employee.hourly_rate) }}</span>
                 </div>
               </div>
             </div>

@@ -43,6 +43,10 @@
                   <span>بالساعة (افتراضي)</span>
                 </label>
                 <label class="inline-flex items-center gap-2 cursor-pointer">
+                  <input v-model="form.salary_type" type="radio" value="daily" class="text-blue-600" />
+                  <span>ساعات بقبض يومي ثابت</span>
+                </label>
+                <label class="inline-flex items-center gap-2 cursor-pointer">
                   <input v-model="form.salary_type" type="radio" value="fixed" class="text-blue-600" />
                   <span>راتب شهري ثابت</span>
                 </label>
@@ -83,6 +87,25 @@
                 لو قيمة الساعات بعد الخصم أكبر من هذا المبلغ، يُقبض الموظف هذا الحد فقط في يوم العمل.
               </p>
               <div v-if="errors.hourly_payout_cap" class="text-red-500 text-sm mt-1">{{ errors.hourly_payout_cap }}</div>
+            </div>
+
+            <div v-if="form.salary_type === 'daily'" class="mb-4">
+              <label class="block text-gray-700 text-sm font-bold mb-2">
+                القبض اليومي الثابت (جنيه) *
+              </label>
+              <input
+                v-model="form.daily_salary"
+                type="number"
+                step="0.01"
+                min="0.01"
+                required
+                class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="أدخل مبلغ اليوم"
+              />
+              <p class="text-xs text-gray-500 mt-1">
+                يُسجَّل الحضور والانصراف كالمعتاد. الموظف يقبض هذا المبلغ حتى لو لم تكتمل ساعات اليوم. خصم التأخير والخصم اليدوي يُخصمان من المبلغ.
+              </p>
+              <div v-if="errors.daily_salary" class="text-red-500 text-sm mt-1">{{ errors.daily_salary }}</div>
             </div>
 
             <!-- الراتب الثابت -->
@@ -231,9 +254,10 @@
           <div class="mt-6 p-4 bg-blue-50 rounded-lg">
             <h4 class="font-semibold text-blue-800 mb-2">📋 ملاحظات:</h4>
             <ul class="text-sm text-blue-700 space-y-1">
-              <li>• الحقول المطلوبة: اسم الموظف ونوع الراتب (ساعة أو ثابت)</li>
+              <li>• الحقول المطلوبة: اسم الموظف ونوع الراتب</li>
               <li>• الافتراضي: راتب بالساعة</li>
-              <li>• الراتب الثابت يمكن سحبه على دفعات خلال الشهر</li>
+              <li>• القبض اليومي الثابت يُصرف مع الحضور، والخصومات تُنقص منه</li>
+              <li>• الراتب الشهري الثابت يمكن سحبه على دفعات خلال الشهر</li>
               <li>• يمكنك إضافة معلومات إضافية مثل رقم الهاتف والوظيفة</li>
               <li>• بعد الإضافة يمكنك تسجيل الحضور والانصراف للموظف</li>
             </ul>
@@ -262,6 +286,7 @@ export default {
       hourly_rate: '',
       hourly_payout_cap: '',
       fixed_salary: '',
+      daily_salary: '',
       allowed_vacation_days: 0,
       phone: '',
       position: '',

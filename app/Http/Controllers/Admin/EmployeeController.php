@@ -81,6 +81,7 @@ class EmployeeController extends Controller
                 'salary_type',
                 'hourly_rate',
                 'fixed_salary',
+                'daily_salary',
                 'is_active',
                 'branch_id',
                 'attendance_dependency_employee_id',
@@ -189,7 +190,11 @@ class EmployeeController extends Controller
 
             $discountTotal = round((float) $discounts->sum('amount'), 2);
             $todayAmount = 0.0;
-            if (! $isFixed) {
+            if ($employee->isDailySalary()) {
+                $todayAmount = $records->isNotEmpty()
+                    ? round(max(0, (float) $employee->daily_salary - $discountTotal), 2)
+                    : 0.0;
+            } elseif (! $isFixed) {
                 $todayAmount = $employee->capHourlyPayout(max(0, ($todayHours * (float) $employee->hourly_rate) - $discountTotal));
             }
 
@@ -208,8 +213,9 @@ class EmployeeController extends Controller
                 'phone' => $employee->phone,
                 'position' => $employee->position,
                 'salary_type' => $employee->salary_type ?? Employee::SALARY_TYPE_HOURLY,
-                'hourly_rate' => $canViewSalaryAmounts && ! $isFixed ? (float) $employee->hourly_rate : null,
+                'hourly_rate' => $canViewSalaryAmounts && ! $isFixed && ! $employee->isDailySalary() ? (float) $employee->hourly_rate : null,
                 'fixed_salary' => $canViewSalaryAmounts && $isFixed ? (float) $employee->fixed_salary : null,
+                'daily_salary' => $canViewSalaryAmounts && $employee->isDailySalary() ? (float) $employee->daily_salary : null,
                 'branch_id' => $employee->branch_id,
                 'branch_name' => optional($employee->branch)->name,
                 'attendance_dependency_employee_name' => optional($employee->attendanceDependencyEmployee)->name,
@@ -321,10 +327,11 @@ class EmployeeController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'salary_type' => ['nullable', Rule::in([Employee::SALARY_TYPE_HOURLY, Employee::SALARY_TYPE_FIXED])],
+            'salary_type' => ['nullable', Rule::in([Employee::SALARY_TYPE_HOURLY, Employee::SALARY_TYPE_FIXED, Employee::SALARY_TYPE_DAILY])],
             'hourly_rate' => 'nullable|numeric|min:0',
             'hourly_payout_cap' => 'nullable|numeric|min:0',
             'fixed_salary' => 'nullable|numeric|min:0',
+            'daily_salary' => 'nullable|numeric|min:0',
             'allowed_vacation_days' => 'nullable|integer|min:0|max:31',
             'phone' => 'nullable|string|max:20',
             'position' => 'nullable|string|max:255',
@@ -350,9 +357,10 @@ class EmployeeController extends Controller
 
         if (! (auth()->user()?->can('employees.manage') ?? false)) {
             unset($validated['expected_checkin_time'], $validated['expected_checkout_time'], $validated['grace_minutes'], $validated['late_deductions_enabled'], $validated['use_weekly_schedule'], $validated['work_schedules']);
-            unset($validated['salary_type'], $validated['fixed_salary'], $validated['allowed_vacation_days']);
+            unset($validated['salary_type'], $validated['fixed_salary'], $validated['daily_salary'], $validated['allowed_vacation_days']);
             $validated['salary_type'] = Employee::SALARY_TYPE_HOURLY;
             $validated['fixed_salary'] = null;
+            $validated['daily_salary'] = null;
             $validated['allowed_vacation_days'] = 0;
         }
 
@@ -416,10 +424,11 @@ class EmployeeController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'salary_type' => ['nullable', Rule::in([Employee::SALARY_TYPE_HOURLY, Employee::SALARY_TYPE_FIXED])],
+            'salary_type' => ['nullable', Rule::in([Employee::SALARY_TYPE_HOURLY, Employee::SALARY_TYPE_FIXED, Employee::SALARY_TYPE_DAILY])],
             'hourly_rate' => 'nullable|numeric|min:0',
             'hourly_payout_cap' => 'nullable|numeric|min:0',
             'fixed_salary' => 'nullable|numeric|min:0',
+            'daily_salary' => 'nullable|numeric|min:0',
             'allowed_vacation_days' => 'nullable|integer|min:0|max:31',
             'phone' => 'nullable|string|max:20',
             'position' => 'nullable|string|max:255',
@@ -446,7 +455,7 @@ class EmployeeController extends Controller
         if ($canManageSalaryType) {
             $validated = $this->normalizeSalaryFields($validated, $request);
         } else {
-            unset($validated['salary_type'], $validated['fixed_salary'], $validated['hourly_rate'], $validated['allowed_vacation_days']);
+            unset($validated['salary_type'], $validated['fixed_salary'], $validated['daily_salary'], $validated['hourly_rate'], $validated['allowed_vacation_days']);
         }
 
         if (! $canManageSalaryType) {
@@ -756,7 +765,7 @@ class EmployeeController extends Controller
                 }
 
                 $hours = $checkinTime->diffInHours($checkoutTime, true);
-                $amount = $hours * $employee->hourly_rate;
+                $amount = $employee->isDailySalary() ? 0 : $hours * $employee->hourly_rate;
 
                 // تجاهل السجلات التي لا تحتوي على ساعات عمل
                 if ($hours <= 0) {
@@ -773,6 +782,10 @@ class EmployeeController extends Controller
                     'amount' => round($amount, 2),
                     'is_completed' => $attendance->checkout_time !== null,
                 ];
+            }
+
+            if ($employee->isDailySalary()) {
+                $dayAmount = $dayAttendances->isNotEmpty() ? (float) $employee->daily_salary : 0;
             }
 
             // حساب الخصومات لهذا اليوم
@@ -817,7 +830,9 @@ class EmployeeController extends Controller
                 })->toArray(),
                 'discount_total' => round($dayDiscountTotal, 2),
                 'records' => $dayRecords,
-                'has_records' => count($dayRecords) > 0,
+                'has_records' => $employee->isDailySalary()
+                    ? $dayAttendances->isNotEmpty()
+                    : count($dayRecords) > 0,
                 'delivery_status' => $salaryDelivery ? [
                     'is_delivered' => $salaryDelivery->isDelivered(),
                     'status' => $salaryDelivery->status,
@@ -875,6 +890,8 @@ class EmployeeController extends Controller
                 'id' => $employee->id,
                 'name' => $employee->name,
                 'hourly_rate' => $employee->hourly_rate,
+                'daily_salary' => $employee->daily_salary,
+                'salary_type' => $employee->salary_type ?? Employee::SALARY_TYPE_HOURLY,
                 'position' => $employee->position,
             ],
             'period' => [
@@ -920,10 +937,12 @@ class EmployeeController extends Controller
             $todayHours = $employee->getTodayHours();
             $todayAmount = $employee->getTodayAmount();
 
-            if ($todayHours <= 0) {
+            if (! $employee->hasPayableWorkOnBusinessDay(Employee::businessDayAnchorFromNow())) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'لا توجد ساعات عمل مسجلة لهذا الموظف اليوم'
+                    'message' => $employee->isDailySalary()
+                        ? 'لا يوجد حضور مسجّل لهذا الموظف اليوم'
+                        : 'لا توجد ساعات عمل مسجلة لهذا الموظف اليوم',
                 ], 400);
             }
 
@@ -1029,10 +1048,12 @@ class EmployeeController extends Controller
             $hours = $employee->getHoursForBusinessDayAnchor($date);
             $amount = $employee->getAmountForBusinessDayAnchor($date);
 
-            if ($hours <= 0) {
+            if (! $employee->hasPayableWorkOnBusinessDay($date)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'لا توجد ساعات عمل مسجلة لهذا الموظف في هذا التاريخ'
+                    'message' => $employee->isDailySalary()
+                        ? 'لا يوجد حضور مسجّل لهذا الموظف في هذا التاريخ'
+                        : 'لا توجد ساعات عمل مسجلة لهذا الموظف في هذا التاريخ',
                 ], 400);
             }
 
@@ -1050,7 +1071,7 @@ class EmployeeController extends Controller
             } else {
                 $salaryDelivery->update([
                     'hours_worked' => $hours,
-                    'hourly_rate' => $employee->hourly_rate,
+                    'hourly_rate' => $employee->recordedPayRate(),
                     'total_amount' => $amount,
                 ]);
             }
@@ -1162,7 +1183,7 @@ class EmployeeController extends Controller
                 $dayHours = $employee->getHoursForBusinessDayAnchor($dateString);
                 $dayAmount = $employee->getAmountForBusinessDayAnchor($dateString);
 
-                if ($dayHours > 0) {
+                if ($employee->hasPayableWorkOnBusinessDay($dateString)) {
                     $salaryDelivery = $employee->getSalaryDeliveryForDate($dateString);
 
                     if (! $salaryDelivery) {
@@ -1172,7 +1193,7 @@ class EmployeeController extends Controller
                     if (! $salaryDelivery->isDelivered()) {
                         $salaryDelivery->update([
                             'hours_worked' => $dayHours,
-                            'hourly_rate' => $employee->hourly_rate,
+                            'hourly_rate' => $employee->recordedPayRate(),
                             'total_amount' => $dayAmount,
                         ]);
 
@@ -1788,10 +1809,21 @@ class EmployeeController extends Controller
                 ]);
             }
             $validated['fixed_salary'] = (float) $request->input('fixed_salary');
+            $validated['daily_salary'] = null;
             $validated['hourly_rate'] = $request->filled('hourly_rate')
                 ? (float) $request->input('hourly_rate')
                 : 0;
             $validated['allowed_vacation_days'] = max(0, min(31, (int) ($request->input('allowed_vacation_days') ?? 0)));
+        } elseif ($salaryType === Employee::SALARY_TYPE_DAILY) {
+            if (! $request->filled('daily_salary') || (float) $request->input('daily_salary') <= 0) {
+                throw ValidationException::withMessages([
+                    'daily_salary' => 'القبض اليومي الثابت مطلوب ويجب أن يكون أكبر من صفر.',
+                ]);
+            }
+            $validated['daily_salary'] = round((float) $request->input('daily_salary'), 2);
+            $validated['hourly_rate'] = 0;
+            $validated['fixed_salary'] = null;
+            $validated['allowed_vacation_days'] = 0;
         } else {
             if (! $request->filled('hourly_rate') || (float) $request->input('hourly_rate') < 0) {
                 throw ValidationException::withMessages([
@@ -1800,6 +1832,7 @@ class EmployeeController extends Controller
             }
             $validated['hourly_rate'] = (float) $request->input('hourly_rate');
             $validated['fixed_salary'] = null;
+            $validated['daily_salary'] = null;
             $validated['allowed_vacation_days'] = 0;
         }
 
@@ -1818,7 +1851,7 @@ class EmployeeController extends Controller
     {
         $salaryType = $validated['salary_type'] ?? Employee::SALARY_TYPE_HOURLY;
 
-        if ($salaryType === Employee::SALARY_TYPE_FIXED) {
+        if ($salaryType === Employee::SALARY_TYPE_FIXED || $salaryType === Employee::SALARY_TYPE_DAILY) {
             $validated['hourly_payout_cap'] = null;
 
             return $validated;

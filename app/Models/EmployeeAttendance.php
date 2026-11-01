@@ -46,7 +46,9 @@ class EmployeeAttendance extends Model
             $checkout = Carbon::parse($this->checkout_time);
             
             $this->total_hours = $checkin->diffInHours($checkout, true);
-            $this->total_amount = $this->total_hours * $this->employee->hourly_rate;
+            $this->total_amount = $this->employee->isDailySalary()
+                ? 0
+                : $this->total_hours * $this->employee->hourly_rate;
             
             $this->save();
         }
@@ -71,6 +73,10 @@ class EmployeeAttendance extends Model
      */
     public function getCurrentAmount()
     {
+        if ($this->employee && $this->employee->isDailySalary()) {
+            return 0;
+        }
+
         $hours = $this->getCurrentHours();
         return $hours * $this->employee->hourly_rate;
     }

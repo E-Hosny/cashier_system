@@ -167,6 +167,10 @@
                         <div class="font-semibold text-green-700">متبقي: {{ formatPrice(employee.fixed_salary_month.remaining) }}</div>
                       </div>
                     </template>
+                    <template v-else-if="isDailySalary(employee)">
+                      <div class="font-bold text-emerald-700">{{ formatPrice(employee.daily_salary) }} / يوم</div>
+                      <span class="inline-block mt-1 px-2 py-0.5 rounded text-[11px] bg-emerald-100 text-emerald-800">قبض يومي ثابت</span>
+                    </template>
                     <template v-else>
                       <div class="font-bold text-green-600">{{ formatPrice(employee.hourly_rate) }} / ساعة</div>
                       <span class="inline-block mt-1 px-2 py-0.5 rounded text-[11px] bg-gray-100 text-gray-700">بالساعة</span>
@@ -783,6 +787,9 @@ export default {
     },
     isFixedSalary(employee) {
       return employee?.salary_type === 'fixed';
+    },
+    isDailySalary(employee) {
+      return employee?.salary_type === 'daily';
     },
     shouldShowPendingDiscountHint(employee) {
       if (!employee || this.isFixedSalary(employee)) {
