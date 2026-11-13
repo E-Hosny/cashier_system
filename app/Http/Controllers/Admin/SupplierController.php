@@ -7,6 +7,7 @@ use App\Models\Branch;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\Supplier;
+use App\Models\SupplierPayment;
 use App\Models\SupplierPurchase;
 use App\Models\SupplierPurchaseLine;
 use App\Services\SupplierPurchaseService;
@@ -53,9 +54,17 @@ class SupplierController extends Controller
                 'remaining' => round((float) $supplier->purchases_total - (float) $supplier->payments_total, 2),
             ]);
 
+        $purchasesTotal = round((float) SupplierPurchase::query()->sum('total_amount'), 2);
+        $paymentsTotal = round((float) SupplierPayment::query()->sum('amount'), 2);
+
         return Inertia::render('Admin/Suppliers/Index', [
             'suppliers' => $suppliers,
             'search' => $search,
+            'totals' => [
+                'purchases_total' => $purchasesTotal,
+                'payments_total' => $paymentsTotal,
+                'remaining' => round($purchasesTotal - $paymentsTotal, 2),
+            ],
             'canManage' => $this->canManage(),
             'canViewPayments' => $this->canViewPayments(),
         ]);

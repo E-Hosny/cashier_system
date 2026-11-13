@@ -60,7 +60,7 @@ class SupplierPaymentController extends Controller
         ]);
 
         return redirect()
-            ->route('admin.suppliers.payments.index', $supplier)
+            ->back()
             ->with('success', 'تم تسجيل الدفعة.');
     }
 

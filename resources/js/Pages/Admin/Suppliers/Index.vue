@@ -6,6 +6,10 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 const props = defineProps({
     suppliers: { type: Array, default: () => [] },
     search: { type: String, default: '' },
+    totals: {
+        type: Object,
+        default: () => ({ purchases_total: 0, payments_total: 0, remaining: 0 }),
+    },
     canManage: { type: Boolean, default: false },
     canViewPayments: { type: Boolean, default: false },
 });
@@ -53,6 +57,25 @@ function applySearch(event) {
                 </div>
                 <div v-if="flash.error" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
                     {{ flash.error }}
+                </div>
+
+                <div class="grid grid-cols-1 gap-3" :class="showRemaining ? 'sm:grid-cols-3' : ''">
+                    <div class="rounded-2xl bg-white p-4 shadow-sm">
+                        <div class="text-sm text-gray-500">إجمالي الفواتير</div>
+                        <div class="mt-1 text-2xl font-bold text-gray-900">{{ money(totals.purchases_total) }}</div>
+                    </div>
+                    <div v-if="showRemaining" class="rounded-2xl bg-white p-4 shadow-sm">
+                        <div class="text-sm text-gray-500">المدفوع</div>
+                        <div class="mt-1 text-2xl font-bold text-green-700">{{ money(totals.payments_total) }}</div>
+                    </div>
+                    <div
+                        v-if="showRemaining"
+                        class="rounded-2xl p-4 shadow-sm"
+                        :style="Number(totals.remaining) > 0 ? 'background-color:#fef3c7' : 'background-color:#dcfce7'"
+                    >
+                        <div class="text-sm font-semibold">المتبقي</div>
+                        <div class="mt-1 text-2xl font-bold">{{ money(totals.remaining) }}</div>
+                    </div>
                 </div>
 
                 <div class="space-y-3">

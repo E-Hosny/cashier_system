@@ -32,11 +32,26 @@ function submit() {
 <template>
     <AppLayout :title="editing ? 'تعديل مورد' : 'مورد جديد'">
         <template #header>
-            <h2 class="font-semibold text-xl text-gray-800">{{ editing ? 'تعديل مورد' : 'مورد جديد' }}</h2>
+            <div class="flex items-center gap-3">
+                <Link
+                    :href="editing ? route('admin.suppliers.show', supplier.id) : route('admin.suppliers.index')"
+                    class="inline-flex shrink-0 items-center gap-1 rounded-lg bg-gray-100 px-3 py-2 text-sm font-bold text-gray-800"
+                >
+                    → رجوع
+                </Link>
+                <h2 class="truncate font-semibold text-xl text-gray-800">{{ editing ? 'تعديل مورد' : 'مورد جديد' }}</h2>
+            </div>
         </template>
 
         <div class="py-6 sm:py-10" dir="rtl">
             <form class="mx-auto max-w-2xl space-y-4 px-4 sm:px-6" @submit.prevent="submit">
+                <Link
+                    :href="editing ? route('admin.suppliers.show', supplier.id) : route('admin.suppliers.index')"
+                    class="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-800 shadow-sm sm:hidden"
+                >
+                    → رجوع
+                </Link>
+
                 <div class="space-y-4 rounded-2xl bg-white p-5 shadow-sm">
                     <div>
                         <label class="mb-1 block text-sm font-semibold text-gray-700">اسم المورد *</label>
@@ -71,9 +86,9 @@ function submit() {
                 <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                     <Link
                         :href="editing ? route('admin.suppliers.show', supplier.id) : route('admin.suppliers.index')"
-                        class="rounded-lg bg-gray-100 px-4 py-2.5 text-center text-sm font-semibold text-gray-700"
+                        class="rounded-lg bg-gray-100 px-4 py-2.5 text-center text-sm font-bold text-gray-700"
                     >
-                        إلغاء
+                        → رجوع
                     </Link>
                     <button
                         type="submit"

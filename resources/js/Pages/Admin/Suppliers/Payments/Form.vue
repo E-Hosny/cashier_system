@@ -35,11 +35,26 @@ function submit() {
 <template>
     <AppLayout :title="editing ? 'تعديل دفعة' : 'إضافة دفعة'">
         <template #header>
-            <h2 class="font-semibold text-xl text-gray-800">{{ editing ? 'تعديل دفعة' : 'إضافة دفعة' }}</h2>
+            <div class="flex items-center gap-3">
+                <Link
+                    :href="route('admin.suppliers.payments.index', supplier.id)"
+                    class="inline-flex shrink-0 items-center gap-1 rounded-lg bg-gray-100 px-3 py-2 text-sm font-bold text-gray-800"
+                >
+                    → رجوع
+                </Link>
+                <h2 class="truncate font-semibold text-xl text-gray-800">{{ editing ? 'تعديل دفعة' : 'إضافة دفعة' }}</h2>
+            </div>
         </template>
 
         <div class="py-6 sm:py-10" dir="rtl">
             <form class="mx-auto max-w-xl space-y-4 px-4 sm:px-6" @submit.prevent="submit">
+                <Link
+                    :href="route('admin.suppliers.payments.index', supplier.id)"
+                    class="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-800 shadow-sm sm:hidden"
+                >
+                    → رجوع إلى الدفعات
+                </Link>
+
                 <div class="rounded-2xl p-4 shadow-sm" style="background-color:#fef3c7">
                     <div class="text-sm font-semibold text-gray-700">المتبقي على {{ supplier.name }}</div>
                     <div class="mt-1 text-3xl font-bold text-gray-900">{{ money(balance.remaining) }}</div>
@@ -71,8 +86,8 @@ function submit() {
                 </div>
 
                 <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                    <Link :href="route('admin.suppliers.payments.index', supplier.id)" class="rounded-lg bg-gray-100 px-4 py-2.5 text-center text-sm font-semibold text-gray-700">
-                        إلغاء
+                    <Link :href="route('admin.suppliers.payments.index', supplier.id)" class="rounded-lg bg-gray-100 px-4 py-2.5 text-center text-sm font-bold text-gray-700">
+                        → رجوع
                     </Link>
                     <button type="submit" class="rounded-lg px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50" style="background-color:#16a34a;color:#fff" :disabled="form.processing || available <= 0">
                         {{ form.processing ? 'جاري الحفظ...' : 'حفظ الدفعة' }}
