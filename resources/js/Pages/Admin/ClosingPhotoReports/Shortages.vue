@@ -17,7 +17,7 @@
             <div>
               <h3 class="text-lg font-bold text-gray-900">نواقص الفروع</h3>
               <p class="text-sm text-gray-600">
-                افتراضياً يظهر آخر يوم فيه نواقص مسجّلة. يمكنك اختيار يوم آخر.
+                افتراضياً يظهر «المحتاج» لآخر يوم مسجّل. يمكنك التبديل إلى «مش محتاج» أو اختيار يوم آخر.
               </p>
             </div>
             <div class="flex flex-wrap gap-2 items-end">
@@ -28,7 +28,7 @@
               <button
                 type="button"
                 class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white"
-                @click="applyDate"
+                @click="applyFilters"
               >
                 عرض
               </button>
@@ -43,12 +43,34 @@
             </div>
           </div>
 
+          <div class="flex flex-wrap gap-2">
+            <button
+              type="button"
+              class="rounded-full px-4 py-1.5 text-sm font-bold"
+              :class="selectedStatus === 'needed' ? 'bg-red-600 text-white' : 'bg-red-50 text-red-700'"
+              @click="setStatus('needed')"
+            >
+              محتاج
+            </button>
+            <button
+              type="button"
+              class="rounded-full px-4 py-1.5 text-sm font-bold"
+              :class="selectedStatus === 'not_needed' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-800'"
+              @click="setStatus('not_needed')"
+            >
+              مش محتاج
+            </button>
+          </div>
+
           <div class="flex flex-wrap gap-3 text-sm">
             <span class="rounded-full bg-gray-100 px-3 py-1 font-semibold text-gray-700">
               التاريخ: {{ report.business_date || '—' }}
             </span>
-            <span class="rounded-full bg-red-50 px-3 py-1 font-semibold text-red-700">
-              إجمالي المحتاج: {{ report.total_needed || 0 }}
+            <span
+              class="rounded-full px-3 py-1 font-semibold"
+              :class="selectedStatus === 'needed' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-800'"
+            >
+              إجمالي {{ selectedStatus === 'needed' ? 'المحتاج' : 'مش محتاج' }}: {{ report.total_filtered || 0 }}
             </span>
           </div>
 
@@ -67,7 +89,7 @@
         </div>
 
         <div v-if="!(report.branches || []).length" class="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center text-gray-500">
-          لا توجد نواقص مسجّلة لهذا اليوم.
+          لا توجد تسليمات نواقص لهذا اليوم.
         </div>
 
         <article
@@ -87,29 +109,38 @@
                 <div class="font-semibold text-gray-900">{{ closing.closing_type_label }}</div>
                 <div class="text-xs text-gray-500">{{ closing.completed_at || '' }}</div>
               </div>
-              <span class="rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold text-red-700">
-                {{ closing.needed_count }} محتاج
+              <span
+                class="rounded-full px-2.5 py-1 text-xs font-bold"
+                :class="selectedStatus === 'needed' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-800'"
+              >
+                {{ closing.items_count || 0 }}
+                {{ selectedStatus === 'needed' ? 'محتاج' : 'مش محتاج' }}
               </span>
             </div>
 
-            <div v-if="!closing.needed_items.length" class="text-sm text-emerald-700 font-semibold">
-              لا توجد نواقص (كل البنود «مش محتاج»).
+            <div v-if="!(closing.items || []).length" class="text-sm font-semibold" :class="selectedStatus === 'needed' ? 'text-emerald-700' : 'text-gray-600'">
+              <template v-if="selectedStatus === 'needed'">لا توجد نواقص (كل البنود «مش محتاج»).</template>
+              <template v-else>لا توجد بنود بحالة «مش محتاج».</template>
             </div>
 
             <div v-else class="space-y-3">
               <div
-                v-for="group in groupedNeeded(closing.needed_items)"
+                v-for="group in groupedItems(closing.items)"
                 :key="group.category"
               >
                 <div class="text-xs font-bold text-gray-500 mb-1">{{ group.category }}</div>
-                <div class="flex flex-wrap gap-2">
-                  <span
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div
                     v-for="item in group.items"
                     :key="item.id"
-                    class="rounded-lg bg-red-50 px-3 py-1.5 text-sm font-semibold text-red-800"
+                    class="rounded-lg px-3 py-2"
+                    :class="selectedStatus === 'needed' ? 'bg-red-50 text-red-900' : 'bg-emerald-50 text-emerald-900'"
                   >
-                    {{ item.title }}
-                  </span>
+                    <div class="text-sm font-semibold">{{ item.title }}</div>
+                    <div class="text-xs mt-0.5 opacity-80">
+                      {{ stockLabel(item) }}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -134,6 +165,7 @@ export default {
   data() {
     return {
       selectedDate: this.report?.business_date || '',
+      selectedStatus: this.report?.status || 'needed',
     };
   },
   watch: {
@@ -141,23 +173,31 @@ export default {
       deep: true,
       handler(value) {
         this.selectedDate = value?.business_date || '';
+        this.selectedStatus = value?.status || 'needed';
       },
     },
   },
   methods: {
-    applyDate() {
+    applyFilters() {
       router.get(route('admin.closing-photo-reports.shortages'), {
         business_date: this.selectedDate || undefined,
+        status: this.selectedStatus || 'needed',
       }, { preserveState: true, replace: true });
     },
     goLatest() {
-      router.get(route('admin.closing-photo-reports.shortages'), {}, { preserveState: true, replace: true });
+      router.get(route('admin.closing-photo-reports.shortages'), {
+        status: this.selectedStatus || 'needed',
+      }, { preserveState: true, replace: true });
     },
     jumpDate(date) {
       this.selectedDate = date;
-      this.applyDate();
+      this.applyFilters();
     },
-    groupedNeeded(items) {
+    setStatus(status) {
+      this.selectedStatus = status;
+      this.applyFilters();
+    },
+    groupedItems(items) {
       const map = {};
       (items || []).forEach((item) => {
         const category = item.category_name || 'بدون فئة';
@@ -168,6 +208,16 @@ export default {
         category,
         items: map[category],
       }));
+    },
+    stockLabel(item) {
+      if (item.branch_stock === null || item.branch_stock === undefined) {
+        return 'مخزون الفرع: —';
+      }
+      const unit = item.branch_stock_unit ? ` ${item.branch_stock_unit}` : '';
+      if (item.branch_stock_pieces !== null && item.branch_stock_pieces !== undefined) {
+        return `مخزون الفرع: ${item.branch_stock_pieces} قطعة · ${item.branch_stock}${unit}`;
+      }
+      return `مخزون الفرع: ${item.branch_stock}${unit}`;
     },
   },
 };

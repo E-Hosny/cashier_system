@@ -237,7 +237,8 @@ class ClosingPhotoReportController extends Controller
 
         $tenant = $this->currentTenant();
         $date = $request->input('business_date');
-        $report = $this->service->shortagesReport($tenant, $date);
+        $status = $request->input('status', 'needed');
+        $report = $this->service->shortagesReport($tenant, $date, is_string($status) ? $status : 'needed');
 
         return Inertia::render('Admin/ClosingPhotoReports/Shortages', [
             'report' => $report,

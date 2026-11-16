@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Branch;
 use App\Models\BranchFridgeStock;
+use App\Models\BranchRawMaterialStock;
 use App\Models\Category;
 use App\Models\ClosingPhotoReportFridgeCount;
 use App\Models\ClosingPhotoReportItem;
@@ -1093,8 +1094,15 @@ class ClosingPhotoReportService
      *
      * @return array<string, mixed>
      */
-    public function shortagesReport(Tenant $tenant, ?string $businessDate = null): array
+    public function shortagesReport(Tenant $tenant, ?string $businessDate = null, string $status = ClosingPhotoReportShortageAnswer::STATUS_NEEDED): array
     {
+        $status = in_array($status, [
+            ClosingPhotoReportShortageAnswer::STATUS_NEEDED,
+            ClosingPhotoReportShortageAnswer::STATUS_NOT_NEEDED,
+        ], true)
+            ? $status
+            : ClosingPhotoReportShortageAnswer::STATUS_NEEDED;
+
         $latestDate = ClosingPhotoReportSubmission::withoutGlobalScopes()
             ->where('tenant_id', $tenant->id)
             ->whereNotNull('shortages_completed_at')
@@ -1109,29 +1117,71 @@ class ClosingPhotoReportService
             ->whereNotNull('shortages_completed_at')
             ->with([
                 'branch:id,name',
-                'shortageAnswers' => fn ($q) => $q->where('status', ClosingPhotoReportShortageAnswer::STATUS_NEEDED),
+                'shortageAnswers' => fn ($q) => $q->where('status', $status),
             ])
             ->orderBy('closing_type')
             ->get();
 
+        $productIds = $submissions
+            ->flatMap(fn ($submission) => $submission->shortageAnswers->pluck('product_id'))
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        $products = $productIds->isEmpty()
+            ? collect()
+            : Product::query()
+                ->whereIn('id', $productIds)
+                ->get(['id', 'consume_unit', 'unit', 'quantity_per_unit'])
+                ->keyBy('id');
+
+        $branchIds = $submissions->pluck('branch_id')->unique()->values();
+        $stocks = ($branchIds->isEmpty() || $productIds->isEmpty())
+            ? collect()
+            : BranchRawMaterialStock::query()
+                ->whereIn('branch_id', $branchIds)
+                ->whereIn('product_id', $productIds)
+                ->get()
+                ->keyBy(fn ($row) => $row->branch_id.'|'.$row->product_id);
+
         $branches = $submissions
             ->groupBy('branch_id')
-            ->map(function (Collection $rows) {
+            ->map(function (Collection $rows) use ($products, $stocks, $status) {
+                $branchId = (int) $rows->first()->branch_id;
                 $branchName = $rows->first()?->branch?->name ?? '—';
 
                 return [
-                    'branch_id' => $rows->first()->branch_id,
+                    'branch_id' => $branchId,
                     'branch_name' => $branchName,
-                    'closings' => $rows->map(function (ClosingPhotoReportSubmission $submission) {
-                        $needed = $submission->shortageAnswers
+                    'closings' => $rows->map(function (ClosingPhotoReportSubmission $submission) use ($products, $stocks, $status) {
+                        $items = $submission->shortageAnswers
                             ->sortBy(fn ($a) => [$a->category_name, $a->title_snapshot])
                             ->values()
-                            ->map(fn ($a) => [
-                                'id' => $a->id,
-                                'title' => $a->title_snapshot,
-                                'category_name' => $a->category_name ?: 'بدون فئة',
-                                'source' => $a->source,
-                            ])
+                            ->map(function ($a) use ($products, $stocks, $submission) {
+                                $product = $a->product_id ? $products->get($a->product_id) : null;
+                                $stockRow = $a->product_id
+                                    ? $stocks->get($submission->branch_id.'|'.$a->product_id)
+                                    : null;
+                                $stockConsume = $a->product_id ? (float) ($stockRow?->stock ?? 0) : null;
+                                $qpu = (float) ($product?->quantity_per_unit ?: 0);
+                                $stockPieces = $stockConsume !== null && $qpu > 0
+                                    ? round($stockConsume / $qpu, 2)
+                                    : null;
+                                $unit = $product?->consume_unit ?: ($product?->unit ?: null);
+
+                                return [
+                                    'id' => $a->id,
+                                    'title' => $a->title_snapshot,
+                                    'category_name' => $a->category_name ?: 'بدون فئة',
+                                    'source' => $a->source,
+                                    'status' => $a->status,
+                                    'product_id' => $a->product_id,
+                                    'branch_stock' => $stockConsume !== null ? round($stockConsume, 2) : null,
+                                    'branch_stock_pieces' => $stockPieces,
+                                    'branch_stock_unit' => $unit,
+                                ];
+                            })
                             ->all();
 
                         return [
@@ -1139,8 +1189,11 @@ class ClosingPhotoReportService
                             'closing_type' => $submission->closing_type,
                             'closing_type_label' => $this->typeLabel($submission->closing_type),
                             'completed_at' => optional($submission->shortages_completed_at)?->toDateTimeString(),
-                            'needed_count' => count($needed),
-                            'needed_items' => $needed,
+                            'items_count' => count($items),
+                            'items' => $items,
+                            // backward-compatible aliases for needed filter views
+                            'needed_count' => $status === ClosingPhotoReportShortageAnswer::STATUS_NEEDED ? count($items) : 0,
+                            'needed_items' => $status === ClosingPhotoReportShortageAnswer::STATUS_NEEDED ? $items : [],
                         ];
                     })->values()->all(),
                 ];
@@ -1160,12 +1213,16 @@ class ClosingPhotoReportService
             ->values()
             ->all();
 
+        $totalFiltered = collect($branches)->sum(fn ($b) => collect($b['closings'])->sum('items_count'));
+
         return [
             'business_date' => $date,
+            'status' => $status,
             'latest_date' => $latestDate ? Carbon::parse($latestDate)->toDateString() : null,
             'available_dates' => $availableDates,
             'branches' => $branches,
-            'total_needed' => collect($branches)->sum(fn ($b) => collect($b['closings'])->sum('needed_count')),
+            'total_filtered' => $totalFiltered,
+            'total_needed' => $status === ClosingPhotoReportShortageAnswer::STATUS_NEEDED ? $totalFiltered : 0,
         ];
     }
 
