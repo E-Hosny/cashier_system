@@ -194,6 +194,7 @@ class PermissionCatalog
                     ['name' => 'closing_photos.browse', 'label' => 'استعراض صور التقفيلة', 'scope' => 'either'],
                     ['name' => 'closing_photos.submit', 'label' => 'رفع صور التقفيلة', 'scope' => 'branch'],
                     ['name' => 'closing_photos.settings', 'label' => 'إعدادات صور التقفيلة', 'scope' => 'central'],
+                    ['name' => 'closing_photos.shortages', 'label' => 'عرض النواقص', 'scope' => 'either'],
                 ],
             ],
             [
@@ -262,6 +263,7 @@ class PermissionCatalog
                 'barista.use',
                 'closing_photos.browse',
                 'closing_photos.submit',
+                'closing_photos.shortages',
             ],
             'cashier' => [
                 'products.view',
@@ -286,6 +288,7 @@ class PermissionCatalog
                 'employees.view',
                 'employees.discounts',
                 'closing_photos.browse',
+                'closing_photos.shortages',
             ],
         ];
     }

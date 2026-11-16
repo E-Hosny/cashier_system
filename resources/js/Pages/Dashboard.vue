@@ -64,10 +64,6 @@ function clearBranch() {
                 <template v-if="superAdminHub">
                     <div>
                         <h3 class="text-lg font-bold text-gray-800 mb-4 border-b pb-2">إدارة مركزية (جميع الفروع)</h3>
-                        <p class="text-sm text-gray-600 mb-6 leading-relaxed break-words">
-                            المنتجات والمواد الخام والمستخدمين وعرض الشاشة والمشتريات والريسبي والتقييمات مركزية.
-                            تقارير المبيعات هنا تعرض إجمالياً لجميع الفروع. المصروفات في هذه الشاشة تعرض المصروفات المركزية فقط (بدون فرع).
-                        </p>
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 min-w-0">
                             <a href="/products" class="block p-6 bg-white rounded-lg shadow-lg transform transition hover:scale-105 hover:shadow-xl min-w-0">
                                 <div class="flex flex-col items-stretch w-full text-center min-w-0">
@@ -173,9 +169,6 @@ function clearBranch() {
 
                     <div>
                         <h3 class="text-lg font-bold text-gray-800 mb-4 border-b pb-2">الدخول إلى فرع</h3>
-                        <p class="text-sm text-gray-600 mb-6 leading-relaxed break-words">
-                            اختر فرعاً للوصول إلى الكاشير والفواتير والموظفين ومجموعات الحضور وتقارير المبيعات الخاصة بالفرع ومصروفات ذلك الفرع فقط (المصروفات المركزية من لوحة الفروع الموحدة).
-                        </p>
                         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 min-w-0">
                             <button
                                 v-for="b in branches"

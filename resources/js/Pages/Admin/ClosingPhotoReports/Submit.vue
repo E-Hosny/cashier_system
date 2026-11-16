@@ -29,7 +29,7 @@
             </span>
           </div>
 
-          <div class="flex gap-2 text-xs font-semibold">
+          <div class="flex flex-wrap gap-2 text-xs font-semibold">
             <span
               class="px-2 py-1 rounded-full"
               :class="photosComplete ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'"
@@ -42,6 +42,13 @@
               :class="fridgeCounted ? 'bg-emerald-100 text-emerald-800' : 'bg-cyan-100 text-cyan-900'"
             >
               2) أعداد التلاجة {{ fridgeCounted ? '✓' : 'مطلوب' }}
+            </span>
+            <span
+              v-if="shortagesRequired"
+              class="px-2 py-1 rounded-full"
+              :class="shortagesCompleted ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'"
+            >
+              {{ fridgeRequired ? '3' : '2' }}) النواقص {{ shortagesCompleted ? '✓' : `${shortagesAnswered}/${shortagesTotal}` }}
             </span>
           </div>
 
@@ -194,6 +201,14 @@
             >
               التالي: إدخال أعداد التلاجة الفعلية
             </button>
+            <button
+              v-else-if="photosComplete && (!fridgeRequired || fridgeCounted) && shortagesRequired && !shortagesCompleted"
+              type="button"
+              class="w-full bg-amber-600 hover:bg-amber-700 text-white px-4 py-4 rounded-xl text-base font-bold"
+              @click="phase = 'shortages'"
+            >
+              التالي: تحديد النواقص
+            </button>
           </template>
         </template>
 
@@ -344,6 +359,103 @@
               >
                 {{ savingFridge ? 'جاري الحفظ والتسوية...' : 'حفظ ومقارنة وتسوية' }}
               </button>
+              <button
+                v-else-if="shortagesRequired && !shortagesCompleted"
+                type="button"
+                class="flex-[2] bg-amber-600 hover:bg-amber-700 text-white px-3 py-3 rounded-xl text-sm font-bold"
+                @click="phase = 'shortages'"
+              >
+                التالي: تحديد النواقص
+              </button>
+              <a
+                v-else
+                :href="salesReportUrl"
+                class="flex-[2] text-center bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-3 rounded-xl text-sm font-bold"
+              >
+                فتح تقارير المبيعات
+              </a>
+            </div>
+          </div>
+        </template>
+
+        <!-- مرحلة النواقص -->
+        <template v-else-if="phase === 'shortages'">
+          <div class="bg-white shadow-xl sm:rounded-lg p-5 space-y-4">
+            <div>
+              <h4 class="text-lg font-bold text-gray-900">النواقص</h4>
+              <p class="text-sm text-gray-600 mt-1">
+                مرّ على كل بند واختر فقط
+                <strong>محتاج</strong>
+                أو
+                <strong>مش محتاج</strong>.
+                لا يمكن الحفظ قبل إكمال كل البنود.
+              </p>
+              <div class="mt-2 text-sm font-semibold text-amber-800">
+                تم تحديد {{ shortagesAnswered }} من {{ shortagesTotal }}
+              </div>
+            </div>
+
+            <div v-if="shortagesCompleted" class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 font-semibold">
+              تم حفظ النواقص لهذه التقفيلة.
+              <span v-if="localShortages.needed_count">المحتاج: {{ localShortages.needed_count }}</span>
+            </div>
+
+            <div v-else class="space-y-4">
+              <div
+                v-for="group in shortageGroups"
+                :key="group.category"
+                class="space-y-2"
+              >
+                <div class="text-xs font-bold text-gray-500 border-b border-gray-100 pb-1">{{ group.category }}</div>
+                <div
+                  v-for="item in group.items"
+                  :key="item.key"
+                  class="rounded-xl border p-3 space-y-2"
+                  :class="item.status ? 'border-emerald-200 bg-emerald-50/40' : 'border-gray-200'"
+                >
+                  <div class="font-semibold text-gray-900">{{ item.title }}</div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      class="rounded-lg px-3 py-2.5 text-sm font-bold"
+                      :class="item.status === 'needed' ? 'bg-red-600 text-white' : 'bg-red-50 text-red-700'"
+                      :disabled="savingShortages"
+                      @click="setShortageStatus(item.key, 'needed')"
+                    >
+                      محتاج
+                    </button>
+                    <button
+                      type="button"
+                      class="rounded-lg px-3 py-2.5 text-sm font-bold"
+                      :class="item.status === 'not_needed' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-800'"
+                      :disabled="savingShortages"
+                      @click="setShortageStatus(item.key, 'not_needed')"
+                    >
+                      مش محتاج
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex gap-2">
+              <button
+                type="button"
+                class="flex-1 border border-gray-300 text-gray-700 px-3 py-3 rounded-xl text-sm"
+                :disabled="savingShortages"
+                @click="phase = fridgeRequired ? 'fridge' : 'photos'"
+              >
+                رجوع
+              </button>
+              <button
+                v-if="!shortagesCompleted"
+                type="button"
+                class="flex-[2] bg-amber-600 hover:bg-amber-700 text-white px-3 py-3 rounded-xl text-sm font-bold disabled:opacity-50"
+                :disabled="savingShortages || !shortagesReady"
+                @click="submitShortages"
+              >
+                {{ savingShortages ? 'جاري الحفظ...' : 'حفظ النواقص' }}
+              </button>
               <a
                 v-else
                 :href="salesReportUrl"
@@ -376,6 +488,7 @@ export default {
     submission: { type: Object, default: null },
     items: { type: Array, default: () => [] },
     fridge: { type: Object, default: () => ({ required: false, counted: false, products: [], summary: null }) },
+    shortages: { type: Object, default: () => ({ required: false, completed: false, items: [], groups: [] }) },
     canChooseType: { type: Boolean, default: false },
     salesReportUrl: { type: String, required: true },
   },
@@ -383,17 +496,36 @@ export default {
     const localItems = (this.items || []).map((item) => ({ ...item, photo: item.photo ? { ...item.photo } : null }));
     const firstPending = localItems.findIndex((item) => item.is_required && !item.photo);
     const fridge = this.fridge || { required: false, counted: false, products: [], summary: null };
+    const shortages = this.shortages || { required: false, completed: false, items: [], groups: [] };
     const photosDone = this.computePhotosComplete(localItems, this.submission);
+    let phase = 'photos';
+    if (photosDone && fridge.required && !fridge.counted) {
+      phase = 'fridge';
+    } else if (photosDone && (!fridge.required || fridge.counted) && shortages.required && !shortages.completed) {
+      phase = 'shortages';
+    }
 
     return {
       localItems,
       localSubmission: this.submission ? { ...this.submission } : null,
       localFridge: { ...fridge, products: [...(fridge.products || [])] },
+      localShortages: {
+        ...shortages,
+        items: (shortages.items || []).map((item) => ({ ...item })),
+        groups: (shortages.groups || []).map((group) => ({
+          ...group,
+          items: (group.items || []).map((item) => ({ ...item })),
+        })),
+      },
+      shortageAnswers: Object.fromEntries(
+        (shortages.items || []).filter((item) => item.status).map((item) => [item.key, item.status])
+      ),
       fridgeInputs: [],
-      phase: photosDone && fridge.required && !fridge.counted ? 'fridge' : 'photos',
+      phase,
       activeIndex: firstPending >= 0 ? firstPending : 0,
       uploading: false,
       savingFridge: false,
+      savingShortages: false,
       statusMessage: null,
       errorMessage: null,
     };
@@ -420,10 +552,41 @@ export default {
     fridgeSummary() {
       return this.localFridge?.summary || null;
     },
+    shortagesRequired() {
+      return !!(this.localShortages?.required && (this.localShortages.items || []).length);
+    },
+    shortagesCompleted() {
+      return !!(this.localShortages?.completed || this.localSubmission?.shortages_completed_at);
+    },
+    shortagesTotal() {
+      return (this.localShortages?.items || []).length;
+    },
+    shortagesAnswered() {
+      return Object.keys(this.shortageAnswers || {}).length;
+    },
+    shortagesReady() {
+      return this.shortagesTotal > 0 && this.shortagesAnswered === this.shortagesTotal;
+    },
+    shortageGroups() {
+      const map = {};
+      (this.localShortages?.items || []).forEach((item) => {
+        const category = item.category_name || 'بدون فئة';
+        if (!map[category]) map[category] = [];
+        map[category].push({
+          ...item,
+          status: this.shortageAnswers[item.key] || null,
+        });
+      });
+      return Object.keys(map).sort().map((category) => ({
+        category,
+        items: map[category],
+      }));
+    },
     localComplete() {
       if (this.localSubmission?.is_complete) return true;
       if (!this.photosComplete) return false;
       if (this.fridgeRequired && !this.fridgeCounted) return false;
+      if (this.shortagesRequired && !this.shortagesCompleted) return false;
       return true;
     },
     fridgeInputsReady() {
@@ -433,17 +596,19 @@ export default {
     statusBadge() {
       if (this.localComplete) return 'مكتمل';
       if (this.photosComplete && this.fridgeRequired && !this.fridgeCounted) return 'متبقي: التلاجة';
+      if (this.photosComplete && (!this.fridgeRequired || this.fridgeCounted) && this.shortagesRequired && !this.shortagesCompleted) {
+        return 'متبقي: النواقص';
+      }
       return `${this.doneRequired}/${this.requiredItems.length}`;
     },
     progressPercent() {
-      const photoPart = this.requiredItems.length
-        ? this.doneRequired / this.requiredItems.length
-        : 0;
-      if (!this.fridgeRequired) {
-        return Math.round(photoPart * 100);
+      const steps = [this.requiredItems.length ? this.doneRequired / this.requiredItems.length : 0];
+      if (this.fridgeRequired) steps.push(this.fridgeCounted ? 1 : 0);
+      if (this.shortagesRequired) {
+        steps.push(this.shortagesCompleted ? 1 : (this.shortagesTotal ? this.shortagesAnswered / this.shortagesTotal : 0));
       }
-      const fridgePart = this.fridgeCounted ? 1 : 0;
-      return Math.round(((photoPart + fridgePart) / 2) * 100);
+      const sum = steps.reduce((a, b) => a + b, 0);
+      return Math.round((sum / steps.length) * 100);
     },
   },
   watch: {
@@ -459,6 +624,24 @@ export default {
       handler(value) {
         this.localFridge = { ...(value || {}), products: [...((value && value.products) || [])] };
         this.syncFridgeInputs();
+      },
+    },
+    shortages: {
+      deep: true,
+      immediate: true,
+      handler(value) {
+        const shortages = value || { required: false, completed: false, items: [], groups: [] };
+        this.localShortages = {
+          ...shortages,
+          items: (shortages.items || []).map((item) => ({ ...item })),
+          groups: (shortages.groups || []).map((group) => ({
+            ...group,
+            items: (group.items || []).map((item) => ({ ...item })),
+          })),
+        };
+        this.shortageAnswers = Object.fromEntries(
+          (shortages.items || []).filter((item) => item.status).map((item) => [item.key, item.status])
+        );
       },
     },
   },
@@ -549,7 +732,17 @@ export default {
       }
       if (this.photosComplete && this.fridgeRequired && !this.fridgeCounted) {
         this.phase = 'fridge';
+        return;
       }
+      if (this.photosComplete && (!this.fridgeRequired || this.fridgeCounted) && this.shortagesRequired && !this.shortagesCompleted) {
+        this.phase = 'shortages';
+      }
+    },
+    setShortageStatus(key, status) {
+      this.shortageAnswers = {
+        ...this.shortageAnswers,
+        [key]: status,
+      };
     },
     triggerCamera() {
       this.errorMessage = null;
@@ -624,6 +817,12 @@ export default {
           this.localFridge = { ...data.fridge, products: [...(data.fridge.products || [])] };
           this.fridgeInputs = this.buildFridgeInputs(this.localFridge);
         }
+        if (data.shortages) {
+          this.localShortages = {
+            ...data.shortages,
+            items: (data.shortages.items || []).map((item) => ({ ...item })),
+          };
+        }
 
         this.statusMessage = data.message || 'تم الرفع';
         this.jumpToNextPending(itemIndex);
@@ -682,13 +881,81 @@ export default {
           this.localFridge = { ...data.fridge, products: [...(data.fridge.products || [])] };
           this.fridgeInputs = this.buildFridgeInputs(this.localFridge);
         }
+        if (data.shortages) {
+          this.localShortages = {
+            ...data.shortages,
+            items: (data.shortages.items || []).map((item) => ({ ...item })),
+          };
+        }
 
         this.statusMessage = data.message || 'تم حفظ أعداد التلاجة وتسوية المخزون.';
+        if (this.shortagesRequired && !this.shortagesCompleted) {
+          this.phase = 'shortages';
+        }
       } catch (e) {
         console.error(e);
         this.errorMessage = e.message || 'حدث خطأ أثناء حفظ أعداد التلاجة';
       } finally {
         this.savingFridge = false;
+      }
+    },
+    async submitShortages() {
+      if (!this.shortagesReady) {
+        this.errorMessage = 'يجب تحديد محتاج أو مش محتاج لكل البنود.';
+        return;
+      }
+
+      this.savingShortages = true;
+      this.errorMessage = null;
+      this.statusMessage = null;
+
+      try {
+        const answers = (this.localShortages.items || []).map((item) => ({
+          source: item.source,
+          product_id: item.product_id,
+          custom_item_id: item.custom_item_id,
+          status: this.shortageAnswers[item.key],
+        }));
+
+        const response = await fetch(route('admin.closing-photo-reports.shortages.store'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            Accept: 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          body: JSON.stringify({
+            closing_type: this.closingType,
+            business_date: this.businessDate,
+            answers,
+          }),
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.success) {
+          throw new Error(data.message || data.errors?.shortages?.[0] || 'فشل حفظ النواقص');
+        }
+
+        if (data.submission) {
+          this.localSubmission = data.submission;
+        }
+        if (data.shortages) {
+          this.localShortages = {
+            ...data.shortages,
+            items: (data.shortages.items || []).map((item) => ({ ...item })),
+          };
+          this.shortageAnswers = Object.fromEntries(
+            (data.shortages.items || []).filter((item) => item.status).map((item) => [item.key, item.status])
+          );
+        }
+
+        this.statusMessage = data.message || 'تم حفظ النواقص.';
+      } catch (e) {
+        console.error(e);
+        this.errorMessage = e.message || 'حدث خطأ أثناء حفظ النواقص';
+      } finally {
+        this.savingShortages = false;
       }
     },
     async compressImage(file, maxWidth = 1280, quality = 0.72) {

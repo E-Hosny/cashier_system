@@ -260,17 +260,26 @@ Route::middleware([
         Route::post('/items', [ClosingPhotoReportController::class, 'storeItem'])->name('items.store');
         Route::put('/items/{item}', [ClosingPhotoReportController::class, 'updateItem'])->name('items.update');
         Route::delete('/items/{item}', [ClosingPhotoReportController::class, 'destroyItem'])->name('items.destroy');
+        Route::put('/shortages/hidden', [ClosingPhotoReportController::class, 'syncShortageHidden'])->name('shortages.hidden');
+        Route::post('/shortages/custom-items', [ClosingPhotoReportController::class, 'storeShortageCustomItem'])->name('shortages.custom.store');
+        Route::put('/shortages/custom-items/{item}', [ClosingPhotoReportController::class, 'updateShortageCustomItem'])->name('shortages.custom.update');
+        Route::delete('/shortages/custom-items/{item}', [ClosingPhotoReportController::class, 'destroyShortageCustomItem'])->name('shortages.custom.destroy');
     });
 
     Route::middleware(['permission:closing_photos.submit'])->prefix('admin/closing-photo-reports')->name('admin.closing-photo-reports.')->group(function () {
         Route::get('/submit', [ClosingPhotoReportController::class, 'submitForm'])->name('submit');
         Route::post('/upload', [ClosingPhotoReportController::class, 'upload'])->name('upload');
         Route::post('/fridge-count', [ClosingPhotoReportController::class, 'storeFridgeCount'])->name('fridge-count');
+        Route::post('/shortages', [ClosingPhotoReportController::class, 'storeShortages'])->name('shortages.store');
     });
 
     Route::get('/admin/closing-photo-reports/browse', [ClosingPhotoReportController::class, 'browse'])
         ->middleware('permission:closing_photos.browse')
         ->name('admin.closing-photo-reports.browse');
+
+    Route::get('/admin/closing-photo-reports/shortages', [ClosingPhotoReportController::class, 'shortagesBrowse'])
+        ->middleware('permission:closing_photos.shortages')
+        ->name('admin.closing-photo-reports.shortages');
 
     Route::middleware(['branch.context'])->group(function () {
         Route::middleware(['permission:inventory.branch_pull'])->group(function () {

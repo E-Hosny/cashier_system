@@ -4,10 +4,14 @@ namespace App\Services;
 
 use App\Models\Branch;
 use App\Models\BranchFridgeStock;
+use App\Models\Category;
 use App\Models\ClosingPhotoReportFridgeCount;
 use App\Models\ClosingPhotoReportItem;
 use App\Models\ClosingPhotoReportPhoto;
+use App\Models\ClosingPhotoReportShortageAnswer;
 use App\Models\ClosingPhotoReportSubmission;
+use App\Models\ClosingShortageCustomItem;
+use App\Models\ClosingShortageHiddenMaterial;
 use App\Models\FridgeProductConfig;
 use App\Models\Product;
 use App\Models\Tenant;
@@ -135,7 +139,7 @@ class ClosingPhotoReportService
             ->where('branch_id', $branchId)
             ->where('closing_type', $closingType)
             ->whereDate('business_date', $businessDate)
-            ->with(['photos', 'fridgeCounts'])
+            ->with(['photos', 'fridgeCounts', 'shortageAnswers'])
             ->first();
 
         $photosByItem = collect($submission?->photos ?? [])->keyBy('item_id');
@@ -145,7 +149,9 @@ class ClosingPhotoReportService
 
         $fridgeRequired = $this->activeFridgeConfigs((int) $tenant->id)->isNotEmpty();
         $fridgeComplete = ! $fridgeRequired || ($submission?->fridge_counted_at !== null);
-        $isComplete = $photosComplete && $fridgeComplete;
+        $shortagesRequired = $this->shortagesRequiredFor($tenant, $closingType);
+        $shortagesComplete = ! $shortagesRequired || ($submission?->shortages_completed_at !== null);
+        $isComplete = $photosComplete && $fridgeComplete && $shortagesComplete;
 
         if ($submission) {
             $this->refreshCompletion($submission);
@@ -160,8 +166,10 @@ class ClosingPhotoReportService
         if (! $isComplete) {
             if (! $photosComplete) {
                 $blockReason = 'يجب رفع صور '.$this->typeLabel($closingType).' ليوم '.$businessDate.' قبل فتح تقارير المبيعات.';
-            } else {
+            } elseif (! $fridgeComplete) {
                 $blockReason = 'يجب إدخال أعداد التلاجة الفعلية ليوم '.$businessDate.' قبل فتح تقارير المبيعات.';
+            } else {
+                $blockReason = 'يجب تحديد النواقص ليوم '.$businessDate.' قبل فتح تقارير المبيعات.';
             }
         }
 
@@ -176,6 +184,8 @@ class ClosingPhotoReportService
             'photos_complete' => $photosComplete,
             'fridge_required' => $fridgeRequired,
             'fridge_complete' => $fridgeComplete,
+            'shortages_required' => $shortagesRequired,
+            'shortages_complete' => $shortagesComplete,
             'required_count' => $requiredItems->count(),
             'uploaded_required_count' => $uploadedRequired,
             'items_count' => $items->count(),
@@ -355,7 +365,13 @@ class ClosingPhotoReportService
         $fridgeRequired = $this->activeFridgeConfigs((int) $submission->tenant_id)->isNotEmpty();
         $fridgeComplete = ! $fridgeRequired || $submission->fridge_counted_at !== null;
 
-        $complete = $photosComplete && $fridgeComplete;
+        $tenant = Tenant::query()->find($submission->tenant_id);
+        $shortagesRequired = $tenant
+            ? $this->shortagesRequiredFor($tenant, $submission->closing_type)
+            : false;
+        $shortagesComplete = ! $shortagesRequired || $submission->shortages_completed_at !== null;
+
+        $complete = $photosComplete && $fridgeComplete && $shortagesComplete;
         $submission->completed_at = $complete ? ($submission->completed_at ?: now()) : null;
     }
 
@@ -486,11 +502,12 @@ class ClosingPhotoReportService
             ->where('branch_id', $branchId)
             ->where('closing_type', $closingType)
             ->whereDate('business_date', $businessDate)
-            ->with(['photos.item', 'fridgeCounts.product:id,name,size_variants'])
+            ->with(['photos.item', 'fridgeCounts.product:id,name,size_variants', 'shortageAnswers'])
             ->first();
 
         $photosByItem = collect($submission?->photos ?? [])->keyBy('item_id');
         $fridge = $this->fridgePayload($tenant, $branchId, $submission);
+        $shortages = $this->shortagesPayload($tenant, $closingType, $submission);
 
         $photosComplete = $submission ? $this->arePhotosComplete($submission) : false;
 
@@ -499,6 +516,7 @@ class ClosingPhotoReportService
                 'id' => $submission->id,
                 'completed_at' => optional($submission->completed_at)?->toDateTimeString(),
                 'fridge_counted_at' => optional($submission->fridge_counted_at)?->toDateTimeString(),
+                'shortages_completed_at' => optional($submission->shortages_completed_at)?->toDateTimeString(),
                 'is_complete' => $submission->isComplete(),
                 'photos_complete' => $photosComplete,
             ] : null,
@@ -520,6 +538,7 @@ class ClosingPhotoReportService
                 ];
             })->values()->all(),
             'fridge' => $fridge,
+            'shortages' => $shortages,
         ];
     }
 
@@ -765,6 +784,388 @@ class ClosingPhotoReportService
             'variance_count' => count($surplusItems) + count($shortageItems),
             'surplus_items' => $surplusItems,
             'shortage_items' => $shortageItems,
+        ];
+    }
+
+    public function shortagesRequiredFor(Tenant $tenant, string $closingType): bool
+    {
+        if (! $tenant->closing_shortages_enabled) {
+            return false;
+        }
+
+        $types = collect($tenant->closing_shortages_types ?? [])
+            ->filter(fn ($type) => in_array($type, [
+                ClosingPhotoReportItem::TYPE_EVENING,
+                ClosingPhotoReportItem::TYPE_DAWN,
+            ], true))
+            ->values()
+            ->all();
+
+        if (! in_array($closingType, $types, true)) {
+            return false;
+        }
+
+        return count($this->visibleShortageItems($tenant)) > 0;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function visibleShortageItems(Tenant $tenant): array
+    {
+        $hiddenIds = ClosingShortageHiddenMaterial::query()
+            ->where('tenant_id', $tenant->id)
+            ->pluck('product_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $materials = Product::query()
+            ->where('type', 'raw')
+            ->with('category:id,name')
+            ->when($hiddenIds !== [], fn ($q) => $q->whereNotIn('id', $hiddenIds))
+            ->orderBy('name')
+            ->get(['id', 'name', 'category_id']);
+
+        $items = $materials->map(fn (Product $product) => [
+            'key' => 'raw:'.$product->id,
+            'source' => ClosingPhotoReportShortageAnswer::SOURCE_RAW,
+            'product_id' => $product->id,
+            'custom_item_id' => null,
+            'title' => $product->name,
+            'category_name' => $product->category?->name ?: 'بدون فئة',
+        ])->values();
+
+        $custom = ClosingShortageCustomItem::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        foreach ($custom as $row) {
+            $items->push([
+                'key' => 'custom:'.$row->id,
+                'source' => ClosingPhotoReportShortageAnswer::SOURCE_CUSTOM,
+                'product_id' => null,
+                'custom_item_id' => $row->id,
+                'title' => $row->title,
+                'category_name' => $row->category_label ?: 'بنود مخصصة',
+            ]);
+        }
+
+        return $items
+            ->sortBy(fn ($item) => [$item['category_name'], $item['title']])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function shortagesPayload(Tenant $tenant, string $closingType, ?ClosingPhotoReportSubmission $submission): array
+    {
+        $required = $this->shortagesRequiredFor($tenant, $closingType);
+        $items = $required ? $this->visibleShortageItems($tenant) : [];
+        $answers = collect($submission?->shortageAnswers ?? []);
+
+        $answerMap = [];
+        foreach ($answers as $answer) {
+            if ($answer->source === ClosingPhotoReportShortageAnswer::SOURCE_RAW && $answer->product_id) {
+                $answerMap['raw:'.$answer->product_id] = $answer->status;
+            } elseif ($answer->source === ClosingPhotoReportShortageAnswer::SOURCE_CUSTOM && $answer->custom_item_id) {
+                $answerMap['custom:'.$answer->custom_item_id] = $answer->status;
+            }
+        }
+
+        $payloadItems = collect($items)->map(function (array $item) use ($answerMap) {
+            return [
+                ...$item,
+                'status' => $answerMap[$item['key']] ?? null,
+            ];
+        })->values()->all();
+
+        $groups = collect($payloadItems)
+            ->groupBy('category_name')
+            ->map(fn (Collection $rows, string $category) => [
+                'category' => $category,
+                'items' => $rows->values()->all(),
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'required' => $required,
+            'completed' => $submission?->shortages_completed_at !== null,
+            'completed_at' => optional($submission?->shortages_completed_at)?->toDateTimeString(),
+            'items' => $payloadItems,
+            'groups' => $groups,
+            'total_count' => count($payloadItems),
+            'answered_count' => collect($payloadItems)->filter(fn ($item) => $item['status'] !== null)->count(),
+            'needed_count' => collect($payloadItems)->filter(fn ($item) => $item['status'] === ClosingPhotoReportShortageAnswer::STATUS_NEEDED)->count(),
+        ];
+    }
+
+    /**
+     * @param  array<int, array{source: string, product_id?: int|null, custom_item_id?: int|null, status: string}>  $answers
+     * @return array<string, mixed>
+     */
+    public function saveShortageAnswers(ClosingPhotoReportSubmission $submission, array $answers, User $user): array
+    {
+        $tenant = Tenant::query()->findOrFail($submission->tenant_id);
+
+        if (! $this->arePhotosComplete($submission)) {
+            throw ValidationException::withMessages([
+                'shortages' => 'يجب إكمال رفع صور التقفيلة أولاً قبل تحديد النواقص.',
+            ]);
+        }
+
+        $fridgeRequired = $this->activeFridgeConfigs((int) $tenant->id)->isNotEmpty();
+        if ($fridgeRequired && ! $submission->fridge_counted_at) {
+            throw ValidationException::withMessages([
+                'shortages' => 'يجب إدخال أعداد التلاجة أولاً قبل تحديد النواقص.',
+            ]);
+        }
+
+        if (! $this->shortagesRequiredFor($tenant, $submission->closing_type)) {
+            throw ValidationException::withMessages([
+                'shortages' => 'خاصية النواقص غير مفعّلة لهذا النوع من التقفيلة.',
+            ]);
+        }
+
+        if ($submission->shortages_completed_at) {
+            throw ValidationException::withMessages([
+                'shortages' => 'تم حفظ النواقص مسبقاً لهذه التقفيلة.',
+            ]);
+        }
+
+        $visible = collect($this->visibleShortageItems($tenant))->keyBy('key');
+        if ($visible->isEmpty()) {
+            throw ValidationException::withMessages([
+                'shortages' => 'لا توجد بنود نواقص لإدخالها.',
+            ]);
+        }
+
+        $incoming = collect($answers)->mapWithKeys(function (array $row) {
+            $source = $row['source'] ?? '';
+            $status = $row['status'] ?? '';
+            if (! in_array($status, [
+                ClosingPhotoReportShortageAnswer::STATUS_NEEDED,
+                ClosingPhotoReportShortageAnswer::STATUS_NOT_NEEDED,
+            ], true)) {
+                return [];
+            }
+
+            if ($source === ClosingPhotoReportShortageAnswer::SOURCE_RAW) {
+                $productId = (int) ($row['product_id'] ?? 0);
+                if ($productId <= 0) {
+                    return [];
+                }
+
+                return ['raw:'.$productId => [
+                    'source' => $source,
+                    'product_id' => $productId,
+                    'custom_item_id' => null,
+                    'status' => $status,
+                ]];
+            }
+
+            if ($source === ClosingPhotoReportShortageAnswer::SOURCE_CUSTOM) {
+                $customId = (int) ($row['custom_item_id'] ?? 0);
+                if ($customId <= 0) {
+                    return [];
+                }
+
+                return ['custom:'.$customId => [
+                    'source' => $source,
+                    'product_id' => null,
+                    'custom_item_id' => $customId,
+                    'status' => $status,
+                ]];
+            }
+
+            return [];
+        });
+
+        foreach ($visible as $key => $item) {
+            if (! $incoming->has($key)) {
+                throw ValidationException::withMessages([
+                    'shortages' => 'يجب تحديد «محتاج» أو «مش محتاج» لكل البنود.',
+                ]);
+            }
+        }
+
+        return DB::transaction(function () use ($submission, $visible, $incoming, $user, $tenant) {
+            ClosingPhotoReportShortageAnswer::query()
+                ->where('submission_id', $submission->id)
+                ->delete();
+
+            foreach ($visible as $key => $item) {
+                $answer = $incoming->get($key);
+                ClosingPhotoReportShortageAnswer::query()->create([
+                    'submission_id' => $submission->id,
+                    'source' => $item['source'],
+                    'product_id' => $item['product_id'],
+                    'custom_item_id' => $item['custom_item_id'],
+                    'title_snapshot' => $item['title'],
+                    'category_name' => $item['category_name'],
+                    'status' => $answer['status'],
+                ]);
+            }
+
+            if (! $submission->submitted_by) {
+                $submission->submitted_by = $user->id;
+            }
+
+            $submission->shortages_completed_at = now();
+            $this->refreshCompletion($submission);
+            $submission->save();
+
+            return $this->shortagesPayload($tenant, $submission->closing_type, $submission->fresh('shortageAnswers'));
+        });
+    }
+
+    /**
+     * بيانات إعدادات النواقص لشاشة الإعدادات.
+     *
+     * @return array<string, mixed>
+     */
+    public function shortagesSettingsPayload(Tenant $tenant): array
+    {
+        $hiddenIds = ClosingShortageHiddenMaterial::query()
+            ->where('tenant_id', $tenant->id)
+            ->pluck('product_id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+
+        $materials = Product::query()
+            ->where('type', 'raw')
+            ->with('category:id,name')
+            ->orderBy('name')
+            ->get(['id', 'name', 'category_id'])
+            ->map(fn (Product $product) => [
+                'id' => $product->id,
+                'name' => $product->name,
+                'category_id' => $product->category_id,
+                'category_name' => $product->category?->name ?: 'بدون فئة',
+                'hidden' => in_array((int) $product->id, $hiddenIds, true),
+            ])
+            ->values()
+            ->all();
+
+        $customItems = ClosingShortageCustomItem::query()
+            ->where('tenant_id', $tenant->id)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get()
+            ->map(fn (ClosingShortageCustomItem $item) => [
+                'id' => $item->id,
+                'title' => $item->title,
+                'category_label' => $item->category_label,
+                'sort_order' => $item->sort_order,
+                'is_active' => (bool) $item->is_active,
+            ])
+            ->values()
+            ->all();
+
+        $categories = Category::forRawMaterials()
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (Category $category) => [
+                'id' => $category->id,
+                'name' => $category->name,
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'enabled' => (bool) $tenant->closing_shortages_enabled,
+            'types' => collect($tenant->closing_shortages_types ?? [])->values()->all(),
+            'hidden_product_ids' => $hiddenIds,
+            'materials' => $materials,
+            'custom_items' => $customItems,
+            'categories' => $categories,
+        ];
+    }
+
+    /**
+     * تقرير النواقص عبر الفروع ليوم تشغيلي.
+     *
+     * @return array<string, mixed>
+     */
+    public function shortagesReport(Tenant $tenant, ?string $businessDate = null): array
+    {
+        $latestDate = ClosingPhotoReportSubmission::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)
+            ->whereNotNull('shortages_completed_at')
+            ->max('business_date');
+
+        $date = $businessDate
+            ?: ($latestDate ? Carbon::parse($latestDate)->toDateString() : $this->businessDateFor()->toDateString());
+
+        $submissions = ClosingPhotoReportSubmission::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)
+            ->whereDate('business_date', $date)
+            ->whereNotNull('shortages_completed_at')
+            ->with([
+                'branch:id,name',
+                'shortageAnswers' => fn ($q) => $q->where('status', ClosingPhotoReportShortageAnswer::STATUS_NEEDED),
+            ])
+            ->orderBy('closing_type')
+            ->get();
+
+        $branches = $submissions
+            ->groupBy('branch_id')
+            ->map(function (Collection $rows) {
+                $branchName = $rows->first()?->branch?->name ?? '—';
+
+                return [
+                    'branch_id' => $rows->first()->branch_id,
+                    'branch_name' => $branchName,
+                    'closings' => $rows->map(function (ClosingPhotoReportSubmission $submission) {
+                        $needed = $submission->shortageAnswers
+                            ->sortBy(fn ($a) => [$a->category_name, $a->title_snapshot])
+                            ->values()
+                            ->map(fn ($a) => [
+                                'id' => $a->id,
+                                'title' => $a->title_snapshot,
+                                'category_name' => $a->category_name ?: 'بدون فئة',
+                                'source' => $a->source,
+                            ])
+                            ->all();
+
+                        return [
+                            'submission_id' => $submission->id,
+                            'closing_type' => $submission->closing_type,
+                            'closing_type_label' => $this->typeLabel($submission->closing_type),
+                            'completed_at' => optional($submission->shortages_completed_at)?->toDateTimeString(),
+                            'needed_count' => count($needed),
+                            'needed_items' => $needed,
+                        ];
+                    })->values()->all(),
+                ];
+            })
+            ->sortBy('branch_name')
+            ->values()
+            ->all();
+
+        $availableDates = ClosingPhotoReportSubmission::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)
+            ->whereNotNull('shortages_completed_at')
+            ->orderByDesc('business_date')
+            ->limit(60)
+            ->pluck('business_date')
+            ->map(fn ($d) => Carbon::parse($d)->toDateString())
+            ->unique()
+            ->values()
+            ->all();
+
+        return [
+            'business_date' => $date,
+            'latest_date' => $latestDate ? Carbon::parse($latestDate)->toDateString() : null,
+            'available_dates' => $availableDates,
+            'branches' => $branches,
+            'total_needed' => collect($branches)->sum(fn ($b) => collect($b['closings'])->sum('needed_count')),
         ];
     }
 

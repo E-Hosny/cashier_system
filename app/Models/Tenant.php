@@ -19,6 +19,8 @@ class Tenant extends Model
         'closing_dawn_starts_at',
         'closing_dawn_ends_at',
         'closing_fridge_show_in_sales_report',
+        'closing_shortages_enabled',
+        'closing_shortages_types',
         'sales_report_show_refunds',
         'fixed_salary_withdraw_limit_enabled',
         'fixed_salary_early_withdraw_percent',
@@ -28,6 +30,8 @@ class Tenant extends Model
     protected $casts = [
         'closing_photo_reports_enabled' => 'boolean',
         'closing_fridge_show_in_sales_report' => 'boolean',
+        'closing_shortages_enabled' => 'boolean',
+        'closing_shortages_types' => 'array',
         'sales_report_show_refunds' => 'boolean',
         'fixed_salary_withdraw_limit_enabled' => 'boolean',
         'fixed_salary_early_withdraw_percent' => 'float',

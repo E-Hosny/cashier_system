@@ -21,12 +21,14 @@ class ClosingPhotoReportSubmission extends Model
         'submitted_by',
         'completed_at',
         'fridge_counted_at',
+        'shortages_completed_at',
     ];
 
     protected $casts = [
         'business_date' => 'date',
         'completed_at' => 'datetime',
         'fridge_counted_at' => 'datetime',
+        'shortages_completed_at' => 'datetime',
     ];
 
     protected static function booted()
@@ -55,6 +57,11 @@ class ClosingPhotoReportSubmission extends Model
         return $this->hasMany(ClosingPhotoReportFridgeCount::class, 'submission_id');
     }
 
+    public function shortageAnswers()
+    {
+        return $this->hasMany(ClosingPhotoReportShortageAnswer::class, 'submission_id');
+    }
+
     public function isComplete(): bool
     {
         return $this->completed_at !== null;
@@ -63,5 +70,10 @@ class ClosingPhotoReportSubmission extends Model
     public function isFridgeCounted(): bool
     {
         return $this->fridge_counted_at !== null;
+    }
+
+    public function isShortagesCompleted(): bool
+    {
+        return $this->shortages_completed_at !== null;
     }
 }

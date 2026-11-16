@@ -83,6 +83,14 @@ const showClosingPhotosBrowseNav = computed(() =>
         userRoles.value.includes('admin')
     )
 );
+const showClosingShortagesNav = computed(() =>
+    !!tenantFeatures.value.closing_photos && (
+        hasPermission('closing_photos.shortages') ||
+        isHrOnly.value ||
+        isSuperAdmin.value ||
+        userRoles.value.includes('admin')
+    )
+);
 const canUseCashier = computed(() =>
     hasPermission('cashier.use', 'use cashier') ||
     userRoles.value.includes('admin') ||
@@ -235,6 +243,14 @@ const navSections = computed(() => {
             href: route('admin.closing-photo-reports.browse'),
             active: route().current('admin.closing-photo-reports.browse'),
             icon: 'camera',
+        });
+    }
+    if (showClosingShortagesNav.value) {
+        people.push({
+            label: 'النواقص',
+            href: route('admin.closing-photo-reports.shortages'),
+            active: route().current('admin.closing-photo-reports.shortages'),
+            icon: 'inventory',
         });
     }
     if (canManageFeedback.value) {

@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\ClosingPhotoReportItem;
 use App\Models\ClosingPhotoReportSubmission;
+use App\Models\ClosingShortageCustomItem;
+use App\Models\ClosingShortageHiddenMaterial;
+use App\Models\Product;
 use App\Models\Tenant;
 use App\Services\ClosingPhotoReportService;
 use App\Support\BranchContext;
@@ -62,15 +65,20 @@ class ClosingPhotoReportController extends Controller
                 ])->values()->all(),
             ]);
 
+        $shortages = $this->service->shortagesSettingsPayload($tenant);
+
         return Inertia::render('Admin/ClosingPhotoReports/Settings', [
             'settings' => [
                 'enabled' => (bool) $tenant->closing_photo_reports_enabled,
                 'show_fridge_in_sales_report' => (bool) $tenant->closing_fridge_show_in_sales_report,
+                'shortages_enabled' => (bool) $shortages['enabled'],
+                'shortages_types' => $shortages['types'],
                 'evening_starts_at' => substr((string) $tenant->closing_evening_starts_at, 0, 5) ?: '17:00',
                 'evening_ends_at' => substr((string) $tenant->closing_evening_ends_at, 0, 5) ?: '23:59',
                 'dawn_starts_at' => substr((string) $tenant->closing_dawn_starts_at, 0, 5) ?: '00:00',
                 'dawn_ends_at' => substr((string) $tenant->closing_dawn_ends_at, 0, 5) ?: '06:59',
             ],
+            'shortages' => $shortages,
             'itemsByType' => [
                 'evening' => ($items->get(ClosingPhotoReportItem::TYPE_EVENING) ?? collect())->values(),
                 'dawn' => ($items->get(ClosingPhotoReportItem::TYPE_DAWN) ?? collect())->values(),
@@ -91,15 +99,33 @@ class ClosingPhotoReportController extends Controller
         $data = $request->validate([
             'enabled' => ['required', 'boolean'],
             'show_fridge_in_sales_report' => ['required', 'boolean'],
+            'shortages_enabled' => ['required', 'boolean'],
+            'shortages_types' => ['nullable', 'array'],
+            'shortages_types.*' => ['in:evening,dawn'],
             'evening_starts_at' => ['required', 'date_format:H:i'],
             'evening_ends_at' => ['required', 'date_format:H:i'],
             'dawn_starts_at' => ['required', 'date_format:H:i'],
             'dawn_ends_at' => ['required', 'date_format:H:i'],
         ]);
 
+        $types = collect($data['shortages_types'] ?? [])
+            ->filter(fn ($type) => in_array($type, [
+                ClosingPhotoReportItem::TYPE_EVENING,
+                ClosingPhotoReportItem::TYPE_DAWN,
+            ], true))
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($data['shortages_enabled'] && $types === []) {
+            $types = [ClosingPhotoReportItem::TYPE_EVENING, ClosingPhotoReportItem::TYPE_DAWN];
+        }
+
         $tenant->update([
             'closing_photo_reports_enabled' => $data['enabled'],
             'closing_fridge_show_in_sales_report' => $data['show_fridge_in_sales_report'],
+            'closing_shortages_enabled' => $data['shortages_enabled'],
+            'closing_shortages_types' => $types,
             'closing_evening_starts_at' => $data['evening_starts_at'].':00',
             'closing_evening_ends_at' => $data['evening_ends_at'].':59',
             'closing_dawn_starts_at' => $data['dawn_starts_at'].':00',
@@ -107,6 +133,120 @@ class ClosingPhotoReportController extends Controller
         ]);
 
         return back()->with('success', 'تم حفظ إعدادات تقارير صور التقفيلة.');
+    }
+
+    public function syncShortageHidden(Request $request): RedirectResponse
+    {
+        $this->assertSuperAdmin();
+        $tenant = $this->currentTenant();
+
+        $data = $request->validate([
+            'hidden_product_ids' => ['nullable', 'array'],
+            'hidden_product_ids.*' => ['integer', 'exists:products,id'],
+        ]);
+
+        $ids = collect($data['hidden_product_ids'] ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        $validIds = Product::query()
+            ->where('type', 'raw')
+            ->whereIn('id', $ids)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        ClosingShortageHiddenMaterial::query()
+            ->where('tenant_id', $tenant->id)
+            ->whereNotIn('product_id', $validIds ?: [0])
+            ->delete();
+
+        foreach ($validIds as $productId) {
+            ClosingShortageHiddenMaterial::query()->firstOrCreate([
+                'tenant_id' => $tenant->id,
+                'product_id' => $productId,
+            ]);
+        }
+
+        return back()->with('success', 'تم تحديث المواد المخفية من النواقص.');
+    }
+
+    public function storeShortageCustomItem(Request $request): RedirectResponse
+    {
+        $this->assertSuperAdmin();
+        $tenant = $this->currentTenant();
+
+        $data = $request->validate([
+            'title' => ['required', 'string', 'max:180'],
+            'category_label' => ['nullable', 'string', 'max:120'],
+            'sort_order' => ['nullable', 'integer', 'min:0', 'max:9999'],
+            'is_active' => ['required', 'boolean'],
+        ]);
+
+        $maxSort = (int) ClosingShortageCustomItem::query()
+            ->where('tenant_id', $tenant->id)
+            ->max('sort_order');
+
+        ClosingShortageCustomItem::create([
+            'tenant_id' => $tenant->id,
+            'title' => $data['title'],
+            'category_label' => $data['category_label'] ?: null,
+            'sort_order' => $data['sort_order'] ?? ($maxSort + 1),
+            'is_active' => $data['is_active'],
+        ]);
+
+        return back()->with('success', 'تم إضافة بند نواقص مخصص.');
+    }
+
+    public function updateShortageCustomItem(Request $request, ClosingShortageCustomItem $item): RedirectResponse
+    {
+        $this->assertSuperAdmin();
+        abort_unless((int) $item->tenant_id === (int) Auth::user()->tenant_id, 403);
+
+        $data = $request->validate([
+            'title' => ['required', 'string', 'max:180'],
+            'category_label' => ['nullable', 'string', 'max:120'],
+            'sort_order' => ['nullable', 'integer', 'min:0', 'max:9999'],
+            'is_active' => ['required', 'boolean'],
+        ]);
+
+        $item->update([
+            'title' => $data['title'],
+            'category_label' => $data['category_label'] ?: null,
+            'sort_order' => $data['sort_order'] ?? $item->sort_order,
+            'is_active' => $data['is_active'],
+        ]);
+
+        return back()->with('success', 'تم تحديث البند المخصص.');
+    }
+
+    public function destroyShortageCustomItem(ClosingShortageCustomItem $item): RedirectResponse
+    {
+        $this->assertSuperAdmin();
+        abort_unless((int) $item->tenant_id === (int) Auth::user()->tenant_id, 403);
+        $item->delete();
+
+        return back()->with('success', 'تم حذف البند المخصص.');
+    }
+
+    public function shortagesBrowse(Request $request): Response
+    {
+        $user = Auth::user();
+        abort_unless($user?->can('closing_photos.shortages'), 403);
+
+        $tenant = $this->currentTenant();
+        $date = $request->input('business_date');
+        $report = $this->service->shortagesReport($tenant, $date);
+
+        return Inertia::render('Admin/ClosingPhotoReports/Shortages', [
+            'report' => $report,
+            'enabled' => (bool) $tenant->closing_shortages_enabled,
+            'typeLabels' => [
+                'evening' => ClosingPhotoReportItem::typeLabel(ClosingPhotoReportItem::TYPE_EVENING),
+                'dawn' => ClosingPhotoReportItem::typeLabel(ClosingPhotoReportItem::TYPE_DAWN),
+            ],
+        ]);
     }
 
     public function storeItem(Request $request): RedirectResponse
@@ -396,6 +536,7 @@ class ClosingPhotoReportController extends Controller
             'submission' => $payload['submission'],
             'items' => $payload['items'],
             'fridge' => $payload['fridge'],
+            'shortages' => $payload['shortages'],
             'canChooseType' => $user->can('closing_photos.settings'),
             'salesReportUrl' => route('admin.sales.report'),
         ]);
@@ -442,11 +583,15 @@ class ClosingPhotoReportController extends Controller
         $photosComplete = (bool) ($payload['submission']['photos_complete'] ?? false);
         $fridgeRequired = (bool) ($payload['fridge']['required'] ?? false);
         $fridgeCounted = (bool) ($payload['fridge']['counted'] ?? false);
+        $shortagesRequired = (bool) ($payload['shortages']['required'] ?? false);
+        $shortagesCompleted = (bool) ($payload['shortages']['completed'] ?? false);
 
         if ($payload['submission']['is_complete'] ?? false) {
             $message = 'تم رفع الصورة واكتملت التقفيلة. يمكنك فتح تقارير المبيعات الآن.';
         } elseif ($photosComplete && $fridgeRequired && ! $fridgeCounted) {
             $message = 'تم رفع كل الصور المطلوبة. أكمل إدخال أعداد التلاجة الفعلية.';
+        } elseif ($photosComplete && (! $fridgeRequired || $fridgeCounted) && $shortagesRequired && ! $shortagesCompleted) {
+            $message = 'أكمل تحديد النواقص قبل فتح تقارير المبيعات.';
         } else {
             $message = 'تم رفع الصورة.';
         }
@@ -465,6 +610,7 @@ class ClosingPhotoReportController extends Controller
                 'submission' => $payload['submission'],
                 'items' => $payload['items'],
                 'fridge' => $payload['fridge'],
+                'shortages' => $payload['shortages'],
                 'is_complete' => (bool) ($payload['submission']['is_complete'] ?? false),
             ]);
         }
@@ -508,6 +654,8 @@ class ClosingPhotoReportController extends Controller
         $message = 'تم حفظ أعداد التلاجة وتسوية المخزون.';
         if ($payload['submission']['is_complete'] ?? false) {
             $message .= ' اكتملت التقفيلة ويمكن فتح تقارير المبيعات.';
+        } elseif ($payload['shortages']['required'] ?? false) {
+            $message .= ' أكمل تحديد النواقص.';
         }
 
         if ($request->expectsJson() || $request->wantsJson() || $request->ajax()) {
@@ -517,6 +665,58 @@ class ClosingPhotoReportController extends Controller
                 'result' => $result,
                 'submission' => $payload['submission'],
                 'fridge' => $payload['fridge'],
+                'shortages' => $payload['shortages'],
+                'is_complete' => (bool) ($payload['submission']['is_complete'] ?? false),
+            ]);
+        }
+
+        return back()->with('success', $message);
+    }
+
+    public function storeShortages(Request $request)
+    {
+        $user = Auth::user();
+        abort_unless($user?->can('closing_photos.submit'), 403);
+
+        $tenant = $this->currentTenant();
+        abort_unless($tenant->closing_photo_reports_enabled || $user->can('closing_photos.settings'), 403);
+
+        $data = $request->validate([
+            'closing_type' => ['required', Rule::in([ClosingPhotoReportItem::TYPE_EVENING, ClosingPhotoReportItem::TYPE_DAWN])],
+            'business_date' => ['required', 'date_format:Y-m-d'],
+            'answers' => ['required', 'array', 'min:1'],
+            'answers.*.source' => ['required', Rule::in(['raw', 'custom'])],
+            'answers.*.product_id' => ['nullable', 'integer'],
+            'answers.*.custom_item_id' => ['nullable', 'integer'],
+            'answers.*.status' => ['required', Rule::in(['needed', 'not_needed'])],
+        ]);
+
+        $branchId = BranchContext::id() ?: $user->branch_id;
+        abort_unless($branchId, 422, 'يجب تحديد الفرع أولاً.');
+
+        $submission = $this->service->getOrCreateSubmission(
+            $tenant,
+            (int) $branchId,
+            $data['closing_type'],
+            $data['business_date'],
+            $user->id
+        );
+
+        $result = $this->service->saveShortageAnswers($submission, $data['answers'], $user);
+        $payload = $this->service->formPayload($tenant, (int) $branchId, $data['closing_type'], $data['business_date']);
+
+        $message = 'تم حفظ النواقص.';
+        if ($payload['submission']['is_complete'] ?? false) {
+            $message .= ' اكتملت التقفيلة ويمكن فتح تقارير المبيعات.';
+        }
+
+        if ($request->expectsJson() || $request->wantsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'result' => $result,
+                'submission' => $payload['submission'],
+                'shortages' => $payload['shortages'],
                 'is_complete' => (bool) ($payload['submission']['is_complete'] ?? false),
             ]);
         }

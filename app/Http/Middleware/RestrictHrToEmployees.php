@@ -22,6 +22,7 @@ class RestrictHrToEmployees
             'dashboard',
             'admin.employees.*',
             'admin.closing-photo-reports.browse',
+            'admin.closing-photo-reports.shortages',
             'profile.show',
             'user-profile-information.update',
             'user-password.update',

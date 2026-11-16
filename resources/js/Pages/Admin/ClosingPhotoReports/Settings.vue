@@ -41,6 +41,33 @@
             </label>
           </div>
 
+          <div class="rounded-xl border border-amber-200 bg-amber-50/60 p-4 space-y-3">
+            <label class="inline-flex items-start gap-3 text-sm cursor-pointer">
+              <input
+                v-model="settingsForm.shortages_enabled"
+                type="checkbox"
+                class="mt-0.5 rounded border-gray-300 text-indigo-600"
+              />
+              <span>
+                <span class="font-semibold text-gray-900 block">تفعيل بند النواقص في التقفيلة</span>
+                <span class="text-gray-600">
+                  بعد الصور وجرد التلاجة يظهر بند النواقص إجبارياً: كل مادة خام (حسب الفئات) + بنود مخصصة،
+                  ويجب اختيار «محتاج» أو «مش محتاج» لكل بند قبل فتح المبيعات.
+                </span>
+              </span>
+            </label>
+            <div v-if="settingsForm.shortages_enabled" class="flex flex-wrap gap-4 text-sm pr-7">
+              <label class="inline-flex items-center gap-2">
+                <input v-model="settingsForm.shortages_types" type="checkbox" value="evening" class="rounded border-gray-300 text-indigo-600" />
+                التقفيلة الأولى
+              </label>
+              <label class="inline-flex items-center gap-2">
+                <input v-model="settingsForm.shortages_types" type="checkbox" value="dawn" class="rounded border-gray-300 text-indigo-600" />
+                التقفيلة الثانية
+              </label>
+            </div>
+          </div>
+
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label class="block text-sm text-gray-700 mb-1">بداية التقفيلة الأولى</label>
@@ -68,6 +95,103 @@
           >
             حفظ الإعدادات
           </button>
+        </div>
+
+        <div v-if="settingsForm.shortages_enabled" class="bg-white shadow-xl sm:rounded-lg p-6 space-y-5">
+          <div>
+            <h3 class="text-lg font-semibold text-gray-900">إعداد بنود النواقص</h3>
+            <p class="text-sm text-gray-600">
+              تظهر كل المواد الخام المركزية حسب الفئات. أخفِ ما لا تحتاجه، وأضف بنوداً مخصصة غير موجودة في المواد الخام.
+            </p>
+          </div>
+
+          <div class="flex flex-wrap gap-2 items-center">
+            <input
+              v-model="materialSearch"
+              type="search"
+              placeholder="بحث في المواد..."
+              class="rounded-lg border-gray-300 text-sm w-full sm:w-64"
+            />
+            <select v-model="materialCategoryFilter" class="rounded-lg border-gray-300 text-sm">
+              <option value="">كل الفئات</option>
+              <option v-for="category in shortages.categories || []" :key="category.id" :value="String(category.id)">
+                {{ category.name }}
+              </option>
+            </select>
+            <button type="button" class="text-sm px-3 py-2 rounded-lg bg-gray-100 text-gray-800" @click="hideAllVisibleMaterials">
+              إخفاء الظاهر
+            </button>
+            <button type="button" class="text-sm px-3 py-2 rounded-lg bg-gray-100 text-gray-800" @click="showAllMaterials">
+              إظهار الكل
+            </button>
+            <button
+              type="button"
+              class="text-sm px-3 py-2 rounded-lg bg-amber-600 text-white disabled:opacity-50"
+              :disabled="savingHidden"
+              @click="saveHiddenMaterials"
+            >
+              {{ savingHidden ? 'جاري الحفظ...' : 'حفظ الإخفاء' }}
+            </button>
+          </div>
+
+          <div class="max-h-80 overflow-y-auto border border-gray-200 rounded-xl divide-y">
+            <label
+              v-for="material in filteredMaterials"
+              :key="material.id"
+              class="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-gray-50"
+            >
+              <input
+                v-model="hiddenProductIds"
+                type="checkbox"
+                :value="material.id"
+                class="rounded border-gray-300 text-indigo-600"
+              />
+              <span class="flex-1 font-medium text-gray-900">{{ material.name }}</span>
+              <span class="text-xs text-gray-500">{{ material.category_name }}</span>
+              <span class="text-[11px] font-semibold" :class="hiddenProductIds.includes(material.id) ? 'text-red-600' : 'text-emerald-700'">
+                {{ hiddenProductIds.includes(material.id) ? 'مخفي' : 'ظاهر' }}
+              </span>
+            </label>
+            <div v-if="!filteredMaterials.length" class="px-3 py-6 text-center text-sm text-gray-500">لا توجد مواد مطابقة.</div>
+          </div>
+          <p class="text-xs text-gray-500">تعليم اختيار مربع بجانب المادة يعني إخفاءها من قائمة النواقص عند التقفيلة.</p>
+
+          <div class="border-t pt-4 space-y-3">
+            <h4 class="font-semibold text-gray-900">بنود مخصصة</h4>
+            <form class="grid grid-cols-1 md:grid-cols-5 gap-3 items-end" @submit.prevent="addCustomItem">
+              <div class="md:col-span-2">
+                <label class="block text-sm text-gray-700 mb-1">اسم البند</label>
+                <input v-model="customForm.title" required class="w-full rounded-lg border-gray-300 text-sm" placeholder="مثال: أكياس ثلج" />
+              </div>
+              <div class="md:col-span-2">
+                <label class="block text-sm text-gray-700 mb-1">الفئة (اختياري)</label>
+                <input v-model="customForm.category_label" class="w-full rounded-lg border-gray-300 text-sm" placeholder="بنود مخصصة" />
+              </div>
+              <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-sm">إضافة</button>
+            </form>
+
+            <div v-if="!(shortages.custom_items || []).length" class="text-sm text-gray-500">لا توجد بنود مخصصة بعد.</div>
+            <div
+              v-for="item in shortages.custom_items || []"
+              :key="item.id"
+              class="border border-gray-200 rounded-xl p-3 grid grid-cols-1 md:grid-cols-5 gap-3 items-end"
+            >
+              <div class="md:col-span-2">
+                <input v-model="customEditForms[item.id].title" class="w-full rounded-lg border-gray-300 text-sm" />
+              </div>
+              <div>
+                <input v-model="customEditForms[item.id].category_label" class="w-full rounded-lg border-gray-300 text-sm" placeholder="الفئة" />
+              </div>
+              <label class="inline-flex items-center gap-2 text-sm pb-2">
+                <input v-model="customEditForms[item.id].is_active" type="checkbox" class="rounded border-gray-300 text-indigo-600" />
+                مفعّل
+              </label>
+              <div class="flex gap-2">
+                <button type="button" class="text-sm px-3 py-1.5 rounded-lg bg-indigo-600 text-white" @click="saveCustomItem(item)">حفظ</button>
+                <button type="button" class="text-sm px-3 py-1.5 rounded-lg border border-red-300 text-red-700" @click="removeCustomItem(item)">حذف</button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div
@@ -171,6 +295,7 @@ export default {
   layout: AppLayout,
   props: {
     settings: { type: Object, required: true },
+    shortages: { type: Object, default: () => ({ materials: [], custom_items: [], categories: [], hidden_product_ids: [] }) },
     itemsByType: { type: Object, required: true },
     recentSubmissions: { type: Array, default: () => [] },
     typeLabels: { type: Object, required: true },
@@ -189,10 +314,22 @@ export default {
       });
     });
 
+    const customEditForms = {};
+    (this.shortages?.custom_items || []).forEach((item) => {
+      customEditForms[item.id] = {
+        title: item.title,
+        category_label: item.category_label || '',
+        sort_order: item.sort_order,
+        is_active: !!item.is_active,
+      };
+    });
+
     return {
       settingsForm: useForm({
         enabled: !!this.settings.enabled,
         show_fridge_in_sales_report: !!this.settings.show_fridge_in_sales_report,
+        shortages_enabled: !!this.settings.shortages_enabled,
+        shortages_types: [...(this.settings.shortages_types || [])],
         evening_starts_at: this.settings.evening_starts_at,
         evening_ends_at: this.settings.evening_ends_at,
         dawn_starts_at: this.settings.dawn_starts_at,
@@ -203,6 +340,12 @@ export default {
         dawn: { title: '', description: '', is_required: true, is_active: true },
       },
       editForms,
+      customEditForms,
+      hiddenProductIds: [...(this.shortages?.hidden_product_ids || [])],
+      materialSearch: '',
+      materialCategoryFilter: '',
+      savingHidden: false,
+      customForm: { title: '', category_label: '' },
     };
   },
   computed: {
@@ -211,6 +354,17 @@ export default {
     },
     flashError() {
       return usePage().props.flash?.error || null;
+    },
+    filteredMaterials() {
+      const query = String(this.materialSearch || '').trim().toLowerCase();
+      return (this.shortages?.materials || []).filter((material) => {
+        if (this.materialCategoryFilter && String(material.category_id || '') !== String(this.materialCategoryFilter)) {
+          return false;
+        }
+        if (!query) return true;
+        return String(material.name || '').toLowerCase().includes(query)
+          || String(material.category_name || '').toLowerCase().includes(query);
+      });
     },
   },
   watch: {
@@ -232,10 +386,66 @@ export default {
         });
       },
     },
+    shortages: {
+      deep: true,
+      handler(value) {
+        this.hiddenProductIds = [...(value?.hidden_product_ids || [])];
+        (value?.custom_items || []).forEach((item) => {
+          if (!this.customEditForms[item.id]) {
+            this.customEditForms[item.id] = {
+              title: item.title,
+              category_label: item.category_label || '',
+              sort_order: item.sort_order,
+              is_active: !!item.is_active,
+            };
+          }
+        });
+      },
+    },
   },
   methods: {
     saveSettings() {
       this.settingsForm.put(route('admin.closing-photo-reports.settings.update'), {
+        preserveScroll: true,
+      });
+    },
+    hideAllVisibleMaterials() {
+      const ids = new Set(this.hiddenProductIds);
+      this.filteredMaterials.forEach((material) => ids.add(material.id));
+      this.hiddenProductIds = [...ids];
+    },
+    showAllMaterials() {
+      this.hiddenProductIds = [];
+    },
+    saveHiddenMaterials() {
+      this.savingHidden = true;
+      router.put(route('admin.closing-photo-reports.shortages.hidden'), {
+        hidden_product_ids: this.hiddenProductIds,
+      }, {
+        preserveScroll: true,
+        onFinish: () => { this.savingHidden = false; },
+      });
+    },
+    addCustomItem() {
+      router.post(route('admin.closing-photo-reports.shortages.custom.store'), {
+        title: this.customForm.title,
+        category_label: this.customForm.category_label || null,
+        is_active: true,
+      }, {
+        preserveScroll: true,
+        onSuccess: () => {
+          this.customForm = { title: '', category_label: '' };
+        },
+      });
+    },
+    saveCustomItem(item) {
+      router.put(route('admin.closing-photo-reports.shortages.custom.update', item.id), this.customEditForms[item.id], {
+        preserveScroll: true,
+      });
+    },
+    removeCustomItem(item) {
+      if (!confirm(`حذف البند المخصص «${item.title}»؟`)) return;
+      router.delete(route('admin.closing-photo-reports.shortages.custom.destroy', item.id), {
         preserveScroll: true,
       });
     },
